@@ -16,6 +16,15 @@ else
   mapfile -t scripts < <(find "$repo/Assets" -path '*/Scripts/*.cs' | sort)
 fi
 
+# Editor scripts: compile everything in Assets/ like Unity's editor assembly would.
+echo "Compiling Assets/ (including Editor scripts) against the Unity editor assemblies"
+if ! DOTNET_CLI_TELEMETRY_OPTOUT=1 DOTNET_NOLOGO=1 "$dotnet" build "$here/build/EditorCheck/EditorCheck.csproj" -v q -nologo > "$cache/editorcheck.log" 2>&1; then
+  grep -E "error" "$cache/editorcheck.log" | sed 's/ \[.*//' | sort -u
+  echo "EDITOR SCRIPT COMPILE FAILED"
+  exit 1
+fi
+echo "Editor scripts OK"
+
 # UdonSharp loads its messages from Packages/com.vrchat.worlds relative to the working directory.
 mkdir -p "$cache/run/Packages"
 ln -sfn "$cache/sdk/worlds" "$cache/run/Packages/com.vrchat.worlds"

@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Compiles everything in Assets/ (including Editor scripts) like Unity's Assembly-CSharp-Editor. -->
+  <PropertyGroup><TargetFramework>netstandard2.1</TargetFramework><AssemblyName>Assembly-CSharp-Editor</AssemblyName><TreatWarningsAsErrors>false</TreatWarningsAsErrors></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../../../../Assets/**/*.cs" />
+    <ProjectReference Include="../USEditor/USEditor.csproj" /><ProjectReference Include="../USRuntime/USRuntime.csproj" />
+    <ProjectReference Include="../Udon/Udon.csproj" /><ProjectReference Include="../UdonEditor/UdonEditor.csproj" />
+    <ProjectReference Include="../TMP/TMP.csproj" /><ProjectReference Include="../UGUI/UGUI.csproj" /><ProjectReference Include="../Odin/Odin.csproj" />
+  </ItemGroup>
+</Project>
