@@ -3,15 +3,17 @@ using System.Collections.Generic;
 using UnityEngine;
 
 /// <summary>
-/// Headless tests for SourceMovement. Every expected number comes from Source's own maths
+/// Movement tests for SourceMovement. Every expected number comes from Source's own maths
 /// (gamemovement.cpp with CS:S / bhop server cvars), so passing means it moves like Source.
+/// The same tests run against two backends that each provide a Rig class: the C# script
+/// (Tests/Sim) and the compiled Udon program in VRChat's Udon VM (Tests/UdonCompile).
 /// </summary>
-public static class Program
+public static class MovementTests
 {
     static int failures;
     static readonly List<string> report = new List<string>();
 
-    public static int Main()
+    public static int RunAll(Action<Action<string, Action>> extraTests = null)
     {
         Test("Stands still on flat ground", StandStill);
         Test("Ground run reaches 250 u/s (maxspeed)", GroundRun);
@@ -38,7 +40,7 @@ public static class Program
         Test("Tracks the player with one frame of VRChat latency", LatencyTolerant);
         Test("Turning off restores VRChat movement and keeps momentum", Deactivate);
         Test("Collision cost per tick fits Udon", CastBudget);
-        TimerTests.Run(Test);
+        extraTests?.Invoke(Test);
 
         Console.WriteLine();
         foreach (string line in report) Console.WriteLine(line);
@@ -56,7 +58,7 @@ public static class Program
         catch (Exception e)
         {
             failures++;
-            report.Add("FAIL  " + name + "\n      " + (e.InnerException ?? e).Message);
+            report.Add("FAIL  " + name + "\n      " + (Environment.GetEnvironmentVariable("VERBOSE") != null ? e.ToString() : (e.InnerException ?? e).Message));
         }
     }
 
@@ -188,7 +190,7 @@ public static class Program
     static void ManualHoldJumpsOnce()
     {
         var r = OnFloor();
-        r.move.autoBhop = false;
+        r.AutoBhop = false;
         r.Jump(true);
         int jumps = 0;
         bool wasGround = true;
@@ -203,7 +205,7 @@ public static class Program
     static void ScrollBhop()
     {
         var r = OnFloor();
-        r.move.autoBhop = false;
+        r.AutoBhop = false;
         r.Move(1, 0);
         r.Run(1f);
         int jumps = 0;
@@ -212,7 +214,7 @@ public static class Program
         int frame = 0;
         r.Run(5f, () =>
         {
-            if (frame++ % 3 == 0) Input.scroll = -0.1f;
+            if (frame++ % 3 == 0) r.Scroll(-0.1f);
             if (!r.OnGround && wasGround) jumps++;
             wasGround = r.OnGround;
         });
@@ -224,12 +226,12 @@ public static class Program
     static void ToggleKey()
     {
         var r = OnFloor();
-        bool before = r.move.autoBhop;
-        Input.keysDown.Add(KeyCode.B);
+        bool before = r.AutoBhop;
+        r.PressKey(KeyCode.B);
         r.Frame();
-        Check(r.move.autoBhop == !before, "did not toggle");
+        Check(r.AutoBhop == !before, "did not toggle");
         r.Frame();
-        Check(r.move.autoBhop == !before, "toggled twice");
+        Check(r.AutoBhop == !before, "toggled twice");
     }
 
     // ------------------------------------------------------------------ surf
@@ -273,7 +275,7 @@ public static class Program
             var r = new Rig(new Vector3(-433, 290, 0));
             Ramp();
             r.Run(0.05f);
-            r.Set("velocity", new Vector3(0, 0, 1000));
+            r.SetVelocity(new Vector3(0, 0, 1000));
             r.Yaw = 0; // looking along the ramp, D pushes into it
             if (holdInto) r.Move(0, 1);
             float y0 = r.Origin.y;
@@ -293,7 +295,7 @@ public static class Program
     {
         var r = new Rig(new Vector3(-433, 400, 0));
         Ramp();
-        r.Set("velocity", new Vector3(0, 0, 800));
+        r.SetVelocity(new Vector3(0, 0, 800));
         r.Run(0.6f);
         Note($"speed along ramp after landing {r.Vel.z:F1} u/s");
         Check(RampGap(r) < 1f, "not on ramp");
@@ -380,7 +382,7 @@ public static class Program
         r.Move(1, 0);
         r.Run(1f);
         r.Move(0, 0);
-        r.player.TeleportTo(new Vector3(5000, 0, 0) * Rig.U, Quaternion.identity);
+        r.Teleport(new Vector3(5000, 0, 0));
         r.Frame();
         Check(r.Speed < 1f, "speed after teleport " + r.Speed);
         Check(Math.Abs(r.Origin.x - 5000) < 5, "sim did not follow " + r.Origin);
@@ -392,7 +394,7 @@ public static class Program
         r.Move(1, 0);
         r.Run(1f);
         r.Move(0, 0);
-        r.move.OnPlayerRespawn(r.player);
+        r.Respawn();
         r.Frame();
         Check(r.Speed < 1f, "speed after respawn " + r.Speed);
     }
@@ -434,12 +436,12 @@ public static class Program
     static void Deactivate()
     {
         var r = OnFloor();
-        Check(r.player.walk == 0 && r.player.gravityStrength == 0, "VRChat movement not disabled");
+        Check(r.PlayerWalk == 0 && r.PlayerGravity == 0, "VRChat movement not disabled");
         r.Move(1, 0);
         r.Run(1f);
-        r.move.SetMovementActive(false);
-        Check(r.player.walk == 2 && r.player.run == 4 && r.player.gravityStrength == 1, "not restored");
-        Check(Math.Abs(r.player.velocity.magnitude / Rig.U - 250) < 1, "momentum lost");
+        r.SetActive(false);
+        Check(r.PlayerWalk == 2 && r.PlayerRun == 4 && r.PlayerGravity == 1, "not restored");
+        Check(Math.Abs(r.PlayerVelocity.magnitude / Rig.U - 250) < 1, "momentum lost");
     }
 
     static void CastBudget()
@@ -448,9 +450,9 @@ public static class Program
         Rig.Box(new Vector3(300, 8, 0), new Vector3(400, 16, 1000));
         r.Move(1, 0);
         r.Jump(true);
-        Physics.castCount = 0;
+        CollisionWorld.castCount = 0;
         r.Run(5f);
-        float perTick = Physics.castCount / 500f;
+        float perTick = CollisionWorld.castCount / 500f;
         Note($"{perTick:F1} box casts per tick ({perTick * 100:F0}/s at 100 tick)");
         Check(perTick < 8, "too many casts");
     }

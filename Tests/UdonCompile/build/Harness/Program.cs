@@ -21,7 +21,8 @@ public static class Program
     public static int Main(string[] args)
     {
         string sdk = args[0], unityData = args[1], builtDir = args[2], outDir = args[3];
-        string[] scripts = args.Skip(4).Select(Path.GetFullPath).ToArray();
+        bool runTests = args.Contains("--test");
+        string[] scripts = args.Skip(4).Where(a => a != "--test").Select(Path.GetFullPath).ToArray();
         string managed = Path.Combine(unityData, "Managed");
 
         probeDirs.AddRange(new[]
@@ -43,10 +44,10 @@ public static class Program
             return null;
         };
 
-        return Run(sdk, unityData, builtDir, outDir, scripts);
+        return Run(sdk, unityData, builtDir, outDir, scripts, runTests);
     }
 
-    static int Run(string sdk, string unityData, string builtDir, string outDir, string[] scripts)
+    static int Run(string sdk, string unityData, string builtDir, string outDir, string[] scripts, bool runTests)
     {
         // Unity's log handler is native; send logs to the console instead.
         UnityEngine.Debug.unityLogger.logHandler = new ConsoleLogHandler();
@@ -172,7 +173,14 @@ public static class Program
         }
 
         Console.WriteLine(errors == 0 ? "UDONSHARP COMPILE SUCCEEDED" : $"UDONSHARP COMPILE FAILED ({errors} errors)");
-        return errors == 0 ? 0 : 1;
+        if (errors > 0 || !runTests) return errors == 0 ? 0 : 1;
+
+        // Run the shared movement tests on the compiled program inside VRChat's Udon VM.
+        var movement = assets.First(kv => Path.GetFileNameWithoutExtension(kv.Key) == "SourceMovement").Value;
+        var wrapperFactory = new VRC.Udon.Wrapper.UdonDefaultWrapperFactory(new Rig.PassThroughSecurityFilter());
+        Rig.Init(movement.GetRealProgram(), wrapperFactory.GetWrapper());
+        Console.WriteLine("\nRunning movement tests on the compiled Udon program in the Udon VM");
+        return MovementTests.RunAll();
     }
 
     static void SetStatic(Type t, string field, object value)

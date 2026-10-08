@@ -20,4 +20,4 @@ fi
 mkdir -p "$cache/run/Packages"
 ln -sfn "$cache/sdk/worlds" "$cache/run/Packages/com.vrchat.worlds"
 cd "$cache/run"
-"$dotnet" "$bin/UdonSharpHeadless.dll" "$cache/sdk" "$cache/unity/Editor/Data" "$bin" "$cache/uasm" "${scripts[@]}"
+"$dotnet" "$bin/UdonSharpHeadless.dll" "$cache/sdk" "$cache/unity/Editor/Data" "$bin" "$cache/uasm" ${UDON_TEST:+--test} "${scripts[@]}"

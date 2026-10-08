@@ -3,7 +3,7 @@ using System.Reflection;
 using UnityEngine;
 using VRC.SDKBase;
 
-/// <summary>Drives one SourceMovement instance and a simulated VRChat player frame by frame.</summary>
+/// <summary>C# backend: drives the SourceMovement script directly with a simulated VRChat player.</summary>
 public class Rig
 {
     public const float U = 0.01905f; // metres per Source unit
@@ -15,7 +15,7 @@ public class Rig
 
     public Rig(Vector3 startUnits)
     {
-        Physics.world.Clear();
+        CollisionWorld.Clear();
         Input.scroll = 0;
         Input.keysDown.Clear();
         Time.time = 0;
@@ -26,17 +26,24 @@ public class Rig
 
     // ------------------------------------------------------------- world building (Source units)
     public static void Floor(float y = 0, float size = 100000) => Box(new Vector3(0, y - 50, 0), new Vector3(size, 100, size));
-    public static Physics.Box Box(Vector3 center, Vector3 size, float rotZ = 0, float rotX = 0) =>
-        Physics.AddBox(center * U, size * U, Quaternion.Euler(rotX, 0, rotZ));
+    public static void Box(Vector3 center, Vector3 size, float rotZ = 0, float rotX = 0) =>
+        CollisionWorld.Add(center * U, size * U, CollisionWorld.Euler(rotX, 0, rotZ));
 
-    // ------------------------------------------------------------- input
+    // ------------------------------------------------------------- input and events
     public void Move(float forward, float right)
     {
         move.InputMoveVertical(forward, default);
         move.InputMoveHorizontal(right, default);
     }
     public void Jump(bool held) => move.InputJump(held, default);
+    public void Scroll(float delta) => Input.scroll = delta;
+    public void PressKey(KeyCode key) => Input.keysDown.Add(key);
     public float Yaw { get => player.yaw; set => player.yaw = value; }
+    public bool AutoBhop { get => move.autoBhop; set => move.autoBhop = value; }
+    public void Respawn() => move.OnPlayerRespawn(player);
+    public void SetActive(bool on) => move.SetMovementActive(on);
+    public void Teleport(Vector3 units) => player.TeleportTo(units * U, Quaternion.identity);
+    public void SetVelocity(Vector3 v) => Set("velocity", v);
 
     // ------------------------------------------------------------- stepping
     public void Frame()
@@ -69,11 +76,15 @@ public class Rig
     public float Speed => move.GetSpeed();
     public bool OnGround => move.IsOnGround();
     public float VelYaw => Mathf.Atan2(Vel.x, Vel.z) * Mathf.Rad2Deg;
+    public Vector3 PlayerVelocity => player.velocity;
+    public float PlayerWalk => player.walk;
+    public float PlayerRun => player.run;
+    public float PlayerGravity => player.gravityStrength;
 
-    public T Get<T>(string field) =>
+    T Get<T>(string field) =>
         (T)typeof(SourceMovement).GetField(field, BindingFlags.NonPublic | BindingFlags.Instance).GetValue(move);
-    public void Set(string field, object value) =>
+    void Set(string field, object value) =>
         typeof(SourceMovement).GetField(field, BindingFlags.NonPublic | BindingFlags.Instance).SetValue(move, value);
-    public void Call(string method) =>
+    void Call(string method) =>
         typeof(SourceMovement).GetMethod(method, BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Public).Invoke(move, null);
 }

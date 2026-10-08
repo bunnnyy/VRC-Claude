@@ -173,93 +173,17 @@ namespace UnityEngine
     [AttributeUsage(AttributeTargets.Field)] public class RangeAttribute : Attribute { public RangeAttribute(float a, float b) { } }
     [AttributeUsage(AttributeTargets.Field)] public class TextAreaAttribute : Attribute { }
 
-    /// <summary>
-    /// Collision world made of oriented boxes (like Source brushes). BoxCast is an exact
-    /// swept axis-aligned box vs oriented box test using all 15 separating axes.
-    /// </summary>
+    /// <summary>Physics.BoxCast backed by the shared test CollisionWorld.</summary>
     public static class Physics
     {
-        public class Box
-        {
-            public Vector3 center, half;
-            public Quaternion rotation = Quaternion.identity;
-        }
-
-        public static readonly List<Box> world = new List<Box>();
-        public static int castCount;
-
-        public static Box AddBox(Vector3 center, Vector3 size, Quaternion rotation)
-        {
-            var b = new Box { center = center, half = size * 0.5f, rotation = rotation };
-            world.Add(b);
-            return b;
-        }
-
         public static bool BoxCast(Vector3 center, Vector3 halfExtents, Vector3 direction, out RaycastHit hitInfo,
             Quaternion orientation, float maxDistance, int layerMask, QueryTriggerInteraction q)
         {
-            castCount++;
             hitInfo = default;
-            float best = float.MaxValue;
-            Vector3 bestNormal = Vector3.zero;
-            foreach (var box in world)
-            {
-                if (Sweep(box, center, halfExtents, direction, maxDistance, out float t, out Vector3 n) && t < best)
-                {
-                    best = t;
-                    bestNormal = n;
-                }
-            }
-            if (best == float.MaxValue) return false;
-            hitInfo.distance = best;
-            hitInfo.normal = bestNormal;
-            hitInfo.point = center + direction * best; // approximate, only used to detect initial overlaps
-            return true;
-        }
-
-        static bool Sweep(Box box, Vector3 c, Vector3 h, Vector3 dir, float maxDist, out float tHit, out Vector3 normal)
-        {
-            tHit = 0; normal = Vector3.zero;
-            Vector3 bx = box.rotation * Vector3.right, by = box.rotation * Vector3.up, bz = box.rotation * Vector3.forward;
-            Vector3[] obbAxes = { bx, by, bz };
-            Vector3[] worldAxes = { Vector3.right, Vector3.up, Vector3.forward };
-            var axes = new List<Vector3>(obbAxes);
-            axes.AddRange(worldAxes);
-            foreach (var a in obbAxes)
-                foreach (var w in worldAxes)
-                {
-                    Vector3 cr = Vector3.Cross(a, w);
-                    if (cr.sqrMagnitude > 1e-6f) axes.Add(cr.normalized);
-                }
-
-            float tEnter = float.MinValue, tExit = float.MaxValue;
-            Vector3 enterNormal = Vector3.zero;
-            foreach (var axis in axes)
-            {
-                for (int s = -1; s <= 1; s += 2)
-                {
-                    Vector3 n = axis * s;
-                    // Plane of the Minkowski sum (box expanded by the moving AABB) along n.
-                    float d = Vector3.Dot(n, box.center)
-                        + box.half.x * Math.Abs(Vector3.Dot(n, bx)) + box.half.y * Math.Abs(Vector3.Dot(n, by)) + box.half.z * Math.Abs(Vector3.Dot(n, bz))
-                        + h.x * Math.Abs(n.x) + h.y * Math.Abs(n.y) + h.z * Math.Abs(n.z);
-                    float dist0 = Vector3.Dot(n, c) - d;
-                    float denom = Vector3.Dot(n, dir);
-                    if (Math.Abs(denom) < 1e-9f)
-                    {
-                        if (dist0 > 0) return false;
-                        continue;
-                    }
-                    float t = -dist0 / denom;
-                    if (denom < 0) { if (t > tEnter) { tEnter = t; enterNormal = n; } }
-                    else if (t < tExit) tExit = t;
-                }
-            }
-            if (tEnter > tExit || tExit < 0) return false;
-            if (tEnter < 0) return false; // started overlapping: Unity's BoxCast ignores these
-            if (tEnter > maxDist) return false;
-            tHit = tEnter;
-            normal = enterNormal;
+            if (!CollisionWorld.BoxCast(center, halfExtents, direction, maxDistance, out float distance, out Vector3 normal)) return false;
+            hitInfo.distance = distance;
+            hitInfo.normal = normal;
+            hitInfo.point = center + direction * distance;
             return true;
         }
     }
