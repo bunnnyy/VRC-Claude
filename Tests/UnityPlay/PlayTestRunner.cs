@@ -77,6 +77,8 @@ public class PlayTestRunner : MonoBehaviour
         yield return Run("strafe", AirStrafe());
         yield return Run("surf", Surf());
         yield return Run("teleport", Teleports());
+        yield return Run("legit", Legit());
+        yield return Run("timer", Timer());
         Finish();
     }
 
@@ -275,7 +277,95 @@ public class PlayTestRunner : MonoBehaviour
         Check("teleport", Speed() > 240f && Real().x - here.x > 28f, "short TeleportTo moves the player and keeps speed");
     }
 
+    IEnumerator Legit()
+    {
+        // The world button (what VR players use) switches auto bhop off.
+        UdonBehaviour button = FindUdon("AutoBhopButton");
+        button.SendCustomEvent("_interact");
+        yield return Frames(0.1f, null);
+        string label = Text("AutoBhopButton");
+        Log($"after pressing the button: autoBhop {movement.GetProgramVariable("autoBhop")}, label '{label}'");
+        Check("legit", !(bool)movement.GetProgramVariable("autoBhop") && label == "Auto bhop: OFF", "button turns auto bhop off");
+
+        yield return Spawn(new Vector3(0, 0, 300), 0f);
+        int jumps = 0;
+        float prevVy = 0f;
+        System.Action count = () =>
+        {
+            float vy = ((Vector3)movement.GetProgramVariable("velocity")).y;
+            if (vy > 150f && prevVy <= 150f) jumps++;
+            prevVy = vy;
+        };
+        Keys(Key.Space);
+        yield return Frames(2f, count);
+        Check("legit", jumps == 1, "holding jump jumps once, no pogo (" + jumps + ")");
+        Keys();
+        yield return Frames(0.1f, count);
+        Keys(Key.Space);
+        yield return Frames(0.2f, count);
+        Keys();
+        Check("legit", jumps == 2, "a new press jumps again (" + jumps + ")");
+        yield return Frames(1f, null);
+    }
+
+    IEnumerator Timer()
+    {
+        // A legit run (auto bhop is still off from the legit test) through the real trigger zones.
+        UdonBehaviour timer = FindUdon("RunTimer");
+        yield return Spawn(new Vector3(0, 0, 100), 0f);
+        Check("timer", !(bool)timer.GetProgramVariable("running"), "not running inside the start zone");
+        Keys(Key.W);
+        yield return Frames(1.5f, null);
+        Keys();
+        Check("timer", (bool)timer.GetProgramVariable("running"), "starts when leaving the start zone");
+
+        // Through the checkpoint zone, then fall into the reset zone: back to the checkpoint, timer keeps running.
+        yield return Teleport(new Vector3(0, 0, 3900), 0f, false);
+        yield return Frames(0.2f, null);
+        player.TeleportTo(new Vector3(0, -1950, 6000) * U, Quaternion.identity);
+        player.SetVelocity(Vector3.zero);
+        yield return Frames(0.5f, null);
+        Log($"after the reset zone: at {Real():F1}, speed {Speed():F1}, running {timer.GetProgramVariable("running")}");
+        Check("timer", Flat(Real() - new Vector3(0, 0, 3900)).magnitude < 2f && Mathf.Abs(Real().y) < 2f, "reset zone sends you to the checkpoint");
+        Check("timer", (bool)timer.GetProgramVariable("running"), "timer keeps running after a reset");
+
+        // Into the end zone.
+        yield return Teleport(new Vector3(400, -950, 10900), 0f, false);
+        yield return Frames(0.3f, null);
+        float time = (float)timer.GetProgramVariable("lastTime");
+        string hud = Text("RunTimer"), board = Text("Leaderboard (Legit)"), autoBoard = Text("Leaderboard (Auto)");
+        Log($"finished: lastTime {time:F3}, HUD '{hud}', legit board '{board.Replace("\n", " | ")}', auto board '{autoBoard.Replace("\n", " | ")}'");
+        Check("timer", time > 0f && !(bool)timer.GetProgramVariable("running"), "end zone finishes the run");
+        Check("timer", hud.StartsWith("Finished [legit] "), "HUD shows the finished legit time");
+        Check("timer", board.Contains(RunTimerFormat(time)) && !autoBoard.Contains(RunTimerFormat(time)), "time is on the legit board only");
+
+        FindUdon("AutoBhopButton").SendCustomEvent("_interact"); // back to auto bhop
+        yield return Frames(0.1f, null);
+        Check("timer", (bool)movement.GetProgramVariable("autoBhop"), "button turns auto bhop back on");
+    }
+
     // ------------------------------------------------------------------ helpers
+
+    static string RunTimerFormat(float seconds)
+    {
+        int ms = Mathf.FloorToInt(seconds * 1000f);
+        return (ms / 60000) + ":" + ((ms / 1000) % 60).ToString("00") + "." + (ms % 1000).ToString("000");
+    }
+
+    static UdonBehaviour FindUdon(string objectName)
+    {
+        foreach (var udon in FindObjectsOfType<UdonBehaviour>())
+            if (udon.gameObject.name == objectName) return udon;
+        return null;
+    }
+
+    /// <summary>Text of the TextMeshPro label on the canvas under the named object.</summary>
+    static string Text(string objectName)
+    {
+        foreach (var t in FindObjectsOfType<TextMeshProUGUI>())
+            if (t.transform.parent.parent.name == objectName) return t.text;
+        return "";
+    }
 
     IEnumerator Spawn(Vector3 sourcePos, float yaw)
     {

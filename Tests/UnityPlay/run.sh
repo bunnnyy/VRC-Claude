@@ -49,6 +49,10 @@ fi
 
 echo "Building prefabs and test map"
 run build -quit -executeMethod SourceMovementSetup.BuildTestScene
+# That checks the menu code. Play-test the committed prefabs and map (what users get) unless KEEP_BUILD is set:
+# a rebuild gives every object new IDs, so only commit one when the setup code changed.
+generated=(Assets/SourceMovement/SourceMovement.prefab Assets/SourceMovement/SourceTestMap.unity Assets/SourceTimer/SourceTimer.prefab)
+[ -n "${KEEP_BUILD:-}" ] || git -C "$repo" checkout -- "${generated[@]}"
 status=0
 for fps in "${@:-30 90 144}"; do
   for f in $fps; do

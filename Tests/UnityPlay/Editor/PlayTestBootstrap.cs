@@ -29,4 +29,13 @@ public static class PlayTestBootstrap
         }
         EditorApplication.isPlaying = true;
     }
+
+    /// <summary>-executeMethod PlayTestBootstrap.ExportPackage -smPackage path: the folders a world needs.</summary>
+    public static void ExportPackage()
+    {
+        string[] args = System.Environment.GetCommandLineArgs();
+        string path = System.Array.IndexOf(args, "-smPackage") is int i && i >= 0 ? args[i + 1] : "SourceMovement.unitypackage";
+        AssetDatabase.ExportPackage(new[] { "Assets/SourceMovement", "Assets/SourceTimer" }, path, ExportPackageOptions.Recurse);
+        Debug.Log("[SMTEST] exported " + path);
+    }
 }

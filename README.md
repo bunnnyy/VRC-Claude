@@ -9,11 +9,15 @@ client itself.
 
 ## Using it
 
-1. In a VRChat world project (VRChat Creator Companion, Worlds SDK 3.10.5+, Unity 2022.3.22f1), copy the
+1. In a VRChat world project (VRChat Creator Companion, Worlds SDK 3.10.5+, Unity 2022.3.22f1), import
+   `SourceMovement.unitypackage` (Assets > Import Package > Custom Package), or copy the
    `Assets/SourceMovement` and `Assets/SourceTimer` folders into your project's `Assets`.
-2. Run **Tools > Source Movement > Create Prefabs** (or **Build Test Scene** for a ready-made test map
-   with a bhop lane, a surf ramp, step tests, timer zones and a leaderboard).
+2. Open `Assets/SourceMovement/SourceTestMap.unity` to try it: a bhop lane, a surf ramp, step tests,
+   timer zones and leaderboards.
 3. Drop `SourceMovement.prefab` into your scene. Add `SourceTimer.prefab` if you want timing.
+
+The prefabs and the test map are made by **Tools > Source Movement > Create Prefabs** and
+**Build Test Scene**; run those again only if you change the setup code.
 
 ### SourceMovement (the movement)
 - All Source cvars are in the Inspector (bhop server defaults: `sv_airaccelerate 1000`,
@@ -84,6 +88,11 @@ It creates a VRChat world project in `Tests/UnityPlay/.cache`, builds the test m
 **Build Test Scene** menu code, then plays it with ClientSim at 30, 90 and 144 fps, using a virtual
 keyboard through ClientSim's own input path. It checks the real player against the simulation: walk speed,
 stopping, bhop jump height, air strafe gain, surfing on the PhysX ramp (stays on it, keeps speed and height),
-`TeleportTo` and `TeleportPlayer`, and that the speedometer and timer text show.
+`TeleportTo` and `TeleportPlayer`, that the speedometer and timer text show, legit mode through the
+world button (no pogo), and a timed run through the real trigger zones (checkpoint, reset zone, end zone,
+legit leaderboard). The `.unitypackage` was also imported into an empty project and passes the same tests.
+
+To re-export the package after changes (from the project `run.sh` made):
+`Unity -batchmode -quit -projectPath Tests/UnityPlay/.cache/Project -executeMethod PlayTestBootstrap.ExportPackage -smPackage $PWD/SourceMovement.unitypackage`
 
 ClientSim's player is not the VRChat client's, so the last step is still a test in VRChat itself.
