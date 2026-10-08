@@ -81,10 +81,13 @@ What this can't cover: Unity's real PhysX collision and how the player controlle
 `SetVelocity`. For that there is a play test in a real Unity editor:
 
 ```
-Tests/UnityPlay/run.sh            # needs UNITY=<path to Editor/Unity>, an activated license and setup.sh run once
+Tests/UnityPlay/run.sh            # needs UNITY=<path to Editor/Unity>, an activated license and vpm
 ```
 
-It creates a VRChat world project in `Tests/UnityPlay/.cache`, builds the test map with the
+It creates a VRChat world project in `Tests/UnityPlay/.cache` with `vpm`, the command-line version of the
+VRChat Creator Companion (`dotnet tool install --global vrchat.vpm.cli`), from VRChat's official World
+template with Worlds SDK 3.10.5, so it has VRChat's layers and project settings. It copies
+`Assets/SourceMovement` and `Assets/SourceTimer` in, builds the test map with the
 **Build Test Scene** menu code, then plays it with ClientSim at 30, 90 and 144 fps, using a virtual
 keyboard through ClientSim's own input path. It checks the real player against the simulation: walk speed,
 stopping, bhop jump height, air strafe gain, surfing on the PhysX ramp (stays on it, keeps speed and height),

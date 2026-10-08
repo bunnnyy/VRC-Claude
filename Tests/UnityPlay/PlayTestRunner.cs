@@ -39,10 +39,13 @@ public class PlayTestRunner : MonoBehaviour
         Time.captureDeltaTime = 1f / frameRate;
         Log($"frame rate {frameRate}, fixed dt {Time.fixedDeltaTime}");
 
-        float timeout = 20f;
-        while ((player = Networking.LocalPlayer) == null && (timeout -= Time.unscaledDeltaTime) > 0) yield return null;
-        foreach (var udon in FindObjectsOfType<UdonBehaviour>())
-            if (udon.GetProgramVariableType("hullWidth") != null) movement = udon;
+        // Wait for ClientSim's player and for Udon to load SourceMovement's program.
+        for (int i = 0; i < 600 && (player == null || movement == null); i++)
+        {
+            yield return null;
+            player = Networking.LocalPlayer;
+            movement = Loaded(FindUdon("SourceMovement"));
+        }
         VRC.SDK3.ClientSim.ClientSimPlayerController controller = null;
         foreach (var c in Resources.FindObjectsOfTypeAll<VRC.SDK3.ClientSim.ClientSimPlayerController>())
             if (c.gameObject.scene.IsValid()) controller = c;
@@ -317,6 +320,7 @@ public class PlayTestRunner : MonoBehaviour
         Keys(Key.W);
         yield return Frames(1.5f, null);
         Keys();
+        yield return Frames(1f, null); // stop before teleporting on
         Check("timer", (bool)timer.GetProgramVariable("running"), "starts when leaving the start zone");
 
         // Through the checkpoint zone, then fall into the reset zone: back to the checkpoint, timer keeps running.
@@ -350,6 +354,22 @@ public class PlayTestRunner : MonoBehaviour
     {
         int ms = Mathf.FloorToInt(seconds * 1000f);
         return (ms / 60000) + ":" + ((ms / 1000) % 60).ToString("00") + "." + (ms % 1000).ToString("000");
+    }
+
+    static UdonBehaviour Loaded(UdonBehaviour udon)
+    {
+        try { return udon != null && udon.GetProgramVariable("active") != null ? udon : null; }
+        catch (System.NullReferenceException) { return null; } // program not loaded yet
+    }
+
+    void Update()
+    {
+        // Never leave a batchmode editor hanging if a test gets stuck.
+        if (!finished && Time.realtimeSinceStartup > 600f)
+        {
+            Fail("watchdog", "tests did not finish within 10 minutes");
+            Finish();
+        }
     }
 
     static UdonBehaviour FindUdon(string objectName)
@@ -453,8 +473,11 @@ public class PlayTestRunner : MonoBehaviour
 
     static void Log(string s) { Debug.Log("[SMTEST] " + s); }
 
+    bool finished;
+
     void Finish()
     {
+        finished = true;
         var sb = new StringBuilder();
         foreach (string line in report) sb.AppendLine(line);
         sb.AppendLine(failures == 0 ? "ALL PASSED" : failures + " FAILED");
