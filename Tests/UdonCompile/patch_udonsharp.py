@@ -38,3 +38,7 @@ patch('Compiler/UdonSharpCompilerV1.cs', 'component = Activator.CreateInstance(a
       'component = System.Runtime.CompilerServices.RuntimeHelpers.GetUninitializedObject(asmType);\n'
       '                    try { asmType.GetConstructor(Type.EmptyTypes).Invoke(component, null); }\n'
       '                    catch (TargetInvocationException e) when (e.InnerException is System.Security.SecurityException) { }')
+
+# The editor debug-info cache (maps Udon runtime errors to source lines) keys a dictionary on
+# Unity objects, whose equality is native. Not needed to compile.
+patch('Compiler/UdonSharpCompilerV1.cs', 'if (moduleEmitContext.DebugInfo != null)\n', 'if (false)\n')

@@ -57,6 +57,7 @@ public class SourceMovement : UdonSharpBehaviour
     private const float Skin = 0.25f;             // gap kept between hull and surfaces
     private const float ResyncDistance = 8f;      // real player drifted from simulation
     private const float TeleportDistance = 64f;   // real player was teleported
+    private const int TeleportWaitFrames = 30;    // how long to wait for VRChat to finish our teleport
     private const int MaxBumps = 4;
     private const int MaxClipPlanes = 5;
     private const int MaxTicksPerFrame = 8;
@@ -64,6 +65,7 @@ public class SourceMovement : UdonSharpBehaviour
     private VRCPlayerApi localPlayer;
     private bool active;
     private bool pendingResync;
+    private int teleportWait;
     private float savedWalk, savedRun, savedStrafe, savedJump, savedGravity;
 
     // Simulation state (Source units)
@@ -131,6 +133,21 @@ public class SourceMovement : UdonSharpBehaviour
         }
     }
 
+    /// <summary>
+    /// Teleport the local player, optionally keeping their Source velocity (portals, stage teleports).
+    /// Plain VRCPlayerApi.TeleportTo works too: a jump over 64 units resets velocity, smaller ones keep it.
+    /// </summary>
+    public void TeleportPlayer(Vector3 position, Quaternion rotation, bool keepVelocity)
+    {
+        if (localPlayer == null) return;
+        localPlayer.TeleportTo(position, rotation);
+        if (!keepVelocity) velocity = Vector3.zero;
+        origin = position / metersPerUnit;
+        prevOrigin = origin;
+        lastTarget = origin;
+        teleportWait = TeleportWaitFrames;
+    }
+
     public void _ToggleAutoBhop() { autoBhop = !autoBhop; }
 
     /// <summary>Horizontal speed in Source units per second (what a CS:S speedometer shows).</summary>
@@ -162,8 +179,21 @@ public class SourceMovement : UdonSharpBehaviour
         hullHalf = new Vector3(hullWidth * 0.5f, hullHeight * 0.5f, hullWidth * 0.5f);
         hullCenter = new Vector3(0f, hullHeight * 0.5f, 0f);
 
-        // Follow the real player if something else moved them (teleport, respawn, blocked).
         Vector3 actual = localPlayer.GetPosition() / metersPerUnit;
+
+        // After TeleportPlayer, hold still until VRChat has actually moved the player.
+        if (teleportWait > 0)
+        {
+            teleportWait--;
+            if (teleportWait > 0 && (actual - origin).magnitude > ResyncDistance)
+            {
+                localPlayer.SetVelocity(Vector3.zero);
+                return;
+            }
+            teleportWait = 0;
+        }
+
+        // Follow the real player if something else moved them (teleport, respawn, blocked).
         float lag = velocity.magnitude * dt * 2f;
         float drift = (actual - lastTarget).magnitude;
         if (pendingResync || drift > TeleportDistance + lag)

@@ -35,6 +35,10 @@ public static class MovementTests
         Test("Walking down a 30 degree slope stays on the ground", WalkDownSlope);
         Test("Falling speed clamps at sv_maxvelocity 3500", MaxVelocity);
         Test("Teleport resets velocity", TeleportResets);
+        Test("TeleportPlayer can keep velocity (portals)", TeleportKeepsVelocity);
+        Test("TeleportPlayer can reset velocity", TeleportPlayerResets);
+        Test("Short teleport (100 u) moves the player and keeps speed", ShortTeleport);
+        Test("Teleport still works if VRChat applies it 3 frames late", DelayedTeleport);
         Test("Respawn resets velocity", RespawnResets);
         Test("Same result at 45, 90 and 144 fps", FrameRateIndependent);
         Test("Tracks the player with one frame of VRChat latency", LatencyTolerant);
@@ -386,6 +390,57 @@ public static class MovementTests
         r.Frame();
         Check(r.Speed < 1f, "speed after teleport " + r.Speed);
         Check(Math.Abs(r.Origin.x - 5000) < 5, "sim did not follow " + r.Origin);
+    }
+
+    static Rig Running()
+    {
+        var r = OnFloor();
+        r.Move(1, 0);
+        r.Run(1f);
+        r.Move(0, 0);
+        return r;
+    }
+
+    static void TeleportKeepsVelocity()
+    {
+        var r = OnFloor();
+        r.SetVelocity(new Vector3(0, 0, 600));
+        r.TeleportPlayer(new Vector3(3000, 500, 0), 90, true);
+        r.Frame();
+        Note($"after teleport: at {r.Pos}, speed {r.Speed:F0} u/s");
+        Check(Math.Abs(r.Pos.x - 3000) < 20 && r.Pos.y > 450, "not at destination " + r.Pos);
+        Check(r.Speed > 590, "lost speed " + r.Speed);
+    }
+
+    static void TeleportPlayerResets()
+    {
+        var r = Running();
+        r.TeleportPlayer(new Vector3(3000, 0, 0), 0, false);
+        r.Frame();
+        Check(r.Speed < 1, "speed " + r.Speed);
+        Check(Math.Abs(r.Pos.x - 3000) < 5, "not at destination " + r.Pos);
+    }
+
+    static void ShortTeleport()
+    {
+        var r = OnFloor();
+        r.SetVelocity(new Vector3(0, 0, 400));
+        r.TeleportPlayer(new Vector3(100, 200, 0), 0, true); // in the air, so no ground friction
+        r.Frame();
+        Check(Math.Abs(r.Pos.x - 100) < 5 && r.Pos.y > 190, "not at destination " + r.Pos);
+        Check(r.Speed > 399, "lost speed " + r.Speed);
+    }
+
+    static void DelayedTeleport()
+    {
+        var r = OnFloor();
+        r.teleportDelayFrames = 3;
+        r.SetVelocity(new Vector3(0, 0, 600));
+        r.TeleportPlayer(new Vector3(3000, 500, 0), 0, true);
+        r.Run(0.1f);
+        Note($"10 frames later: at {r.Pos}, speed {r.Speed:F0} u/s");
+        Check(Math.Abs(r.Pos.x - 3000) < 20 && r.Pos.y > 450, "not at destination " + r.Pos);
+        Check(r.Speed > 590, "lost speed " + r.Speed);
     }
 
     static void RespawnResets()

@@ -87,7 +87,12 @@ namespace VRC.SDKBase
         public Vector3 GetVelocity() => velocity;
         public void SetVelocity(Vector3 v) => velocity = v;
         public Quaternion GetRotation() => Quaternion.Euler(0, yaw, 0);
-        public void TeleportTo(Vector3 p, Quaternion r) { position = p; yaw = r.eulerAngles.y; }
+        public Action<Vector3, Quaternion> onTeleport; // lets tests delay teleports like a real client might
+        public void TeleportTo(Vector3 p, Quaternion r)
+        {
+            if (onTeleport != null) onTeleport(p, r);
+            else { position = p; yaw = r.eulerAngles.y; }
+        }
         public TrackingData GetTrackingData(TrackingDataType t) => new TrackingData
         {
             position = position + Vector3.up * 1.6f,

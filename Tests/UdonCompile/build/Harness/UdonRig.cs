@@ -23,6 +23,10 @@ public class Rig
 
     public float frameTime = 0.01f;
     public bool oneFrameLatency;
+    public int teleportDelayFrames;
+    Vector3 pendingTeleport;
+    float pendingYaw;
+    int teleportFramesLeft = -1;
     readonly UdonVM vm;
     Vector3 position, velocity, pendingVelocity;
     float yaw, scroll, walk = 2f, run = 4f, strafe = 2f, jump = 3f, gravityStrength = 1f;
@@ -46,6 +50,13 @@ public class Rig
         Hook("_SetVelocity", (Action<VRCPlayerApi, Vector3>)((p, v) => current.velocity = v));
         Hook("_GetTrackingData", (Func<VRCPlayerApi, VRCPlayerApi.TrackingDataType, VRCPlayerApi.TrackingData>)((p, t) =>
             new VRCPlayerApi.TrackingData(current.position + new Vector3(0, 1.6f, 0), CollisionWorld.Euler(0, current.yaw, 0))));
+        Hook("_TeleportTo", (Action<VRCPlayerApi, Vector3, Quaternion>)((p, pos, rot) =>
+        {
+            current.pendingTeleport = pos;
+            current.pendingYaw = CollisionWorld.EulerAngles(rot).y;
+            current.teleportFramesLeft = current.teleportDelayFrames;
+            current.ApplyTeleport();
+        }));
         Hook("_GetWalkSpeed", (Func<VRCPlayerApi, float>)(p => current.walk));
         Hook("_GetRunSpeed", (Func<VRCPlayerApi, float>)(p => current.run));
         Hook("_GetStrafeSpeed", (Func<VRCPlayerApi, float>)(p => current.strafe));
@@ -112,6 +123,20 @@ public class Rig
     }
     public void Teleport(Vector3 units) => position = units * U;
     public void SetVelocity(Vector3 v) => SetVar("velocity", v);
+    public void TeleportPlayer(Vector3 units, float yaw, bool keepVelocity)
+    {
+        SetVar("__0_position__param", units * U);
+        SetVar("__0_rotation__param", CollisionWorld.Euler(0, yaw, 0));
+        SetVar("__0_keepVelocity__param", keepVelocity);
+        RunEvent("__0_TeleportPlayer");
+    }
+
+    void ApplyTeleport()
+    {
+        if (teleportFramesLeft-- != 0) return;
+        position = pendingTeleport;
+        yaw = pendingYaw;
+    }
 
     // ------------------------------------------------------------- stepping
     public void Frame()
@@ -122,6 +147,7 @@ public class Rig
         Vector3 v = oneFrameLatency ? pendingVelocity : velocity;
         pendingVelocity = velocity;
         position += v * frameTime;
+        if (teleportFramesLeft >= 0) ApplyTeleport();
     }
 
     public void Run(float seconds, Action eachFrame = null)

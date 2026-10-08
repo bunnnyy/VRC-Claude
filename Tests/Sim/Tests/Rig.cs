@@ -11,7 +11,10 @@ public class Rig
     public readonly VRCPlayerApi player = new VRCPlayerApi();
     public float frameTime = 0.01f;
     public bool oneFrameLatency; // VRChat applies our velocity a frame late
-    Vector3 pendingVelocity;
+    public int teleportDelayFrames; // VRChat applies teleports this many frames late
+    Vector3 pendingVelocity, pendingTeleport;
+    float pendingYaw;
+    int teleportFramesLeft = -1;
 
     public Rig(Vector3 startUnits)
     {
@@ -21,6 +24,7 @@ public class Rig
         Time.time = 0;
         Networking.LocalPlayer = player;
         player.position = startUnits * U;
+        player.onTeleport = (p, r) => { pendingTeleport = p; pendingYaw = r.eulerAngles.y; teleportFramesLeft = teleportDelayFrames; ApplyTeleport(); };
         Call("Start");
     }
 
@@ -44,6 +48,15 @@ public class Rig
     public void SetActive(bool on) => move.SetMovementActive(on);
     public void Teleport(Vector3 units) => player.TeleportTo(units * U, Quaternion.identity);
     public void SetVelocity(Vector3 v) => Set("velocity", v);
+    public void TeleportPlayer(Vector3 units, float yaw, bool keepVelocity) =>
+        move.TeleportPlayer(units * U, Quaternion.Euler(0, yaw, 0), keepVelocity);
+
+    void ApplyTeleport()
+    {
+        if (teleportFramesLeft-- != 0) return;
+        player.position = pendingTeleport;
+        player.yaw = pendingYaw;
+    }
 
     // ------------------------------------------------------------- stepping
     public void Frame()
@@ -57,6 +70,7 @@ public class Rig
         Vector3 v = oneFrameLatency ? pendingVelocity : player.velocity;
         pendingVelocity = player.velocity;
         player.position += v * frameTime;
+        if (teleportFramesLeft >= 0) ApplyTeleport();
     }
 
     public void Run(float seconds, Action eachFrame = null)
