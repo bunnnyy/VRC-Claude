@@ -1,0 +1,9 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><TargetFramework>netstandard2.1</TargetFramework><AssemblyName>UdonSharp.Editor</AssemblyName></PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.CSharp" Version="4.7.0" />
+    <Compile Include="$(Cache)/src/UdonSharpEditor/**/*.cs" />
+    <ProjectReference Include="../Udon/Udon.csproj" /><ProjectReference Include="../Odin/Odin.csproj" /><ProjectReference Include="../UGUI/UGUI.csproj" />
+    <ProjectReference Include="../USRuntime/USRuntime.csproj" /><ProjectReference Include="../USLib/USLib.csproj" /><ProjectReference Include="../UdonEditor/UdonEditor.csproj" />
+  </ItemGroup>
+</Project>

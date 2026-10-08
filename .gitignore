@@ -11,3 +11,6 @@
 # Simulation build output
 Tests/Sim/bin/
 Tests/Sim/obj/
+
+# Headless UdonSharp compiler downloads and build output
+Tests/UdonCompile/.cache/

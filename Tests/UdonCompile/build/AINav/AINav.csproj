@@ -1,0 +1,4 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><TargetFramework>netstandard2.1</TargetFramework><AssemblyName>Unity.AI.Navigation</AssemblyName><DefineConstants>$(DefineConstants);NMC_CAN_ACCESS_TERRAIN</DefineConstants></PropertyGroup>
+  <ItemGroup><Compile Include="$(Pkgs)/com.unity.ai.navigation/package/Runtime/**/*.cs" /></ItemGroup>
+</Project>

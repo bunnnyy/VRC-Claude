@@ -1,0 +1,7 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><TargetFramework>netstandard2.1</TargetFramework><AssemblyName>VRC.Udon</AssemblyName></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="$(SdkRoot)/worlds/Runtime/Udon/**/*.cs" Exclude="$(SdkRoot)/worlds/Runtime/Udon/Serialization/OdinSerializer/**/*.cs" />
+    <ProjectReference Include="../Odin/Odin.csproj" />
+  </ItemGroup>
+</Project>

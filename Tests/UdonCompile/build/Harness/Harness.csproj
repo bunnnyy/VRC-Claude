@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <AssemblyName>UdonSharpHeadless</AssemblyName>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="*.cs" />
+    <ProjectReference Include="../USEditor/USEditor.csproj" />
+    <ProjectReference Include="../USLib/USLib.csproj" />
+    <ProjectReference Include="../TMP/TMP.csproj" /><ProjectReference Include="../Mathematics/Mathematics.csproj" /><ProjectReference Include="../PostFx/PostFx.csproj" /><ProjectReference Include="../AINav/AINav.csproj" /><ProjectReference Include="../Cinemachine/Cinemachine.csproj" /><ProjectReference Include="../UniTask/UniTask.csproj" /><ProjectReference Include="../DOTweenModules/DOTweenModules.csproj" />
+  </ItemGroup>
+</Project>

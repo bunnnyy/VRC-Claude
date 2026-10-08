@@ -1,0 +1,4 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><TargetFramework>netstandard2.1</TargetFramework><AssemblyName>UniTask</AssemblyName><DefineConstants>$(DefineConstants);</DefineConstants></PropertyGroup>
+  <ItemGroup><Compile Include="$(SdkRoot)/base/Runtime/VRCSDK/Plugins/UniTask/Runtime/**/*.cs" Exclude="$(SdkRoot)/base/Runtime/VRCSDK/Plugins/UniTask/Runtime/External/**/*.cs;$(SdkRoot)/base/Runtime/VRCSDK/Plugins/UniTask/Runtime/Linq/**/*.cs" /></ItemGroup>
+</Project>

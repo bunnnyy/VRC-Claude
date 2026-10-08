@@ -1,0 +1,4 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><TargetFramework>netstandard2.1</TargetFramework><AssemblyName>DOTween.Modules</AssemblyName><DefineConstants>$(DefineConstants);</DefineConstants></PropertyGroup>
+  <ItemGroup><Compile Include="$(SdkRoot)/base/Runtime/VRCSDK/Plugins/DOTween/Modules/**/*.cs" /><ProjectReference Include="../UGUI/UGUI.csproj" /><Reference Include="$(SdkRoot)/base/Runtime/VRCSDK/Plugins/DOTween/DOTween.dll" /></ItemGroup>
+</Project>

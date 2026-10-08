@@ -1,0 +1,33 @@
+<Project>
+  <PropertyGroup>
+    <!-- Everything third-party lives in ../.cache, filled by setup.sh (never committed). -->
+    <Cache>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)../.cache'))</Cache>
+    <SdkRoot>$(Cache)/sdk</SdkRoot>
+    <UnityData>$(Cache)/unity/Editor/Data</UnityData>
+    <UnityManaged>$(UnityData)/Managed</UnityManaged>
+    <Pkgs>$(Cache)/packages</Pkgs>
+    <BaseOutputPath>$(Cache)/bin/$(MSBuildProjectName)/</BaseOutputPath>
+    <BaseIntermediateOutputPath>$(Cache)/obj/$(MSBuildProjectName)/</BaseIntermediateOutputPath>
+    <LangVersion>9.0</LangVersion>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <NoWarn>$(NoWarn);CS0618;CS0612;CS0414;CS0169;CS0649;CS0067;CS0168;CS0219;CS8632;CS0162;CS1998;CS0108;CS0114;CS0109;CS0659;CS0661;CS0660;CS0252;CS0253;CS1591;CS1573;CS1572;CS1574;CS0105;CS0436</NoWarn>
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+    <DefineConstants>UNITY_2022_3_22;UNITY_2022_3;UNITY_2022;UNITY_5_3_OR_NEWER;UNITY_5_4_OR_NEWER;UNITY_5_5_OR_NEWER;UNITY_5_6_OR_NEWER;UNITY_2017_1_OR_NEWER;UNITY_2017_2_OR_NEWER;UNITY_2017_3_OR_NEWER;UNITY_2017_4_OR_NEWER;UNITY_2018_1_OR_NEWER;UNITY_2018_2_OR_NEWER;UNITY_2018_3_OR_NEWER;UNITY_2018_4_OR_NEWER;UNITY_2019_1_OR_NEWER;UNITY_2019_2_OR_NEWER;UNITY_2019_3_OR_NEWER;UNITY_2019_4_OR_NEWER;UNITY_2020_1_OR_NEWER;UNITY_2020_2_OR_NEWER;UNITY_2020_3_OR_NEWER;UNITY_2021_1_OR_NEWER;UNITY_2021_2_OR_NEWER;UNITY_2021_3_OR_NEWER;UNITY_2022_1_OR_NEWER;UNITY_2022_2_OR_NEWER;UNITY_2022_3_OR_NEWER;UNITY_STANDALONE_WIN;UNITY_STANDALONE;PLATFORM_STANDALONE_WIN;PLATFORM_STANDALONE;ENABLE_MONO;NET_STANDARD_2_0;NET_STANDARD;NET_STANDARD_2_1;NETSTANDARD;NETSTANDARD2_1;CSHARP_7_3_OR_NEWER;CSHARP_7_OR_LATER;UDONSHARP;VRC_SDK_VRCSDK3;UNITY_EDITOR;UNITY_EDITOR_64;UNITY_EDITOR_LINUX</DefineConstants>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include="$(UnityManaged)/UnityEngine/UnityEngine*.dll" Private="false" />
+    <Reference Include="$(SdkRoot)/base/Runtime/VRCSDK/Plugins/*.dll" Exclude="$(SdkRoot)/base/Runtime/VRCSDK/Plugins/VRCCore-Standalone.dll" Private="false" />
+    <Reference Include="$(SdkRoot)/base/Runtime/VRCSDK/Dependencies/Managed/*.dll" Private="false" />
+    <Reference Include="$(SdkRoot)/base/Runtime/VRCSDK/Plugins/Harmony/0Harmony.dll" Private="false" />
+    <Reference Include="$(SdkRoot)/worlds/Runtime/Udon/External/*.dll" Private="false" />
+    <Reference Include="$(SdkRoot)/worlds/Runtime/VRCSDK/Plugins/VRCSDK3.dll;$(SdkRoot)/worlds/Runtime/VRCSDK/Plugins/VRCEconomy.dll" Private="false" />
+    <Reference Include="$(UnityManaged)/UnityEngine/UnityEditor*.dll" Private="false" />
+    <Reference Include="$(UnityManaged)/Unity.CompilationPipeline.Common.dll;$(UnityManaged)/System.CodeDom.dll" Private="false" />
+    <Reference Include="$(SdkRoot)/worlds/Editor/Udon/External/*.dll" Private="false" />
+    <Reference Include="$(SdkRoot)/worlds/Runtime/VRCSDK/Plugins/VRCSDK3-Editor.dll" Private="false" />
+    <Reference Include="$(SdkRoot)/worlds/Integrations/UdonSharp/Runtime/Plugins/*.dll" Private="false" />
+  </ItemGroup>
+</Project>

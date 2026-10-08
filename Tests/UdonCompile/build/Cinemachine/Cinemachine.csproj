@@ -1,0 +1,4 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><TargetFramework>netstandard2.1</TargetFramework><AssemblyName>Cinemachine</AssemblyName><DefineConstants>$(DefineConstants);CINEMACHINE_PHYSICS;CINEMACHINE_PHYSICS_2D;CINEMACHINE_UGUI;CINEMACHINE_UNITY_ANIMATION;CINEMACHINE_UNITY_IMGUI;CINEMACHINE_POST_PROCESSING_V2</DefineConstants></PropertyGroup>
+  <ItemGroup><Compile Include="$(Pkgs)/com.unity.cinemachine/package/Runtime/**/*.cs" /><ProjectReference Include="../UGUI/UGUI.csproj" /><ProjectReference Include="../PostFx/PostFx.csproj" /></ItemGroup>
+</Project>

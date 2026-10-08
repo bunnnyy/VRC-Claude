@@ -1,0 +1,7 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><TargetFramework>netstandard2.1</TargetFramework><AssemblyName>VRC.Udon.Editor</AssemblyName></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="$(SdkRoot)/worlds/Editor/Udon/**/*.cs" Exclude="$(SdkRoot)/worlds/Editor/Udon/UnityEditorTests/**/*.cs" />
+    <ProjectReference Include="../Udon/Udon.csproj" /><ProjectReference Include="../Odin/Odin.csproj" /><ProjectReference Include="../UGUI/UGUI.csproj" />
+  </ItemGroup>
+</Project>

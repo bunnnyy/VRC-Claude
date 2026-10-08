@@ -1,0 +1,8 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><TargetFramework>netstandard2.1</TargetFramework><AssemblyName>UdonSharp.Runtime</AssemblyName></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="$(SdkRoot)/worlds/Integrations/UdonSharp/Runtime/**/*.cs" Exclude="$(SdkRoot)/worlds/Integrations/UdonSharp/Runtime/Libraries/**/*.cs" />
+    <ProjectReference Include="../Odin/Odin.csproj" />
+    <ProjectReference Include="../Udon/Udon.csproj" />
+  </ItemGroup>
+</Project>
