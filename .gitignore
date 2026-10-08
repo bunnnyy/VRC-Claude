@@ -1,0 +1,13 @@
+# Unity
+/[Ll]ibrary/
+/[Tt]emp/
+/[Oo]bj/
+/[Bb]uild/
+/[Bb]uilds/
+/[Ll]ogs/
+/[Uu]ser[Ss]ettings/
+*.csproj.user
+
+# Simulation build output
+Tests/Sim/bin/
+Tests/Sim/obj/

@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Headless simulation: compiles the real UdonSharp scripts against small Unity/VRChat stand-ins. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <NoWarn>CS0414;CS0169;CS0649;CS0108;CS0114</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="Shims/**/*.cs" />
+    <Compile Include="Tests/**/*.cs" />
+    <Compile Include="../../Assets/**/Scripts/*.cs" />
+  </ItemGroup>
+</Project>
