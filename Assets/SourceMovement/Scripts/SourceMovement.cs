@@ -104,6 +104,7 @@ public class SourceMovement : UdonSharpBehaviour
         savedStrafe = localPlayer.GetStrafeSpeed();
         savedJump = localPlayer.GetJumpImpulse();
         savedGravity = localPlayer.GetGravityStrength();
+        UpdateHull();
         if (activeOnStart) SetMovementActive(true);
     }
 
@@ -141,10 +142,9 @@ public class SourceMovement : UdonSharpBehaviour
     {
         if (localPlayer == null) return;
         localPlayer.TeleportTo(position, rotation);
+        localPlayer.SetVelocity(Vector3.zero); // VRChat keeps the old velocity through a teleport
         if (!keepVelocity) velocity = Vector3.zero;
-        origin = position / metersPerUnit;
-        prevOrigin = origin;
-        lastTarget = origin;
+        PlaceAt(position / metersPerUnit);
         teleportWait = TeleportWaitFrames;
     }
 
@@ -176,8 +176,7 @@ public class SourceMovement : UdonSharpBehaviour
         if (Input.GetKeyDown(autoBhopToggleKey)) _ToggleAutoBhop();
         if (Input.GetAxis("Mouse ScrollWheel") != 0f) scrollJump = true;
 
-        hullHalf = new Vector3(hullWidth * 0.5f, hullHeight * 0.5f, hullWidth * 0.5f);
-        hullCenter = new Vector3(0f, hullHeight * 0.5f, 0f);
+        UpdateHull();
 
         Vector3 actual = localPlayer.GetPosition() / metersPerUnit;
 
@@ -199,17 +198,13 @@ public class SourceMovement : UdonSharpBehaviour
         if (pendingResync || drift > TeleportDistance + lag)
         {
             if (!pendingResync) velocity = Vector3.zero;
-            origin = actual;
-            prevOrigin = actual;
-            lastTarget = actual;
+            PlaceAt(actual);
             accumulator = 0f;
             pendingResync = false;
         }
         else if (drift > ResyncDistance + lag)
         {
-            origin = actual;
-            prevOrigin = actual;
-            lastTarget = actual;
+            PlaceAt(actual);
         }
 
         // Run fixed Source ticks, turning the view smoothly across them.
@@ -237,6 +232,24 @@ public class SourceMovement : UdonSharpBehaviour
         Vector3 drive = (target - lastTarget) + (lastTarget - actual) * 0.5f;
         lastTarget = target;
         localPlayer.SetVelocity(drive * (metersPerUnit / dt));
+    }
+
+    private void UpdateHull()
+    {
+        hullHalf = new Vector3(hullWidth * 0.5f, hullHeight * 0.5f, hullWidth * 0.5f);
+        hullCenter = new Vector3(0f, hullHeight * 0.5f, 0f);
+    }
+
+    /// <summary>
+    /// Move the simulation to a new position. Spawn points and teleport targets usually sit exactly on the
+    /// floor, where the hull would start inside it and fall through, so drop it from a step above instead.
+    /// </summary>
+    private void PlaceAt(Vector3 pos)
+    {
+        TraceHull(pos + Vector3.up * stepSize, pos);
+        origin = trEnd;
+        prevOrigin = origin;
+        lastTarget = origin;
     }
 
     private void SetWishAxes(float yaw)

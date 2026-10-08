@@ -14,3 +14,7 @@ Tests/Sim/obj/
 
 # Headless UdonSharp compiler downloads and build output
 Tests/UdonCompile/.cache/
+
+# Unity play test project and Unity-generated metas for the test runner
+Tests/UnityPlay/.cache/
+Tests/UnityPlay/**/*.meta

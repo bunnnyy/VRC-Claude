@@ -244,6 +244,9 @@ public static class SourceMovementSetup
                 if (AssetDatabase.LoadAssetAtPath<UdonSharpProgramAsset>(assetPath) != null) continue;
                 var programAsset = ScriptableObject.CreateInstance<UdonSharpProgramAsset>();
                 programAsset.sourceCsScript = AssetDatabase.LoadAssetAtPath<MonoScript>(scriptPath.Replace('\\', '/'));
+                // The scripts are already in the current U# format; without this U# waits for an upgrade pass
+                // and refuses to serialize the new behaviours until the next editor update.
+                programAsset.ScriptVersion = UdonSharpProgramVersion.CurrentVersion;
                 AssetDatabase.CreateAsset(programAsset, assetPath);
                 created = true;
             }

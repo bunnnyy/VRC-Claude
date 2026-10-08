@@ -116,7 +116,7 @@ public static class CollisionWorld
             }
         }
         if (tEnter > tExit || tExit < 0) return false;
-        if (tEnter < 0) return false; // started overlapping
+        if (tEnter < 1e-5f) return false; // started overlapping; PhysX counts exactly touching as overlapping too
         if (tEnter > maxDist) return false;
         tHit = tEnter;
         normal = enterNormal;

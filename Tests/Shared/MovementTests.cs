@@ -35,6 +35,7 @@ public static class MovementTests
         Test("Walking down a 30 degree slope stays on the ground", WalkDownSlope);
         Test("Falling speed clamps at sv_maxvelocity 3500", MaxVelocity);
         Test("Teleport resets velocity", TeleportResets);
+        Test("Teleport onto the floor stands on it (no sinking)", TeleportOntoFloor);
         Test("TeleportPlayer can keep velocity (portals)", TeleportKeepsVelocity);
         Test("TeleportPlayer can reset velocity", TeleportPlayerResets);
         Test("Short teleport (100 u) moves the player and keeps speed", ShortTeleport);
@@ -390,6 +391,22 @@ public static class MovementTests
         r.Frame();
         Check(r.Speed < 1f, "speed after teleport " + r.Speed);
         Check(Math.Abs(r.Origin.x - 5000) < 5, "sim did not follow " + r.Origin);
+    }
+
+    static void TeleportOntoFloor()
+    {
+        // Spawn points sit exactly on the floor, so the hull starts touching it (found in the ClientSim play test).
+        foreach (bool viaApi in new[] { false, true })
+        {
+            var r = OnFloor();
+            if (viaApi) r.TeleportPlayer(new Vector3(5000, 0, 0), 0, false);
+            else r.Teleport(new Vector3(5000, 0, 0));
+            float lowest = float.MaxValue;
+            r.Run(0.5f, () => lowest = Math.Min(lowest, r.Origin.y));
+            Note($"{(viaApi ? "TeleportPlayer" : "TeleportTo")}: lowest hull height {lowest:F2} u, on ground {r.OnGround}");
+            Check(lowest > -0.01f, "hull sank into the floor: " + lowest);
+            Check(r.OnGround, "not standing after teleport");
+        }
     }
 
     static Rig Running()

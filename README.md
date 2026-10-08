@@ -3,8 +3,9 @@
 UdonSharp prefab that recreates Source engine movement (CS:S / HL2 / GMod) in VRChat worlds:
 bunny hopping, air strafing and surfing, using a direct port of Source SDK 2013 `gamemovement.cpp`.
 
-Status: **work in progress**. Not yet tested inside Unity or the VRChat client, but compiled with
-VRChat's real UdonSharp compiler and run in VRChat's real Udon VM (see Tests).
+Status: **work in progress**. Play-tested in Unity 2022.3.22f1 with VRChat's ClientSim (walking, bhop,
+air strafing, surfing on real PhysX colliders, teleports, HUD; see Tests). Not yet tested in the VRChat
+client itself.
 
 ## Using it
 
@@ -26,6 +27,8 @@ VRChat's real UdonSharp compiler and run in VRChat's real Udon VM (see Tests).
 - Desktop and VR both work: movement comes from VRChat's move/jump input, direction from head yaw.
 - **Teleporting**: plain `VRCPlayerApi.TeleportTo` works. A jump over 64 units resets velocity, a
   smaller one keeps it. To choose, call `sourceMovement.TeleportPlayer(position, rotation, keepVelocity)`.
+  VRChat keeps the player's old velocity for a moment after `TeleportTo`, so call
+  `SetVelocity(Vector3.zero)` right after it (as usual in VRChat) or the player lands a few units off.
 - Other scripts can read `GetSpeed()`, `GetSourceVelocity()`, `IsOnGround()` and call `SetMovementActive(bool)`.
 
 ### Speedometer (debug)
@@ -70,5 +73,17 @@ compiler from the SDK and runs its full pipeline (Roslyn, bind, emit, Udon assem
 SourceMovement program in VRChat's Udon VM. Every extern goes through VRChat's real Udon wrapper, except
 the Unity-native ones (Physics.BoxCast, input, time, euler angles), which the test world answers.
 
-What this can't cover: Unity's real PhysX collision and how the VRChat client's player controller
-responds to `SetVelocity`. Those need a Unity / VRChat play test.
+What this can't cover: Unity's real PhysX collision and how the player controller responds to
+`SetVelocity`. For that there is a play test in a real Unity editor:
+
+```
+Tests/UnityPlay/run.sh            # needs UNITY=<path to Editor/Unity>, an activated license and setup.sh run once
+```
+
+It creates a VRChat world project in `Tests/UnityPlay/.cache`, builds the test map with the
+**Build Test Scene** menu code, then plays it with ClientSim at 30, 90 and 144 fps, using a virtual
+keyboard through ClientSim's own input path. It checks the real player against the simulation: walk speed,
+stopping, bhop jump height, air strafe gain, surfing on the PhysX ramp (stays on it, keeps speed and height),
+`TeleportTo` and `TeleportPlayer`, and that the speedometer and timer text show.
+
+ClientSim's player is not the VRChat client's, so the last step is still a test in VRChat itself.
