@@ -21,6 +21,8 @@ VRChat's real UdonSharp compiler and run in VRChat's real Udon VM (see Tests).
   child (a trigger Box Collider) to have Source movement only inside that box.
 - **Auto Bhop**: hold jump to bhop. Toggle at runtime with **B** (`Auto Bhop Toggle Key`).
   The scroll wheel always jumps, for manual bhopping.
+- **AutoBhopButton** child: a world button (Interact) that toggles auto bhop, for VR players. Move it
+  wherever you like; its label shows the current mode.
 - Desktop and VR both work: movement comes from VRChat's move/jump input, direction from head yaw.
 - **Teleporting**: plain `VRCPlayerApi.TeleportTo` works. A jump over 64 units resets velocity, a
   smaller one keeps it. To choose, call `sourceMovement.TeleportPlayer(position, rotation, keepVelocity)`.
@@ -36,6 +38,9 @@ on it in the Inspector. It's off in the prefab and on in the test scene.
   ramps) and **Restart**. Press **G** to restart.
 - `Leaderboard`: synced top 10 for the instance, one best time per player. Times go to the object owner,
   so two players finishing together can't overwrite each other.
+- **Auto bhop and legit bhop are separate categories.** The prefab has two boards. Set RunTimer's
+  **Category Source** to your SourceMovement (the test scene does this). If auto bhop is on at any
+  moment during a run, the run counts as auto bhop.
 
 ### Crouching
 Not built yet. The design is in [docs/CROUCH.md](docs/CROUCH.md).

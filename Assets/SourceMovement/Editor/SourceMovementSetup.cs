@@ -44,21 +44,33 @@ public static class SourceMovementSetup
         UdonSharpEditorUtility.CopyProxyToUdon(zone);
         zoneObject.SetActive(false);
 
+        // World button to toggle auto bhop (VR players have no B key). Move it wherever you like.
+        var button = GameObject.CreatePrimitive(PrimitiveType.Cube);
+        button.name = "AutoBhopButton";
+        button.transform.SetParent(movementRoot.transform, false);
+        button.transform.localPosition = new Vector3(0, 1f, 0);
+        button.transform.localScale = Vector3.one * 0.25f;
+        var toggle = button.AddUdonSharpComponent<AutoBhopButton>();
+        toggle.movement = movement;
+        var buttonLabel = CreateWorldText(button.transform, "Auto bhop", 0.6f);
+        buttonLabel.transform.parent.localPosition = new Vector3(0, 1.2f, 0); // above the cube (cube space)
+        buttonLabel.transform.parent.localScale = Vector3.one * 0.004f;
+        toggle.label = buttonLabel;
+        UdonSharpEditorUtility.CopyProxyToUdon(toggle);
+
         PrefabUtility.SaveAsPrefabAsset(movementRoot, MovementPrefab);
         Object.DestroyImmediate(movementRoot);
 
-        // Timer: run timer with HUD text and a synced leaderboard board.
+        // Timer: run timer with HUD text and synced boards for legit and auto bhop runs.
         var timerRoot = new GameObject("SourceTimer");
-        var boardObject = new GameObject("Leaderboard");
-        boardObject.transform.SetParent(timerRoot.transform, false);
-        var board = boardObject.AddUdonSharpComponent<Leaderboard>();
-        board.board = CreateWorldText(boardObject.transform, "Best times", 1.5f);
-        UdonSharpEditorUtility.CopyProxyToUdon(board);
+        var board = CreateBoard(timerRoot.transform, "Leaderboard (Legit)", "Best times (legit)", 0f);
+        var autoBoard = CreateBoard(timerRoot.transform, "Leaderboard (Auto)", "Best times (auto bhop)", 1.6f);
 
         var hudObject = new GameObject("RunTimer");
         hudObject.transform.SetParent(timerRoot.transform, false);
         var timer = hudObject.AddUdonSharpComponent<RunTimer>();
         timer.leaderboard = board;
+        timer.autoLeaderboard = autoBoard;
         timer.label = CreateHudText(hudObject.transform, "", 48);
         UdonSharpEditorUtility.CopyProxyToUdon(timer);
 
@@ -86,7 +98,10 @@ public static class SourceMovementSetup
 
         var timerInstance = (GameObject)PrefabUtility.InstantiatePrefab(AssetDatabase.LoadAssetAtPath<GameObject>(TimerPrefab));
         var timer = timerInstance.GetComponentInChildren<RunTimer>();
-        timerInstance.GetComponentInChildren<Leaderboard>().transform.position = new Vector3(-400, 160, 300) * U;
+        timerInstance.transform.position = new Vector3(-400, 160, 300) * U; // boards beside the spawn
+        timer.categorySource = movementInstance.GetComponent<SourceMovement>(); // auto bhop runs get their own board
+        UdonSharpEditorUtility.CopyProxyToUdon(timer);
+        movementInstance.transform.Find("AutoBhopButton").position = new Vector3(200, 48, 250) * U;
 
         BuildMap(timer);
         EditorSceneManager.SaveScene(EditorSceneManager.GetActiveScene(), ScenePath);
@@ -140,6 +155,18 @@ public static class SourceMovementSetup
     }
 
     // ------------------------------------------------------------------ helpers (Source units in, metres out)
+
+    static Leaderboard CreateBoard(Transform parent, string name, string title, float x)
+    {
+        var go = new GameObject(name);
+        go.transform.SetParent(parent, false);
+        go.transform.localPosition = new Vector3(x, 0, 0);
+        var board = go.AddUdonSharpComponent<Leaderboard>();
+        board.title = title;
+        board.board = CreateWorldText(go.transform, title, 1.5f);
+        UdonSharpEditorUtility.CopyProxyToUdon(board);
+        return board;
+    }
 
     static GameObject Solid(Transform parent, string name, Vector3 center, Vector3 size)
     {

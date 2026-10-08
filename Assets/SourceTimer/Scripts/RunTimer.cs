@@ -6,11 +6,24 @@ using VRC.SDKBase;
 /// <summary>
 /// Local run timer with checkpoints, driven by TimerZones. Independent of any movement system:
 /// it only uses trigger zones and VRChat teleports. Finished times go to the synced Leaderboard.
+///
+/// Optional categories: point Category Source at any script with a bool (e.g. SourceMovement's
+/// autoBhop). If that bool is on at any moment during a run, the run goes to the Auto Leaderboard
+/// instead, so auto bhop and legit bhop keep separate records.
 /// </summary>
 [UdonBehaviourSyncMode(BehaviourSyncMode.None)]
 public class RunTimer : UdonSharpBehaviour
 {
+    [Tooltip("Board for normal runs (legit bhop)")]
     public Leaderboard leaderboard;
+    [Header("Categories (optional)")]
+    [Tooltip("Script with a bool that marks a run as the other category, e.g. SourceMovement")]
+    public UdonSharpBehaviour categorySource;
+    [Tooltip("Name of that bool")]
+    public string categoryVariable = "autoBhop";
+    [Tooltip("Board for runs where the bool was on at any point (auto bhop)")]
+    public Leaderboard autoLeaderboard;
+    [Header("Display")]
     [Tooltip("Where Restart teleports to (put it inside the start zone)")]
     public Transform startPoint;
     [Tooltip("Optional timer text on a world space canvas under this object")]
@@ -25,6 +38,8 @@ public class RunTimer : UdonSharpBehaviour
     private bool running;
     private float startTime;
     private float lastTime = -1f;
+    private bool runIsAuto;
+    private bool lastWasAuto;
 
     private void Start()
     {
@@ -35,9 +50,10 @@ public class RunTimer : UdonSharpBehaviour
     private void Update()
     {
         if (Input.GetKeyDown(restartKey)) _Restart();
+        if (running && !runIsAuto && CategoryIsOn()) runIsAuto = true;
         if (label == null) return;
-        if (running) label.text = FormatTime(Time.time - startTime);
-        else if (lastTime >= 0f) label.text = "Finished " + FormatTime(lastTime);
+        if (running) label.text = CategoryName(runIsAuto) + FormatTime(Time.time - startTime);
+        else if (lastTime >= 0f) label.text = "Finished " + CategoryName(lastWasAuto) + FormatTime(lastTime);
         else label.text = "";
     }
 
@@ -50,6 +66,18 @@ public class RunTimer : UdonSharpBehaviour
 
     public bool IsRunning() { return running; }
     public float GetLastTime() { return lastTime; }
+    public bool LastRunWasAuto() { return lastWasAuto; }
+
+    private bool CategoryIsOn()
+    {
+        return categorySource != null && (bool)categorySource.GetProgramVariable(categoryVariable);
+    }
+
+    private string CategoryName(bool auto)
+    {
+        if (categorySource == null) return "";
+        return auto ? "[auto] " : "[legit] ";
+    }
 
     public void _EnterStart()
     {
@@ -62,14 +90,18 @@ public class RunTimer : UdonSharpBehaviour
         running = true;
         startTime = Time.time;
         lastTime = -1f;
+        runIsAuto = CategoryIsOn();
     }
 
     public void _EnterEnd()
     {
         if (!running) return;
+        if (CategoryIsOn()) runIsAuto = true;
         running = false;
         lastTime = Time.time - startTime;
-        if (leaderboard != null) leaderboard._Submit(lastTime);
+        lastWasAuto = runIsAuto;
+        Leaderboard board = runIsAuto ? autoLeaderboard : leaderboard;
+        if (board != null) board._Submit(lastTime);
     }
 
     public void _SetCheckpoint(Transform point) { checkpoint = point; }

@@ -16,6 +16,7 @@ public static class TimerTests
         test("Timer: end without starting does nothing", EndWithoutStart);
         test("Timer: reset goes to last checkpoint, restart goes to start", ResetAndRestart);
         test("Timer zones call the right timer action", Zones);
+        test("Categories: legit and auto bhop runs go to separate boards", Categories);
         test("Leaderboard: sorted, best time per player, top 10", BoardOrder);
         test("Leaderboard: rejects bad times", BoardRejects);
         test("Leaderboard: non-owners send their time to the owner", BoardNetwork);
@@ -117,6 +118,39 @@ public static class TimerTests
     {
         player.displayName = name;
         board._Submit(time);
+    }
+
+    static void Categories()
+    {
+        var (timer, legit) = Setup();
+        var auto = Make<Leaderboard>();
+        var movement = new SourceMovement { autoBhop = false };
+        timer.leaderboard = legit;
+        timer.autoLeaderboard = auto;
+        timer.categorySource = movement;
+        player.displayName = "Me";
+
+        void Race(bool autoAtStart, bool autoMidRun, bool autoAtEnd)
+        {
+            movement.autoBhop = autoAtStart;
+            timer._EnterStart();
+            Time.time += 1f;
+            timer._LeaveStart();
+            Time.time += 5f;
+            movement.autoBhop = autoMidRun;
+            typeof(RunTimer).GetMethod("Update", BindingFlags.NonPublic | BindingFlags.Instance).Invoke(timer, null);
+            Time.time += 5f;
+            movement.autoBhop = autoAtEnd;
+            timer._EnterEnd();
+        }
+
+        Race(false, false, false);
+        Check(legit.GetCount() == 1 && auto.GetCount() == 0 && !timer.LastRunWasAuto(), "legit run went to the wrong board");
+        Race(true, true, true);
+        Check(auto.GetCount() == 1 && timer.LastRunWasAuto(), "auto run went to the wrong board");
+        Race(false, true, false); // switched on mid-run, then back off: still an auto run
+        Check(timer.LastRunWasAuto(), "turning auto bhop on mid-run kept it legit");
+        Check(legit.GetCount() == 1, "mid-run switch landed on the legit board");
     }
 
     static void BoardOrder()
