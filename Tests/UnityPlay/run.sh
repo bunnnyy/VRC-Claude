@@ -56,6 +56,17 @@ if [ "${1:-}" = "map" ]; then
   exit $status
 fi
 
+# Vote mode: run.sh vote builds the SourceMaps test scene (6 box maps + lobby) and play-tests the map rotation.
+if [ "${1:-}" = "vote" ]; then
+  copy_assets
+  run program_assets -quit -executeMethod SourceMapImporter.EnsureProgramAssets
+  status=0
+  if run build_vote -quit -executeMethod SourceMapsSetup.BuildTestScene && run vote -executeMethod PlayTestBootstrap.RunVote; then r="ALL PASSED"; else r="FAILED"; status=1; fi
+  echo "== map rotation: $r"
+  grep -ho "\[SMTEST\] [PF][AI][SL].*" "$logs/vote.log" 2>/dev/null | sed 's/^\[SMTEST\] /  /' | awk '!seen[$0]++'
+  exit $status
+fi
+
 echo "Building prefabs and test map"
 copy_assets
 run build -quit -executeMethod SourceMovementSetup.BuildTestScene

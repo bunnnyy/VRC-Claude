@@ -49,6 +49,20 @@ public static class PlayTestBootstrap
         Debug.Log("[SMTEST] imported " + bsp);
     }
 
+    /// <summary>-executeMethod PlayTestBootstrap.RunVote: play-tests the map rotation in Assets/SourceMaps/SourceMapsTest.unity.</summary>
+    public static void RunVote()
+    {
+        var settings = ClientSimSettings.Instance;
+        settings.enableClientSim = true;
+        settings.hideMenuOnLaunch = true;
+        settings.setTargetFrameRate = false;
+        settings.initializationDelay = 0f;
+        ClientSimSettings.SaveSettings(settings);
+        EditorSceneManager.OpenScene("Assets/SourceMaps/SourceMapsTest.unity");
+        new GameObject("VotePlayTestRunner").AddComponent<VotePlayTestRunner>();
+        EditorApplication.isPlaying = true;
+    }
+
     /// <summary>-executeMethod PlayTestBootstrap.RunMap [-smFrameRate 90]: play-tests Assets/MapTest.unity.</summary>
     public static void RunMap()
     {
