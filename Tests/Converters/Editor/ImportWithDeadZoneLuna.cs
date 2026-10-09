@@ -20,6 +20,11 @@ public static class ImportWithDeadZoneLuna
         uSource.uLoader.SaveAssetsToUnity = true;
         uSource.uLoader.OutputAssetsFolder = "uSourceOut";
         uSource.uLoader.ParseLights = false;
+        // What its loader window does first (caches, timers); without it a failure is hidden by a NullReference.
+        uSource.uLoader.DebugTime = new System.Diagnostics.Stopwatch();
+        uSource.uLoader.DebugTimeOutput = new System.Text.StringBuilder();
+        uSource.uLoader.Clear();
+        uSource.uResourceManager.Init(0, new uSource.DirProvider(root + "/cstrike/"));
         var watch = System.Diagnostics.Stopwatch.StartNew();
         uSource.uResourceManager.LoadMap(Path.GetFileNameWithoutExtension(bsp));
         watch.Stop();
