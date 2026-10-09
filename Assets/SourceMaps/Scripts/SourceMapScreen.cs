@@ -29,7 +29,6 @@ public class SourceMapScreen : UdonSharpBehaviour
     {
         if (manager == null) return;
         VRCPlayerApi local = Networking.LocalPlayer;
-        bool vote = manager.mode == SourceMapMode.Vote;
         bool lobby = manager.state == SourceMapManager.StateLobby;
         int[] candidates = manager.candidates;
         int left = manager.SecondsLeft();
@@ -37,8 +36,7 @@ public class SourceMapScreen : UdonSharpBehaviour
         if (status != null)
         {
             string s;
-            if (!vote) s = "Pick a map";
-            else if (lobby)
+            if (lobby)
             {
                 s = manager.extendOffered ? "Time is up! Vote for the next map" : "Vote for the next map";
                 if (manager.locked) s += "\n<color=#ffb040>Vote locked by the instance owner</color>";
@@ -67,13 +65,13 @@ public class SourceMapScreen : UdonSharpBehaviour
                 if (slotTexts != null && i < slotTexts.Length && slotTexts[i] != null)
                 {
                     string t = info != null ? "<b>" + info.mapName + "</b>" + (info.author != "" ? "\n<size=60%>by " + info.author + "</size>" : "") : "?";
-                    if (vote && lobby && i < manager.votes.Length) t += "\n" + manager.votes[i] + (manager.votes[i] == 1 ? " vote" : " votes");
+                    if (lobby && i < manager.votes.Length) t += "\n" + manager.votes[i] + (manager.votes[i] == 1 ? " vote" : " votes");
                     if (manager.localVote == i) t += " <color=#60ff60>(you)</color>";
                     slotTexts[i].text = t;
                 }
             }
 
-        bool extend = vote && lobby && manager.extendOffered;
+        bool extend = lobby && manager.extendOffered;
         if (extendRoot != null) extendRoot.SetActive(extend);
         if (extend && extendText != null)
         {

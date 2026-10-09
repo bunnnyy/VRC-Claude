@@ -10,6 +10,9 @@ using VRC.SDKBase;
 /// Optional categories: point Category Source at any script with a bool (e.g. SourceMovement's
 /// autoBhop). If that bool is on at any moment during a run, the run goes to the Auto Leaderboard
 /// instead, so auto bhop and legit bhop keep separate records.
+///
+/// Courses: a Start zone can bring its own boards and start point (several courses or maps in one world, each with
+/// its own records). Start zones without them use the boards and start point set here.
 /// </summary>
 [UdonBehaviourSyncMode(BehaviourSyncMode.None)]
 public class RunTimer : UdonSharpBehaviour
@@ -40,6 +43,8 @@ public class RunTimer : UdonSharpBehaviour
     private float lastTime = -1f;
     private bool runIsAuto;
     private bool lastWasAuto;
+    private Leaderboard courseBoard, courseAutoBoard;
+    private Transform courseStart;
 
     private void Start()
     {
@@ -79,10 +84,20 @@ public class RunTimer : UdonSharpBehaviour
         return auto ? "[auto] " : "[legit] ";
     }
 
+    /// <summary>Set by the Start zone the player entered; null = this timer's own boards / start point.</summary>
+    public void _SetCourse(Leaderboard legit, Leaderboard auto, Transform start)
+    {
+        courseBoard = legit;
+        courseAutoBoard = auto;
+        courseStart = start;
+    }
+
+    private Transform StartPoint() { return courseStart != null ? courseStart : startPoint; }
+
     public void _EnterStart()
     {
         running = false;
-        checkpoint = startPoint;
+        checkpoint = StartPoint();
     }
 
     public void _LeaveStart()
@@ -100,19 +115,20 @@ public class RunTimer : UdonSharpBehaviour
         running = false;
         lastTime = Time.time - startTime;
         lastWasAuto = runIsAuto;
-        Leaderboard board = runIsAuto ? autoLeaderboard : leaderboard;
+        Leaderboard board = runIsAuto ? (courseAutoBoard != null ? courseAutoBoard : autoLeaderboard)
+                                      : (courseBoard != null ? courseBoard : leaderboard);
         if (board != null) board._Submit(lastTime);
     }
 
     public void _SetCheckpoint(Transform point) { checkpoint = point; }
 
-    public void _ResetToCheckpoint() { TeleportTo(checkpoint != null ? checkpoint : startPoint); }
+    public void _ResetToCheckpoint() { TeleportTo(checkpoint != null ? checkpoint : StartPoint()); }
 
     public void _Restart()
     {
         running = false;
-        checkpoint = startPoint;
-        TeleportTo(startPoint);
+        checkpoint = StartPoint();
+        TeleportTo(checkpoint);
     }
 
     private void TeleportTo(Transform point)

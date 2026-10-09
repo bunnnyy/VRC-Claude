@@ -2,8 +2,7 @@ using UdonSharp;
 using UnityEngine;
 
 /// <summary>
-/// World button (Interact, works on desktop and VR) for SourceMapManager. Actions: map (vote for / pick the map in
-/// slot), extend, rtv, lobby, rejoin; owner: lock, start, force, forcelobby, addtime.
+/// World button (Interact, works on desktop and VR) for SourceMapManager. Actions: map (vote for the map in slot), extend, rtv, lobby, rejoin; owner: lock, start, force, forcelobby, addtime.
 /// </summary>
 [UdonBehaviourSyncMode(BehaviourSyncMode.None)]
 public class SourceMapButton : UdonSharpBehaviour

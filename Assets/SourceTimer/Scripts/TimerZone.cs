@@ -17,13 +17,20 @@ public class TimerZone : UdonSharpBehaviour
 {
     public TimerZoneType zoneType;
     public RunTimer timer;
-    [Tooltip("Checkpoint respawn point, defaults to this object")]
+    [Tooltip("Checkpoint respawn point, defaults to this object. Start zone: where Restart sends you for this course")]
     public Transform respawnPoint;
+    [Header("Start zone only (optional): this course's own boards")]
+    public Leaderboard leaderboard;
+    public Leaderboard autoLeaderboard;
 
     public override void OnPlayerTriggerEnter(VRCPlayerApi player)
     {
         if (!player.isLocal || timer == null) return;
-        if (zoneType == TimerZoneType.Start) timer._EnterStart();
+        if (zoneType == TimerZoneType.Start)
+        {
+            timer._SetCourse(leaderboard, autoLeaderboard, respawnPoint);
+            timer._EnterStart();
+        }
         else if (zoneType == TimerZoneType.End) timer._EnterEnd();
         else if (zoneType == TimerZoneType.Checkpoint) timer._SetCheckpoint(respawnPoint != null ? respawnPoint : transform);
         else if (zoneType == TimerZoneType.Reset) timer._ResetToCheckpoint();

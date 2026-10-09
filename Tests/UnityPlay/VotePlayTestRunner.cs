@@ -10,7 +10,7 @@ using VRC.Udon;
 /// <summary>
 /// Play mode test of the map rotation (SourceMapManager) in the SourceMaps test scene with ClientSim: voting, the
 /// vote timer, travel, rock the vote, owner lock/start/force/lobby, time limit with extend, back to lobby/rejoin,
-/// ties and choose mode. Presses go through the same path as the world buttons. Single player (ClientSim has no
+/// ties and owner changes. Presses go through the same path as the world buttons. Single player (ClientSim has no
 /// real second client), so vote counting with several players is checked by setting the vote counts directly.
 /// Started by PlayTestBootstrap.RunVote; results are logged with a [SMTEST] prefix.
 /// </summary>
@@ -134,16 +134,6 @@ public class VotePlayTestRunner : MonoBehaviour
 
         yield return OwnerChanges();
 
-        // Choose mode: each player goes where they like, nothing synced changes.
-        Press("forcelobby", -1);
-        yield return Seconds(0.3f);
-        manager.SetProgramVariable("mode", 1); // SourceMapMode.Choose
-        cands = Candidates();
-        int round = (int)manager.GetProgramVariable("round");
-        Press("map", 3);
-        yield return Seconds(0.3f);
-        Check(Near(MapSpawn(cands[3])) && (int)manager.GetProgramVariable("round") == round && State() == 0,
-            "choose: pressing a map takes only this player there");
         Finish();
     }
 

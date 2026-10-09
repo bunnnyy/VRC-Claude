@@ -4,15 +4,9 @@ using VRC.SDK3.UdonNetworkCalling;
 using VRC.SDKBase;
 using VRC.Udon.Common.Interfaces;
 
-public enum SourceMapMode
-{
-    Vote,   // everyone votes in the lobby, the winner is played by the whole instance
-    Choose, // each player picks a map and goes there alone
-}
-
 /// <summary>
 /// Map rotation like a CS:S bhop server: a lobby screen offers random maps from the pool, players vote, everyone is
-/// sent to the winner. In a map: rock the vote (rtv) and a time limit start a new vote (back in the lobby, with
+/// sent to the winner. Only one map is active at a time; the lobby is always open to go back to. In a map: rock the vote (rtv) and a time limit start a new vote (back in the lobby, with
 /// "extend" offered after a time limit). The instance owner (or the master when the instance has no owner) can lock
 /// the vote, start it, force a map, extend or send everyone to the lobby.
 /// The object's owner counts the votes; players send them with network events. Everything the owner needs is synced
@@ -29,7 +23,6 @@ public class SourceMapManager : UdonSharpBehaviour
     public SourceMapInfo[] maps;
     [Tooltip("Where players wait and vote (also put the VRC World spawn here)")]
     public Transform lobbySpawn;
-    public SourceMapMode mode = SourceMapMode.Vote;
     [Tooltip("Maps offered per vote (4-6)")]
     [Range(2, 6)] public int choices = 5;
 
@@ -92,7 +85,6 @@ public class SourceMapManager : UdonSharpBehaviour
                 forceArmed = false;
                 SendCustomNetworkEvent(NetworkEventTarget.Owner, nameof(AdminForceMap), slot);
             }
-            else if (mode == SourceMapMode.Choose) Travel(candidates[slot]);
             else if (state == StateLobby)
             {
                 localVote = slot;
@@ -104,13 +96,13 @@ public class SourceMapManager : UdonSharpBehaviour
             localVote = candidates.Length;
             SendCustomNetworkEvent(NetworkEventTarget.Owner, nameof(Vote), candidates.Length);
         }
-        else if (action == "rtv" && mode == SourceMapMode.Vote && state == StatePlaying)
+        else if (action == "rtv" && state == StatePlaying)
         {
             localRtv = !localRtv;
             SendCustomNetworkEvent(NetworkEventTarget.Owner, nameof(RockTheVote), localRtv);
         }
         else if (action == "lobby") Travel(-1);
-        else if (action == "rejoin" && state == StatePlaying && mode == SourceMapMode.Vote) Travel(currentMap);
+        else if (action == "rejoin" && state == StatePlaying) Travel(currentMap);
         else if (action == "force") forceArmed = !forceArmed && IsAdmin(localPlayer);
         else if (action == "lock") SendCustomNetworkEvent(NetworkEventTarget.Owner, nameof(AdminLock));
         else if (action == "start") SendCustomNetworkEvent(NetworkEventTarget.Owner, nameof(AdminStart));
@@ -124,7 +116,7 @@ public class SourceMapManager : UdonSharpBehaviour
     [NetworkCallable]
     public void Vote(int slot)
     {
-        if (state != StateLobby || mode != SourceMapMode.Vote || slot < 0 || slot >= votes.Length) return;
+        if (state != StateLobby || slot < 0 || slot >= votes.Length) return;
         if (slot == candidates.Length && !extendOffered) return;
         int id = NetworkCalling.CallingPlayer.playerId;
         int i = System.Array.IndexOf(voterIds, id);
@@ -340,7 +332,7 @@ public class SourceMapManager : UdonSharpBehaviour
 
     public override void OnDeserialization() { Apply(); }
 
-    /// <summary>Follow the synced state: travel when the round changed (vote mode), refresh the screens.</summary>
+    /// <summary>Follow the synced state: travel when the round changed, refresh the screens.</summary>
     private void Apply()
     {
         if (round != appliedRound)
@@ -350,11 +342,8 @@ public class SourceMapManager : UdonSharpBehaviour
             localVote = -1;
             localRtv = false;
             forceArmed = false;
-            if (mode == SourceMapMode.Vote)
-            {
-                if (state == StatePlaying) Travel(currentMap);
-                else if (!joining) Travel(-1);
-            }
+            if (state == StatePlaying) Travel(currentMap);
+            else if (!joining) Travel(-1);
         }
         RefreshScreens();
     }
@@ -364,7 +353,7 @@ public class SourceMapManager : UdonSharpBehaviour
     {
         SendCustomEventDelayedSeconds(nameof(_Tick), 0.5f);
         if (Networking.IsOwner(gameObject) && round == 0) NewVote(false, false); // first owner left before starting
-        if (Networking.IsOwner(gameObject) && mode == SourceMapMode.Vote)
+        if (Networking.IsOwner(gameObject))
         {
             int now = Now();
             if (state == StateLobby && voteEnd != 0 && !locked && now - voteEnd >= 0) EndVote();

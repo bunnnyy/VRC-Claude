@@ -1,6 +1,7 @@
 using TMPro;
 using UdonSharp;
 using UnityEngine;
+using VRC.SDK3.Persistence;
 using VRC.SDK3.UdonNetworkCalling;
 using VRC.SDKBase;
 using VRC.Udon.Common.Interfaces;
@@ -9,6 +10,9 @@ using VRC.Udon.Common.Interfaces;
 /// Synced top 10 best times for this instance, one entry per player. Players send their time to the
 /// owner, who merges it and syncs the list, so two people finishing at once can't overwrite each other.
 /// Late joiners get the current list automatically.
+/// With a Save Key, each player's best is also saved with VRChat Persistence (their own PlayerData) and put back on
+/// the board when they join, so records survive between sessions. VRChat saves per player, not per world: the board
+/// shows the saved bests of everyone who has been in this instance.
 /// </summary>
 [UdonBehaviourSyncMode(BehaviourSyncMode.Manual)]
 public class Leaderboard : UdonSharpBehaviour
@@ -16,6 +20,8 @@ public class Leaderboard : UdonSharpBehaviour
     [Tooltip("Optional text that shows the board")]
     public TextMeshProUGUI board;
     public string title = "Best times";
+    [Tooltip("Save each player's best under this key (e.g. bhop_japan_legit). Empty = this instance only.")]
+    public string saveKey = "";
 
     private const int MaxEntries = 10;
     [UdonSynced] private string[] names = new string[MaxEntries];
@@ -29,9 +35,22 @@ public class Leaderboard : UdonSharpBehaviour
         Refresh();
     }
 
+    /// <summary>The local player's saved best is loaded: put it on the board.</summary>
+    public override void OnPlayerRestored(VRCPlayerApi player)
+    {
+        if (saveKey == "" || !player.isLocal) return;
+        float best;
+        if (PlayerData.TryGetFloat(player, saveKey, out best)) _Submit(best);
+    }
+
     /// <summary>Called by RunTimer when the local player finishes.</summary>
     public void _Submit(float time)
     {
+        if (saveKey != "" && time > 0.1f && time <= 86400f)
+        {
+            float saved;
+            if (!PlayerData.TryGetFloat(Networking.LocalPlayer, saveKey, out saved) || time < saved) PlayerData.SetFloat(saveKey, time);
+        }
         if (Networking.IsOwner(gameObject)) Record(Networking.LocalPlayer.displayName, time);
         else SendCustomNetworkEvent(NetworkEventTarget.Owner, nameof(SubmitTime), time);
     }

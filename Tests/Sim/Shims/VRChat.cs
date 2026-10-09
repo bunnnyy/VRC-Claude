@@ -22,6 +22,7 @@ namespace UdonSharp
         public virtual void OnPlayerTriggerEnter(VRC.SDKBase.VRCPlayerApi player) { }
         public virtual void OnPlayerTriggerExit(VRC.SDKBase.VRCPlayerApi player) { }
         public virtual void OnDeserialization() { }
+        public virtual void OnPlayerRestored(VRC.SDKBase.VRCPlayerApi player) { }
         public virtual void PostLateUpdate() { }
         public virtual void Interact() { }
 
@@ -120,5 +121,16 @@ namespace VRC.SDKBase
         public static bool IsOwner(GameObject go) => localIsOwner;
         public static VRCPlayerApi GetOwner(GameObject go) => LocalPlayer;
         public static void SetOwner(VRCPlayerApi p, GameObject go) { }
+    }
+}
+
+namespace VRC.SDK3.Persistence
+{
+    /// <summary>VRChat Persistence: the local player's saved values (one dictionary, the local player).</summary>
+    public static class PlayerData
+    {
+        public static Dictionary<string, float> floats = new Dictionary<string, float>();
+        public static void SetFloat(string key, float value) => floats[key] = value;
+        public static bool TryGetFloat(VRC.SDKBase.VRCPlayerApi player, string key, out float value) => floats.TryGetValue(key, out value);
     }
 }

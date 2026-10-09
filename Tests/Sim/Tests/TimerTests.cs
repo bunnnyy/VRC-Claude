@@ -20,6 +20,8 @@ public static class TimerTests
         test("Leaderboard: sorted, best time per player, top 10", BoardOrder);
         test("Leaderboard: rejects bad times", BoardRejects);
         test("Leaderboard: non-owners send their time to the owner", BoardNetwork);
+        test("Courses: a start zone's own boards and start point are used", Courses);
+        test("Leaderboard: saved best is kept, restored on join, not replaced by a worse time", SavedBest);
     }
 
     static VRCPlayerApi player;
@@ -151,6 +153,53 @@ public static class TimerTests
         Race(false, true, false); // switched on mid-run, then back off: still an auto run
         Check(timer.LastRunWasAuto(), "turning auto bhop on mid-run kept it legit");
         Check(legit.GetCount() == 1, "mid-run switch landed on the legit board");
+    }
+
+    static void Courses()
+    {
+        var bhop = Make<Leaderboard>(); // (Make gives every object a fresh local player, so make the boards first)
+        var bhopAuto = Make<Leaderboard>();
+        var (timer, mainBoard) = Setup();
+        var start = new TimerZone { zoneType = TimerZoneType.Start, timer = timer, leaderboard = bhop, autoLeaderboard = bhopAuto, respawnPoint = Point(500) };
+        var end = new TimerZone { zoneType = TimerZoneType.End, timer = timer };
+        start.OnPlayerTriggerEnter(player);
+        start.OnPlayerTriggerExit(player);
+        Time.time += 4f;
+        end.OnPlayerTriggerEnter(player);
+        Check(bhop.GetCount() == 1 && mainBoard.GetCount() == 0, "course run went to the main board");
+        timer._Restart();
+        Check(player.position.x == 500, "restart went to " + player.position + ", not the course start");
+        // A start zone without boards goes back to the timer's own.
+        var plain = new TimerZone { zoneType = TimerZoneType.Start, timer = timer };
+        plain.OnPlayerTriggerEnter(player);
+        plain.OnPlayerTriggerExit(player);
+        Time.time += 4f;
+        end.OnPlayerTriggerEnter(player);
+        Check(mainBoard.GetCount() == 1 && bhop.GetCount() == 1, "plain start zone kept the course boards");
+        timer._Restart();
+        Check(player.position.x == 1, "restart after a plain start went to " + player.position);
+    }
+
+    static void SavedBest()
+    {
+        VRC.SDK3.Persistence.PlayerData.floats.Clear();
+        var board = Make<Leaderboard>();
+        board.saveKey = "bhop_japan_legit";
+        Submit(board, "Me", 30f);
+        Check(VRC.SDK3.Persistence.PlayerData.floats["bhop_japan_legit"] == 30f, "best not saved");
+        Submit(board, "Me", 40f);
+        Check(VRC.SDK3.Persistence.PlayerData.floats["bhop_japan_legit"] == 30f, "a worse time replaced the saved best");
+        Submit(board, "Me", 0f);
+        Check(VRC.SDK3.Persistence.PlayerData.floats["bhop_japan_legit"] == 30f, "a bad time was saved");
+        // New session: the board is empty until the player's data is restored.
+        var next = Make<Leaderboard>();
+        next.saveKey = "bhop_japan_legit";
+        Check(next.GetCount() == 0, "new board not empty");
+        next.OnPlayerRestored(player);
+        Check(next.GetCount() == 1 && next.GetTime(0) == 30f, "saved best not restored onto the board");
+        var unsaved = Make<Leaderboard>();
+        unsaved.OnPlayerRestored(player);
+        Check(unsaved.GetCount() == 0, "a board without a save key restored a time");
     }
 
     static void BoardOrder()
