@@ -21,6 +21,10 @@ fetch() { # dir url commit
 }
 fetch uSource https://github.com/DeadZoneLuna/uSource 01ab6a2f080ce7341b87f2d867bfae079c0fa06e
 fetch USource https://github.com/Shane-SDK/USource 46cfbe49f61d12d7a4b22fcc6e1a7788d9c5bf18
+# USource keeps its DLLs, icons and fonts in Git LFS: fetch the real files instead of the pointers.
+(cd "$cache/src/USource" && grep -rl "^version https://git-lfs" Assets | while read -r f; do
+  curl -fsSL -o "$f" "https://media.githubusercontent.com/media/Shane-SDK/USource/46cfbe49f61d12d7a4b22fcc6e1a7788d9c5bf18/$f"
+done)
 
 # uSource loads maps from a game folder: fake one holding just the map.
 mkdir -p "$cache/game/cstrike/maps"
@@ -44,6 +48,7 @@ run() { # project, log, method
   echo "  errors in log: $(grep -cE "^(NullReference|Exception|.*Exception:|.*error CS)" "$cache/logs/$2.log" || true)"
 }
 
+if [ "${ONLY:-}" != "USource" ]; then
 echo "== DeadZoneLuna/uSource"
 project uSource ImportWithDeadZoneLuna.cs
 cp -r "$cache/src/uSource" "$cache/uSource/Assets/uSource"
@@ -51,6 +56,7 @@ rm -rf "$cache/uSource/Assets/uSource/.git"
 # Its asmdef lacks "allow unsafe code", which its MDL reader needs.
 sed -i 's|"references": \[\],|"references": [], "allowUnsafeCode": true,|' "$cache/uSource/Assets/uSource/uSource.asmdef"
 run uSource "uSource_$name" ImportWithDeadZoneLuna.Run
+fi
 
 echo "== Shane-SDK/USource"
 project USource ImportWithShane.cs
