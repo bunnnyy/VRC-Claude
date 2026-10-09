@@ -81,6 +81,7 @@ public class PlayTestRunner : MonoBehaviour
         yield return Run("surf", Surf());
         yield return Run("teleport", Teleports());
         yield return Run("ladder", Ladder());
+        yield return Run("water", Water());
         yield return Run("legit", Legit());
         yield return Run("timer", Timer());
         Finish();
@@ -319,6 +320,38 @@ public class PlayTestRunner : MonoBehaviour
         Log($"ladder jump off: velocity {v:F1}");
         Check("ladder", !(bool)movement.GetProgramVariable("onLadder") && v.x < -200f, "jump pushes off the ladder");
         yield return Frames(1.5f, null);
+    }
+
+    IEnumerator Water()
+    {
+        // Test map: deep pool (200 deep) at x -900, z 500..1100; waist-deep pool (40) up to a 40 unit ledge at z 1900.
+        yield return Spawn(new Vector3(-900, 0, 600), 0f);
+        Keys(Key.W);
+        yield return Frames(1f, null);
+        Vector3 p0 = Real();
+        float maxErr = 0f;
+        yield return Frames(1f, () => maxErr = Mathf.Max(maxErr, TrackError()));
+        Keys();
+        int level = (int)movement.GetProgramVariable("waterLevel");
+        float swim = Flat(Real() - p0).magnitude;
+        Log($"water: level {level}, real swim speed {swim:F1} u/s (Source: 200), max tracking error beyond one physics step {maxErr:F2} u");
+        Check("water", level == 3 && Mathf.Abs(swim - 200f) < 5f, "swims at 200 u/s");
+        Check("water", maxErr < 4f, "player follows the simulation in water");
+
+        yield return Teleport(new Vector3(-900, 100, 800), 0f, false);
+        yield return Frames(1f, null);
+        float y0 = Real().y;
+        yield return Frames(1f, null);
+        Log($"water: real sink {Real().y - y0:F1} u in 1 s (Source: -48)");
+        Check("water", Mathf.Abs(Real().y - y0 + 48f) < 3f, "sinks at 48 u/s with no keys");
+
+        yield return Spawn(new Vector3(-900, 0, 1700), 0f);
+        Keys(Key.W);
+        for (int i = 0; i < 3 * frameRate && !(OnGround() && Real().z > 1900f); i++) yield return null;
+        Keys();
+        yield return Frames(0.3f, null);
+        Log($"water jump: real {Real():F1}, grounded {OnGround()}");
+        Check("water", OnGround() && Mathf.Abs(Real().y - 40f) < 2f && Real().z > 1890f, "climbs out of waist-deep water onto the ledge");
     }
 
     IEnumerator Legit()

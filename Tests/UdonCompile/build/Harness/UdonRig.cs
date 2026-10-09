@@ -91,6 +91,9 @@ public class Rig
 
     // ------------------------------------------------------------- world building (Source units)
     public static void Floor(float y = 0, float size = 100000) => Box(new Vector3(0, y - 50, 0), new Vector3(size, 100, size));
+    public static void Water(Vector3 center, Vector3 size) => CollisionWorld.Add(center * U, size * U, CollisionWorld.Euler(0, 0, 0), 4);
+    public bool InWater => GetVar<int>("waterLevel") >= 2;
+    public int WaterLevel => GetVar<int>("waterLevel");
     public static void Ladder(Vector3 center, Vector3 size) => CollisionWorld.Add(center * U, size * U, CollisionWorld.Euler(0, 0, 0), 22);
     public static void Box(Vector3 center, Vector3 size, float rotZ = 0, float rotX = 0) =>
         CollisionWorld.Add(center * U, size * U, CollisionWorld.Euler(rotX, 0, rotZ));

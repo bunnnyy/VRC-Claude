@@ -41,6 +41,11 @@ public static class MovementTests
         Test("Ladder: climbing to the top gets you onto the ledge", LadderTop);
         Test("Ladder: S at the bottom walks off it", LadderWalkOff);
         Test("Ladder: one behind you is not grabbed", LadderBehind);
+        Test("Water: swims at 200 u/s (max speed * 0.8)", WaterSwim);
+        Test("Water: no keys sinks at 48 u/s, no gravity", WaterSink);
+        Test("Water: jump swims up", WaterSwimUp);
+        Test("Water: ankle deep walks normally at 250 u/s", WaterShallow);
+        Test("Water: waist deep at a ledge, W climbs out (water jump)", WaterJumpOut);
         Test("Teleport resets velocity", TeleportResets);
         Test("Teleport onto the floor stands on it (no sinking)", TeleportOntoFloor);
         Test("TeleportPlayer can keep velocity (portals)", TeleportKeepsVelocity);
@@ -510,6 +515,62 @@ public static class MovementTests
         r.Run(0.5f);
         Note($"walking away from it: z {r.Origin.z:F1}, on ladder {r.OnLadder}");
         Check(!r.OnLadder && r.Origin.z < -50, "grabbed a ladder behind");
+    }
+
+    static void WaterSwim()
+    {
+        var r = OnFloor();
+        Rig.Water(new Vector3(0, 200, 0), new Vector3(4000, 400, 4000));
+        r.Move(1, 0);
+        r.Run(2f);
+        Note($"water level {r.WaterLevel}, horizontal speed {r.Speed:F1} u/s");
+        Check(r.WaterLevel == 3 && Math.Abs(r.Speed - 200) < 2, "swim speed " + r.Speed);
+    }
+
+    static void WaterSink()
+    {
+        var r = new Rig(new Vector3(0, 200, 0));
+        Rig.Floor();
+        Rig.Water(new Vector3(0, 250, 0), new Vector3(4000, 500, 4000));
+        r.Run(2f);
+        Note($"sinking at {r.Vel.y:F1} u/s after 2 s (Source: 60 * 0.8 = 48)");
+        Check(Math.Abs(r.Vel.y + 48) < 1, "sink speed " + r.Vel.y);
+    }
+
+    static void WaterSwimUp()
+    {
+        var r = new Rig(new Vector3(0, 100, 0));
+        Rig.Floor();
+        Rig.Water(new Vector3(0, 500, 0), new Vector3(4000, 1000, 4000));
+        r.Run(0.1f);
+        r.Jump(true);
+        float y0 = r.Origin.y;
+        r.Run(1f);
+        Note($"holding jump: rose {r.Origin.y - y0:F1} u in 1 s");
+        Check(r.Origin.y - y0 > 90 && r.Origin.y - y0 < 120, "swim up speed");
+    }
+
+    static void WaterShallow()
+    {
+        var r = OnFloor();
+        Rig.Water(new Vector3(0, 10, 0), new Vector3(4000, 20, 4000));
+        r.Move(1, 0);
+        r.Run(2f);
+        Note($"water level {r.WaterLevel}, speed {r.Speed:F1}");
+        Check(r.WaterLevel == 1 && Math.Abs(r.Speed - 250) < 1, "ankle deep speed " + r.Speed);
+    }
+
+    static void WaterJumpOut()
+    {
+        // Water 40 deep (waist height is 36), a 40 unit ledge ahead at z = 200.
+        var r = OnFloor();
+        Rig.Water(new Vector3(0, 20, 0), new Vector3(4000, 40, 4000));
+        Rig.Box(new Vector3(0, 20, 1200), new Vector3(4000, 40, 2000));
+        r.Move(1, 0);
+        float maxY = 0;
+        r.Run(2f, () => maxY = Math.Max(maxY, r.Origin.y));
+        Note($"after 2 s: at {r.Origin}, on ground {r.OnGround}, highest {maxY:F1} u");
+        Check(r.OnGround && Math.Abs(r.Origin.y - 40) < 1 && r.Origin.z > 200, "did not climb out");
     }
 
     static Rig Running()
