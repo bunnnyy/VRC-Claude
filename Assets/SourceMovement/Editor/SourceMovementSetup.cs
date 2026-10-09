@@ -332,8 +332,8 @@ public static class SourceMovementSetup
                 created = true;
             }
         }
-        if (!created) return;
-        AssetDatabase.Refresh();
+        if (created) AssetDatabase.Refresh();
+        // Always compile: serializing a behaviour whose program is older than its script fails.
         UdonSharp.Compiler.UdonSharpCompilerV1.CompileSync();
     }
 }
