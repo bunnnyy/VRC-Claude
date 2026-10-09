@@ -120,9 +120,8 @@ public static class SourceMapsSetup
         {
             float x = (i - 2.5f) * 1.2f;
             var slot = Button(board.transform, "Slot" + (i + 1), "", manager, "map", i, new Vector3(x, 2.35f, 0), new Vector3(1.1f, 0.62f, 0.04f), new Color(0.15f, 0.15f, 0.18f));
-            images[i] = Image(slot.transform, new Vector2(1.05f, 0.59f));
-            texts[i] = Text(board.transform, "SlotText" + (i + 1), "map", new Vector3(x, 1.75f, 0), new Vector2(1.15f, 0.5f), 0.09f);
-            texts[i].transform.parent.SetParent(slot.transform, true); // hides with the slot
+            images[i] = Image(slot.transform, new Vector2(1.05f, 0.59f), -0.025f);
+            texts[i] = Text(slot.transform, "SlotText", "map", new Vector3(0, -0.6f, 0), new Vector2(1.15f, 0.5f), 0.09f);
             roots[i] = slot;
         }
         screen.slotRoots = roots;
@@ -131,7 +130,7 @@ public static class SourceMapsSetup
 
         var extend = Button(board.transform, "Extend", "", manager, "extend", -1, new Vector3(0, 1.2f, 0), new Vector3(2.4f, 0.32f, 0.04f), new Color(0.2f, 0.55f, 0.3f));
         screen.extendRoot = extend;
-        screen.extendText = Text(extend.transform, "ExtendText", "Extend", new Vector3(0, 0, -0.6f), new Vector2(1, 1), 0.35f, true);
+        screen.extendText = Text(extend.transform, "ExtendText", "Extend", new Vector3(0, 0, -0.025f), new Vector2(2.3f, 0.3f), 0.1f);
 
         var admin = new GameObject("OwnerControls");
         admin.transform.SetParent(board.transform, false);
@@ -215,13 +214,19 @@ public static class SourceMapsSetup
         AssetDatabase.Refresh();
     }
 
+    /// <summary>
+    /// An Interact button: an unscaled object (returned, so hiding it hides everything) holding the cube that is
+    /// pressed and its label, auto-sized to fit.
+    /// </summary>
     static GameObject Button(Transform parent, string name, string label, SourceMapManager manager, string action, int slot,
         Vector3 at, Vector3 size, Color color)
     {
+        var holder = new GameObject(name);
+        holder.transform.SetParent(parent, false);
+        holder.transform.localPosition = at;
         var cube = GameObject.CreatePrimitive(PrimitiveType.Cube);
-        cube.name = name;
-        cube.transform.SetParent(parent, false);
-        cube.transform.localPosition = at;
+        cube.name = "Press";
+        cube.transform.SetParent(holder.transform, false);
         cube.transform.localScale = size;
         cube.GetComponent<MeshRenderer>().sharedMaterial = Colored(color);
         var button = cube.AddUdonSharpComponent<SourceMapButton>();
@@ -230,12 +235,18 @@ public static class SourceMapsSetup
         button.slot = slot;
         button.InteractionText = label != "" ? label : "Vote";
         UdonSharpEditorUtility.CopyProxyToUdon(button);
-        if (label != "") Text(cube.transform, "Label", label, new Vector3(0, 0, -0.6f), new Vector2(1, 1), 0.45f / Mathf.Max(1, label.Length / 6f), true);
-        return cube;
+        if (label != "")
+        {
+            var text = Text(holder.transform, "Label", label, new Vector3(0, 0, -size.z / 2 - 0.005f), new Vector2(size.x * 0.92f, size.y * 0.9f), size.y * 0.5f);
+            text.enableAutoSizing = true;
+            text.fontSizeMin = 1;
+            text.fontSizeMax = size.y * 50;
+        }
+        return holder;
     }
 
-    /// <summary>World-space TextMeshPro text. In scaled parents (buttons) size is in the parent's units.</summary>
-    static TextMeshProUGUI Text(Transform parent, string name, string text, Vector3 at, Vector2 size, float fontSize, bool fitParent = false)
+    /// <summary>World-space TextMeshPro text, size and font size in metres.</summary>
+    static TextMeshProUGUI Text(Transform parent, string name, string text, Vector3 at, Vector2 size, float fontSize)
     {
         var canvasObject = new GameObject(name, typeof(Canvas));
         canvasObject.transform.SetParent(parent, false);
@@ -244,11 +255,6 @@ public static class SourceMapsSetup
         var rect = canvasObject.GetComponent<RectTransform>();
         rect.sizeDelta = size * 100;
         rect.localScale = Vector3.one * 0.01f;
-        if (fitParent) // undo the button's non-uniform scale
-        {
-            Vector3 s = parent.lossyScale;
-            rect.localScale = new Vector3(0.01f, 0.01f * s.x / s.y, 0.01f);
-        }
         var textObject = new GameObject("Text", typeof(RectTransform));
         textObject.transform.SetParent(canvasObject.transform, false);
         var label = textObject.AddComponent<TextMeshProUGUI>();
@@ -263,16 +269,15 @@ public static class SourceMapsSetup
         return label;
     }
 
-    static RawImage Image(Transform slot, Vector2 sizeMetres)
+    static RawImage Image(Transform holder, Vector2 sizeMetres, float z)
     {
         var canvasObject = new GameObject("Thumbnail", typeof(Canvas));
-        canvasObject.transform.SetParent(slot, false);
-        canvasObject.transform.localPosition = new Vector3(0, 0, -0.6f);
+        canvasObject.transform.SetParent(holder, false);
+        canvasObject.transform.localPosition = new Vector3(0, 0, z);
         canvasObject.GetComponent<Canvas>().renderMode = RenderMode.WorldSpace;
         var rect = canvasObject.GetComponent<RectTransform>();
-        rect.sizeDelta = new Vector2(100, 100);
-        Vector3 s = slot.lossyScale;
-        rect.localScale = new Vector3(sizeMetres.x / s.x / 100, sizeMetres.y / s.y / 100, 0.01f);
+        rect.sizeDelta = sizeMetres * 100;
+        rect.localScale = Vector3.one * 0.01f;
         var imageObject = new GameObject("Image", typeof(RectTransform));
         imageObject.transform.SetParent(canvasObject.transform, false);
         var image = imageObject.AddComponent<RawImage>();
