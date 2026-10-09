@@ -136,6 +136,13 @@ public static class SourceMovementSetup
         ladder.GetComponent<BoxCollider>().isTrigger = true;
         ladder.layer = 22;
 
+        // Water beside the lane: a deep pool, then a waist-deep pool ending at a ledge to climb out onto.
+        // Water is a trigger volume on the Water layer (4); the floor under it is a normal collider.
+        Solid(map, "PoolFloor", new Vector3(-900, -32, 1356), new Vector3(512, 64, 1912));
+        Water(map, "DeepWater", new Vector3(-900, 100, 800), new Vector3(512, 200, 600));
+        Water(map, "ShallowWater", new Vector3(-900, 20, 1600), new Vector3(512, 40, 600));
+        Solid(map, "PoolLedge", new Vector3(-900, 20, 2100), new Vector3(512, 40, 400));
+
         // Surf ramp: two 60 degree faces meeting at a ridge, running along Z below the end of the lane.
         Vector3 ridge = new Vector3(400, -256, 0);
         const float halfWidth = 512, thickness = 64, length = 6000, rampZ = 7300;
@@ -184,6 +191,22 @@ public static class SourceMovementSetup
         cube.transform.localScale = size * U;
         cube.isStatic = true;
         return cube;
+    }
+
+    static void Water(Transform parent, string name, Vector3 center, Vector3 size)
+    {
+        var water = Solid(parent, name, center, size);
+        water.GetComponent<BoxCollider>().isTrigger = true;
+        water.layer = 4;
+        var material = new Material(Shader.Find("Standard")) { color = new Color(0.2f, 0.45f, 0.9f, 0.4f) };
+        // Standard shader in transparent mode.
+        material.SetFloat("_Mode", 3);
+        material.SetInt("_SrcBlend", (int)UnityEngine.Rendering.BlendMode.One);
+        material.SetInt("_DstBlend", (int)UnityEngine.Rendering.BlendMode.OneMinusSrcAlpha);
+        material.SetInt("_ZWrite", 0);
+        material.EnableKeyword("_ALPHAPREMULTIPLY_ON");
+        material.renderQueue = 3000;
+        water.GetComponent<MeshRenderer>().sharedMaterial = material;
     }
 
     static TimerZone Zone(Transform parent, string name, TimerZoneType type, RunTimer timer, Vector3 center, Vector3 size)

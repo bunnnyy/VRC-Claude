@@ -34,6 +34,11 @@ The prefabs and the test map are made by **Tools > Source Movement > Create Pref
   climb speed 200 u/s. A ladder is a **trigger collider on the ladder layer** (Inspector: `Ladder Layers`,
   default layer 22) placed against the climbable face; the wall behind it is a normal collider. The test
   map has a ladder tower beside the bhop lane.
+- **Water** works like CS:S: waist deep or more you swim along your view at 200 u/s (80% of max speed),
+  no keys sinks at 48 u/s, jump swims up (~100 u/s), and pushing against a ledge while waist deep jumps you
+  out (water jump). Ankle deep is normal walking. Water is a **trigger collider on the water layer**
+  (Inspector: `Water Layers`, default Unity's Water layer 4) filling the water; the pool floor is a normal
+  collider. The test map has a deep pool and a waist-deep pool with a ledge.
 - **Teleporting**: plain `VRCPlayerApi.TeleportTo` works. A jump over 64 units resets velocity, a
   smaller one keeps it. To choose, call `sourceMovement.TeleportPlayer(position, rotation, keepVelocity)`.
   VRChat keeps the player's old velocity for a moment after `TeleportTo`, so call

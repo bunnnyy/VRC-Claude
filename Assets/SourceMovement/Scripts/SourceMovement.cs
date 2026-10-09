@@ -43,6 +43,8 @@ public class SourceMovement : UdonSharpBehaviour
     [Tooltip("Layers of ladder volumes (CS:S func_ladder): trigger colliders against the climbable face. " +
         "You pass through them, the wall behind stops you. Layer 22 is the first free user layer in VRChat.")]
     public LayerMask ladderLayers = 1 << 22;
+    [Tooltip("Layers of water volumes: trigger colliders filling the water. Layer 4 is Unity's Water layer.")]
+    public LayerMask waterLayers = 1 << 4;
 
     [Header("Controls")]
     [Tooltip("Start with Source movement on. Turn off if a SourceMovementZone switches it on.")]
@@ -64,6 +66,10 @@ public class SourceMovement : UdonSharpBehaviour
     private const float MaxClimbSpeed = 200f;     // MAX_CLIMB_SPEED
     private const float LadderJumpSpeed = 270f;   // jumping off a ladder
     private const float LadderDistance = 2f;      // how close a ladder must be to grab it
+    private const float ViewHeight = 64f;         // eye height of the standing hull
+    private const float SwimUpSpeed = 100f;       // jump in water
+    private const float SinkSpeed = 60f;          // no keys in water
+    private const float WaterJumpUp = 256f;       // climbing out of water onto a ledge
     private const int MaxBumps = 4;
     private const int MaxClipPlanes = 5;
     private const int MaxTicksPerFrame = 8;
@@ -81,6 +87,9 @@ public class SourceMovement : UdonSharpBehaviour
     private Vector3 velocity;
     private bool onGround;
     private bool onLadder;
+    private int waterLevel;        // 0 dry, 1 feet, 2 waist, 3 eyes
+    private float waterJumpTime;
+    private Vector3 waterJumpVel;
     private Vector3 ladderNormal;
     private float surfaceFriction = 1f;
     private float accumulator;
@@ -261,6 +270,7 @@ public class SourceMovement : UdonSharpBehaviour
         TraceHull(pos + Vector3.up * stepSize, pos);
         origin = trEnd;
         onLadder = false;
+        waterJumpTime = 0f;
         prevOrigin = origin;
         lastTarget = origin;
     }
@@ -339,12 +349,31 @@ public class SourceMovement : UdonSharpBehaviour
 
     private void FullWalkMove(float dt)
     {
-        // StartGravity
-        velocity.y -= gravity * 0.5f * dt;
+        // StartGravity (not when swimming)
+        if (waterLevel < 2) velocity.y -= gravity * 0.5f * dt;
         CheckVelocity();
+
+        // Climbing out of water onto a ledge.
+        if (waterJumpTime > 0f)
+        {
+            WaterJump(dt);
+            TryPlayerMove(dt);
+            return;
+        }
 
         bool jump = jumpHeld || scrollJump;
         scrollJump = false;
+        if (waterLevel >= 2)
+        {
+            if (waterLevel == 2) CheckWaterJump();
+            if (jump) CheckJumpButton(dt);
+            else oldJump = false;
+            WaterMove(dt);
+            CategorizePosition();
+            if (onGround) velocity.y = 0f;
+            return;
+        }
+
         if (jump)
         {
             if (autoBhop) oldJump = false;
@@ -369,12 +398,20 @@ public class SourceMovement : UdonSharpBehaviour
         CheckVelocity();
 
         // FinishGravity
-        if (!onGround) velocity.y -= gravity * 0.5f * dt;
+        if (!onGround && waterLevel < 2) velocity.y -= gravity * 0.5f * dt;
         if (onGround) velocity.y = 0f;
     }
 
     private void CheckJumpButton(float dt)
     {
+        if (waterJumpTime > 0f) return;
+        if (waterLevel >= 2)
+        {
+            // Swimming, not jumping.
+            onGround = false;
+            velocity.y = SwimUpSpeed;
+            return;
+        }
         if (!onGround)
         {
             oldJump = true;
@@ -597,6 +634,7 @@ public class SourceMovement : UdonSharpBehaviour
 
     private void CategorizePosition()
     {
+        CheckWater();
         if (velocity.y > NonJumpVelocity)
         {
             onGround = false;
@@ -615,6 +653,111 @@ public class SourceMovement : UdonSharpBehaviour
             velocity.y = 0f;
             surfaceFriction = 1f;
         }
+    }
+
+    // ---------------------------------------------------------------- water
+
+    /// <summary>How deep we are: 1 feet, 2 waist, 3 eyes. Returns true when swimming (waist deep or more).</summary>
+    private bool CheckWater()
+    {
+        waterLevel = 0;
+        if (waterLayers.value != 0 && InWater(origin + Vector3.up))
+        {
+            waterLevel = 1;
+            if (InWater(origin + Vector3.up * (hullHeight * 0.5f)))
+            {
+                waterLevel = 2;
+                if (InWater(origin + Vector3.up * ViewHeight)) waterLevel = 3;
+            }
+        }
+        return waterLevel > 1;
+    }
+
+    private bool InWater(Vector3 point)
+    {
+        return Physics.CheckBox(point * metersPerUnit, Vector3.one * 0.001f, Quaternion.identity, waterLayers,
+            QueryTriggerInteraction.Collide);
+    }
+
+    /// <summary>Source's WaterMove: swim along the view at 80% of max speed, sink slowly with no keys.</summary>
+    private void WaterMove(float dt)
+    {
+        Vector3 wishVel = viewForward * (moveForward * ForwardSpeed) + wishRight * (moveRight * ForwardSpeed);
+        if (jumpHeld) wishVel.y += maxSpeed;
+        else if (moveForward == 0f && moveRight == 0f) wishVel.y -= SinkSpeed;
+        else wishVel.y += Mathf.Clamp(moveForward * ForwardSpeed * viewForward.y * 2f, 0f, maxSpeed);
+
+        float wishSpeed = wishVel.magnitude;
+        Vector3 wishDir = wishSpeed > 0f ? wishVel / wishSpeed : Vector3.zero;
+        if (wishSpeed > maxSpeed) wishSpeed = maxSpeed;
+        wishSpeed *= 0.8f;
+
+        // Water friction.
+        float speed = velocity.magnitude;
+        float newSpeed = 0f;
+        if (speed > 0f)
+        {
+            newSpeed = speed - dt * speed * friction * surfaceFriction;
+            if (newSpeed < 0.1f) newSpeed = 0f;
+            velocity *= newSpeed / speed;
+        }
+
+        // Water acceleration.
+        if (wishSpeed >= 0.1f)
+        {
+            float addSpeed = wishSpeed - newSpeed;
+            if (addSpeed > 0f)
+            {
+                float accelSpeed = accelerate * wishSpeed * dt * surfaceFriction;
+                if (accelSpeed > addSpeed) accelSpeed = addSpeed;
+                velocity += wishDir * accelSpeed;
+            }
+        }
+
+        // Move, pressing down from a step above so we swim up slopes and stairs.
+        Vector3 dest = origin + velocity * dt;
+        TraceHull(origin, dest);
+        if (trFraction == 1f)
+        {
+            TraceHull(dest + Vector3.up * (stepSize + 1f), dest);
+            origin = trEnd;
+            return;
+        }
+        if (!onGround) TryPlayerMove(dt);
+        else StepMove(dt);
+    }
+
+    /// <summary>Waist deep against a wall with a ledge we can stand on just above: jump out.</summary>
+    private void CheckWaterJump()
+    {
+        if (waterJumpTime > 0f || velocity.y < -180f) return;
+        Vector3 flatVel = new Vector3(velocity.x, 0f, velocity.z);
+        if (flatVel.sqrMagnitude > 0f && Vector3.Dot(flatVel, wishForward) < 0f) return; // backing up
+
+        Vector3 start = origin + Vector3.up * (hullHeight * 0.5f);
+        TraceHull(start, start + wishForward * 24f);
+        if (trFraction == 1f) return; // nothing in front at the waist
+        Vector3 jumpVel = -trNormal * 50f;
+
+        start = origin + Vector3.up * (ViewHeight + 8f);
+        TraceHull(start, start + wishForward * 24f);
+        if (trFraction < 1f) return; // blocked at eye height too
+        TraceHull(trEnd, trEnd - Vector3.up * 1024f);
+        if (trFraction < 1f && trNormal.y >= WalkableNormal)
+        {
+            velocity.y = WaterJumpUp;
+            oldJump = true;
+            waterJumpTime = 2f;
+            waterJumpVel = jumpVel;
+        }
+    }
+
+    private void WaterJump(float dt)
+    {
+        waterJumpTime -= dt;
+        if (waterJumpTime <= 0f || waterLevel == 0) waterJumpTime = 0f;
+        velocity.x = waterJumpVel.x;
+        velocity.z = waterJumpVel.z;
     }
 
     private void CheckVelocity()
