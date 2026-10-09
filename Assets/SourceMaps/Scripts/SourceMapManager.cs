@@ -15,7 +15,9 @@ public enum SourceMapMode
 /// sent to the winner. In a map: rock the vote (rtv) and a time limit start a new vote (back in the lobby, with
 /// "extend" offered after a time limit). The instance owner (or the master when the instance has no owner) can lock
 /// the vote, start it, force a map, extend or send everyone to the lobby.
-/// The object's owner keeps the votes; players send them with network events. Independent of SourceMovement:
+/// The object's owner counts the votes; players send them with network events. Everything the owner needs is synced
+/// (who voted for what, who rocked the vote, the timers), so when the owner leaves the next one carries on.
+/// Independent of SourceMovement:
 /// travel is a plain TeleportTo (SourceMovement resets its velocity on a jump that far).
 /// </summary>
 [UdonBehaviourSyncMode(BehaviourSyncMode.Manual)]
@@ -55,13 +57,11 @@ public class SourceMapManager : UdonSharpBehaviour
     [UdonSynced] public bool locked;            // admin stopped the timer; only Start ends the vote
     [UdonSynced] public int mapEnd;             // server time (ms) the map ends, 0 = no time limit
     [UdonSynced] public int rtvCount;
-
-    // Owner only: who voted for what / who rocked the vote
+    // Who voted for what and who rocked the vote (player ids, 0 = free), synced so a new owner has them too.
     private const int MaxPlayers = 100;
-    private int[] voterIds = new int[MaxPlayers];
-    private int[] voterSlots = new int[MaxPlayers];
-    private int voterCount;
-    private int[] rtvIds = new int[MaxPlayers];
+    [UdonSynced] private int[] voterIds = new int[MaxPlayers];
+    [UdonSynced] private int[] voterSlots = new int[MaxPlayers];
+    [UdonSynced] private int[] rtvIds = new int[MaxPlayers];
 
     // Local
     [HideInInspector] public int localMap = -1;   // map the local player is in, -1 = lobby
@@ -127,9 +127,10 @@ public class SourceMapManager : UdonSharpBehaviour
         if (state != StateLobby || mode != SourceMapMode.Vote || slot < 0 || slot >= votes.Length) return;
         if (slot == candidates.Length && !extendOffered) return;
         int id = NetworkCalling.CallingPlayer.playerId;
-        int i = FindVoter(id);
-        if (i < 0 && voterCount < MaxPlayers) { i = voterCount++; voterIds[i] = id; }
+        int i = System.Array.IndexOf(voterIds, id);
+        if (i < 0) i = System.Array.IndexOf(voterIds, 0);
         if (i < 0) return;
+        voterIds[i] = id;
         voterSlots[i] = slot;
         if (voteEnd == 0 && !locked) voteEnd = Now() + Mathf.RoundToInt(voteSeconds * 1000f);
         CountVotes();
@@ -156,7 +157,7 @@ public class SourceMapManager : UdonSharpBehaviour
     {
         if (!IsAdmin(NetworkCalling.CallingPlayer) || state != StateLobby) return;
         locked = !locked;
-        voteEnd = locked || voterCount == 0 ? 0 : Now() + Mathf.RoundToInt(voteSeconds * 1000f);
+        voteEnd = locked || !AnyVotes() ? 0 : Now() + Mathf.RoundToInt(voteSeconds * 1000f);
         Changed();
     }
 
@@ -191,19 +192,23 @@ public class SourceMapManager : UdonSharpBehaviour
 
     public override void OnPlayerLeft(VRCPlayerApi player)
     {
-        if (!Networking.IsOwner(gameObject) || !Utilities.IsValid(player)) return;
-        int i = FindVoter(player.playerId);
-        if (i >= 0)
-        {
-            voterCount--;
-            voterIds[i] = voterIds[voterCount];
-            voterSlots[i] = voterSlots[voterCount];
-            CountVotes();
-        }
-        int r = System.Array.IndexOf(rtvIds, player.playerId);
-        if (r >= 0) rtvIds[r] = 0;
+        // Their vote and rtv are dropped by the recount (it skips players who left), whichever comes first:
+        // this event or the ownership transfer when the leaving player was the owner. A frame later, because
+        // during this event the leaving player still counts as in the instance.
+        SendCustomEventDelayedFrames(nameof(_Recount), 1);
+    }
+
+    public override void OnOwnershipTransferred(VRCPlayerApi player)
+    {
+        SendCustomEventDelayedFrames(nameof(_Recount), 1);
+    }
+
+    /// <summary>Owner: recount votes and rtv without players who left, start rtv if enough, sync.</summary>
+    public void _Recount()
+    {
+        if (!Networking.IsOwner(gameObject)) return;
+        CountVotes();
         CheckRtv();
-        Changed();
     }
 
     /// <summary>New vote in the lobby: everyone goes there. offerExtend adds "extend current map".</summary>
@@ -214,7 +219,7 @@ public class SourceMapManager : UdonSharpBehaviour
         if (!extendOffered) currentMap = -1;
         candidates = PickCandidates();
         votes = new int[candidates.Length + 1];
-        voterCount = 0;
+        ClearVotes();
         locked = false;
         voteEnd = startTimer ? Now() + Mathf.RoundToInt(voteSeconds * 1000f) : 0;
         mapEnd = 0;
@@ -240,7 +245,7 @@ public class SourceMapManager : UdonSharpBehaviour
         voteEnd = 0;
         locked = false;
         mapEnd = durationMs > 0 ? Now() + durationMs : 0;
-        voterCount = 0;
+        ClearVotes();
         votes = new int[candidates.Length + 1];
         ClearRtv();
         round++;
@@ -285,29 +290,43 @@ public class SourceMapManager : UdonSharpBehaviour
     private void CountVotes()
     {
         for (int i = 0; i < votes.Length; i++) votes[i] = 0;
-        for (int i = 0; i < voterCount; i++)
+        for (int i = 0; i < MaxPlayers; i++)
+        {
+            if (voterIds[i] == 0) continue;
+            if (!Utilities.IsValid(VRCPlayerApi.GetPlayerById(voterIds[i]))) { voterIds[i] = 0; continue; } // left
             if (voterSlots[i] >= 0 && voterSlots[i] < votes.Length) votes[voterSlots[i]]++;
+        }
+    }
+
+    private bool AnyVotes()
+    {
+        for (int i = 0; i < votes.Length; i++) if (votes[i] > 0) return true;
+        return false;
     }
 
     private void CheckRtv()
     {
         int count = 0;
-        for (int i = 0; i < MaxPlayers; i++) if (rtvIds[i] != 0) count++;
+        for (int i = 0; i < MaxPlayers; i++)
+        {
+            if (rtvIds[i] == 0) continue;
+            if (!Utilities.IsValid(VRCPlayerApi.GetPlayerById(rtvIds[i]))) { rtvIds[i] = 0; continue; } // left
+            count++;
+        }
         rtvCount = count;
         if (state == StatePlaying && count > 0 && count >= RtvNeeded()) NewVote(false, true);
         else Changed();
+    }
+
+    private void ClearVotes()
+    {
+        for (int i = 0; i < MaxPlayers; i++) voterIds[i] = 0;
     }
 
     private void ClearRtv()
     {
         for (int i = 0; i < MaxPlayers; i++) rtvIds[i] = 0;
         rtvCount = 0;
-    }
-
-    private int FindVoter(int id)
-    {
-        for (int i = 0; i < voterCount; i++) if (voterIds[i] == id) return i;
-        return -1;
     }
 
     private void Changed()
@@ -343,6 +362,7 @@ public class SourceMapManager : UdonSharpBehaviour
     public void _Tick()
     {
         SendCustomEventDelayedSeconds(nameof(_Tick), 0.5f);
+        if (Networking.IsOwner(gameObject) && round == 0) NewVote(false, false); // first owner left before starting
         if (Networking.IsOwner(gameObject) && mode == SourceMapMode.Vote)
         {
             int now = Now();

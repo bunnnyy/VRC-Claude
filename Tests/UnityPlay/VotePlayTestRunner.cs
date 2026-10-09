@@ -130,6 +130,8 @@ public class VotePlayTestRunner : MonoBehaviour
         }
         Check(first > 0 && second > 0 && other == 0, $"ties: a 2-2 tie goes to either map at random ({first}/{second}/{other})");
 
+        yield return OwnerChanges();
+
         // Choose mode: each player goes where they like, nothing synced changes.
         Press("forcelobby", -1);
         yield return Seconds(0.3f);
@@ -141,6 +143,97 @@ public class VotePlayTestRunner : MonoBehaviour
         Check(Near(MapSpawn(cands[3])) && (int)manager.GetProgramVariable("round") == round && State() == 0,
             "choose: pressing a map takes only this player there");
         Finish();
+    }
+
+    /// <summary>
+    /// Instance owner and object owner changes, with ClientSim's simulated remote players (one client: the new
+    /// owner shares memory with the old one, so this checks the logic, not two separate clients).
+    /// </summary>
+    IEnumerator OwnerChanges()
+    {
+        var board = GameObject.Find("VoteBoard").transform;
+        var ownerControls = board.Find("OwnerControls").gameObject;
+        Press("forcelobby", -1);
+        yield return Seconds(0.3f);
+
+        // Someone else is the instance owner: we're master but not admin.
+        ClientSimMain.SpawnRemotePlayer("Owner");
+        yield return Seconds(0.3f);
+        VRCPlayerApi remoteOwner = Remote("Owner");
+        player.GetClientSimPlayer().isInstanceOwner = false;
+        remoteOwner.GetClientSimPlayer().isInstanceOwner = true;
+        yield return Seconds(0.7f);
+        Check(player.isMaster && !ownerControls.activeSelf, "instance owner elsewhere: the master doesn't get owner controls");
+        int round = (int)manager.GetProgramVariable("round");
+        Press("lock", -1);
+        yield return Seconds(0.3f);
+        Check(!(bool)manager.GetProgramVariable("locked"), "instance owner elsewhere: owner actions from others are refused");
+
+        // The instance owner leaves: the master takes over the owner controls.
+        ClientSimMain.RemovePlayer(remoteOwner);
+        yield return Seconds(0.7f);
+        Check(ownerControls.activeSelf, "instance owner left: the master gets the owner controls");
+        Press("lock", -1);
+        yield return Seconds(0.3f);
+        Check((bool)manager.GetProgramVariable("locked"), "instance owner left: the master's owner actions work");
+        Press("lock", -1); // unlock again
+
+        // The player holding the votes (object owner) leaves mid-vote: votes and timer carry over to the next owner.
+        ClientSimMain.SpawnRemotePlayer("Holder");
+        yield return Seconds(0.3f);
+        VRCPlayerApi holder = Remote("Holder");
+        manager.SetProgramVariable("voteSeconds", 3f);
+        int[] cands = Candidates();
+        Press("map", 0);
+        yield return Seconds(0.2f);
+        Networking.SetOwner(holder, manager.gameObject);
+        yield return Seconds(0.2f);
+        Check(!Networking.IsOwner(player, manager.gameObject), "owner leaves: the remote player now holds the votes");
+        ClientSimMain.RemovePlayer(holder);
+        yield return Seconds(0.3f);
+        int[] v = (int[])manager.GetProgramVariable("votes");
+        Check(Networking.IsOwner(player, manager.gameObject) && v[0] == 1 && (int)manager.GetProgramVariable("voteEnd") != 0,
+            "owner leaves: the master takes over with the vote and the running timer");
+        yield return Seconds(3.5f);
+        Check(State() == 1 && (int)manager.GetProgramVariable("currentMap") == cands[0], "owner leaves: the vote still ends on time with the right map");
+
+        // A player who voted leaves: their vote is dropped.
+        Press("forcelobby", -1);
+        yield return Seconds(0.3f);
+        ClientSimMain.SpawnRemotePlayer("Voter");
+        yield return Seconds(0.3f);
+        VRCPlayerApi voter = Remote("Voter");
+        var ids = (int[])manager.GetProgramVariable("voterIds");
+        var slots = (int[])manager.GetProgramVariable("voterSlots");
+        ids[0] = voter.playerId; slots[0] = 1; // as if they voted for slot 2
+        manager.SetProgramVariable("voteSeconds", 600f);
+        Press("map", 0);
+        yield return Seconds(0.2f);
+        v = (int[])manager.GetProgramVariable("votes");
+        Check(v[0] == 1 && v[1] == 1, "voter leaves: both votes counted before");
+        ClientSimMain.RemovePlayer(voter);
+        yield return Seconds(0.3f);
+        v = (int[])manager.GetProgramVariable("votes");
+        Check(v[0] == 1 && v[1] == 0, $"voter leaves: their vote is dropped ({v[0]}/{v[1]})");
+
+        // Rock the vote with 2 players needs 2; when the other one leaves, 1 of 1 is enough.
+        Press("start", -1);
+        yield return Seconds(0.3f);
+        ClientSimMain.SpawnRemotePlayer("Other");
+        yield return Seconds(0.3f);
+        Press("rtv", -1);
+        yield return Seconds(0.3f);
+        Check(State() == 1 && (int)manager.GetProgramVariable("rtvCount") == 1, "rtv: 1 of 2 players isn't enough (needs 60%)");
+        ClientSimMain.RemovePlayer(Remote("Other"));
+        yield return Seconds(0.3f);
+        Check(State() == 0, "rtv: when the other player leaves, 1 of 1 rocks the vote");
+        player.GetClientSimPlayer().isInstanceOwner = true;
+    }
+
+    VRCPlayerApi Remote(string name)
+    {
+        foreach (var p in VRCPlayerApi.AllPlayers) if (!p.isLocal && p.displayName.Contains(name)) return p;
+        return null;
     }
 
     void Press(string action, int slot)
@@ -183,7 +276,7 @@ public class VotePlayTestRunner : MonoBehaviour
     /// <summary>Picture of the vote board for the guide (docs/images).</summary>
     IEnumerator Shot(string name)
     {
-        yield return new WaitForEndOfFrame();
+        yield return null; // (WaitForEndOfFrame never comes in batch mode)
         var board = GameObject.Find("VoteBoard").transform;
         var cam = new GameObject("ShotCamera").AddComponent<Camera>();
         cam.transform.SetPositionAndRotation(board.position + new Vector3(0, 1.9f, -5.2f), Quaternion.Euler(0, 0, 0));
