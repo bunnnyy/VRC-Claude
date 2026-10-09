@@ -215,9 +215,10 @@ public class SourceMapManager : UdonSharpBehaviour
     private void NewVote(bool offerExtend, bool startTimer)
     {
         state = StateLobby;
+        int played = currentMap;
         extendOffered = offerExtend && currentMap >= 0;
         if (!extendOffered) currentMap = -1;
-        candidates = PickCandidates();
+        candidates = PickCandidates(played);
         votes = new int[candidates.Length + 1];
         ClearVotes();
         locked = false;
@@ -268,11 +269,11 @@ public class SourceMapManager : UdonSharpBehaviour
         return 0;
     }
 
-    private int[] PickCandidates()
+    /// <summary>Random maps for the vote; like CS:S, not the map just played (unless the pool is too small).</summary>
+    private int[] PickCandidates(int played)
     {
         int pool = maps == null ? 0 : maps.Length;
         int n = Mathf.Min(choices, pool);
-        if (pool > n && currentMap >= 0) n = Mathf.Min(n, pool - 1); // like CS:S: don't offer the map just played
         var order = new int[pool];
         for (int i = 0; i < pool; i++) order[i] = i;
         for (int i = pool - 1; i > 0; i--)
@@ -283,7 +284,7 @@ public class SourceMapManager : UdonSharpBehaviour
         var result = new int[n];
         int k = 0;
         for (int i = 0; i < pool && k < n; i++)
-            if (order[i] != currentMap || pool <= n) result[k++] = order[i];
+            if (order[i] != played || pool <= n) result[k++] = order[i];
         return result;
     }
 
