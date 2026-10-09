@@ -56,9 +56,37 @@ if [ "${1:-}" = "map" ]; then
   exit $status
 fi
 
+# TextMeshPro's Essential Resources (default font). The editor imports them asynchronously, after a batch mode
+# run has already quit, so unpack the .unitypackage (a tar of <guid>/pathname, asset, asset.meta) directly.
+tmp_essentials() {
+  [ -d "$proj/Assets/TextMesh Pro" ] && return 0
+  local pkg; pkg=$(ls "$proj"/Library/PackageCache/com.unity.textmeshpro@*/"Package Resources/TMP Essential Resources.unitypackage" | head -1)
+  python3 - "$pkg" "$proj" <<'PY'
+import sys, tarfile, os
+pkg, proj = sys.argv[1], sys.argv[2]
+t = tarfile.open(pkg)
+names = {}
+for m in t.getmembers():
+    guid, _, kind = m.name.lstrip('./').partition('/')
+    if kind: names.setdefault(guid, {})[kind] = m
+for guid, parts in names.items():
+    if 'pathname' not in parts: continue
+    path = t.extractfile(parts['pathname']).read().decode().splitlines()[0]
+    dest = os.path.join(proj, path)
+    if 'asset' in parts:
+        os.makedirs(os.path.dirname(dest), exist_ok=True)
+        open(dest, 'wb').write(t.extractfile(parts['asset']).read())
+    else:
+        os.makedirs(dest, exist_ok=True)
+    if 'asset.meta' in parts:
+        open(dest + '.meta', 'wb').write(t.extractfile(parts['asset.meta']).read())
+PY
+}
+
 # Vote mode: run.sh vote builds the SourceMaps test scene (6 box maps + lobby) and play-tests the map rotation.
 if [ "${1:-}" = "vote" ]; then
   copy_assets
+  tmp_essentials
   run program_assets -quit -executeMethod SourceMapImporter.EnsureProgramAssets
   status=0
   if run build_vote -quit -executeMethod SourceMapsSetup.BuildTestScene && run vote -executeMethod PlayTestBootstrap.RunVote; then r="ALL PASSED"; else r="FAILED"; status=1; fi

@@ -36,6 +36,8 @@ players vote between imported CS:S bhop maps. Kept up to date as features are fi
    in Explorer while Unity is closed).
 3. Wait for Unity to compile. If it shows UdonSharp errors, use **VRChat SDK > Udon Sharp > Compile All UdonSharp
    Programs** once.
+4. **Window > TextMeshPro > Import TMP Essential Resources** (or click **Import TMP Essentials** when Unity asks).
+   Without it every text on the boards is invisible. The lobby tool also starts this import if it's missing.
 
 The three parts are independent: SourceMaps works without the other two, but you want all three for a bhop world.
 
