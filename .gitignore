@@ -23,3 +23,4 @@ Tests/UnityPlay/**/*.meta
 Tests/Bsp/.cache/
 Tests/Bsp/bin/
 Tests/Bsp/obj/
+Tests/Converters/.cache/
