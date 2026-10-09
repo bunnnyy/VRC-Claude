@@ -47,7 +47,9 @@ run() { # project, log, method
 echo "== DeadZoneLuna/uSource"
 project uSource ImportWithDeadZoneLuna.cs
 cp -r "$cache/src/uSource" "$cache/uSource/Assets/uSource"
-rm -rf "$cache/uSource/Assets/uSource/.git" "$cache/uSource/Assets/uSource/Examples"
+rm -rf "$cache/uSource/Assets/uSource/.git"
+# Its asmdef lacks "allow unsafe code", which its MDL reader needs.
+sed -i 's|"references": \[\],|"references": [], "allowUnsafeCode": true,|' "$cache/uSource/Assets/uSource/uSource.asmdef"
 run uSource "uSource_$name" ImportWithDeadZoneLuna.Run
 
 echo "== Shane-SDK/USource"
