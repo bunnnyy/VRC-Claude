@@ -347,6 +347,29 @@ namespace SourceMaps.Bsp
             }
         }
 
+        /// <summary>One output ("OnStartTouch" -> target, input, parameter, delay, times).</summary>
+        public struct Output { public string Event, Target, Input, Parameter; public float Delay; public int Times; }
+
+        /// <summary>
+        /// Outputs: keys starting with "On", values "target,input,parameter,delay,times" separated by ESC (newer
+        /// compilers) or commas.
+        /// </summary>
+        public List<Output> Outputs()
+        {
+            var list = new List<Output>();
+            foreach (var kv in Pairs)
+            {
+                if (!kv.Key.StartsWith("On", StringComparison.OrdinalIgnoreCase)) continue;
+                var parts = kv.Value.Split(kv.Value.IndexOf('\u001b') >= 0 ? '\u001b' : ',');
+                if (parts.Length < 2) continue;
+                var o = new Output { Event = kv.Key, Target = parts[0], Input = parts[1], Parameter = parts.Length > 2 ? parts[2] : "", Times = -1 };
+                if (parts.Length > 3) float.TryParse(parts[3], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out o.Delay);
+                if (parts.Length > 4) int.TryParse(parts[4], out o.Times);
+                list.Add(o);
+            }
+            return list;
+        }
+
         public static List<Entity> ParseAll(string text)
         {
             var list = new List<Entity>();

@@ -130,22 +130,51 @@ public static class SourceMapImporter
             Transform target;
             if (!byName.TryGetValue(e.Get("target"), out target)) { noTarget++; continue; }
             var go = markers[i];
-            foreach (int brush in bsp.ModelBrushes(e.BrushModel))
-            {
-                var mesh = new MeshData();
-                BspGeometry.AddBrush(mesh, bsp, brush, scale, TriggerRaiseTop);
-                if (mesh.Triangles.Count == 0) continue;
-                var col = go.AddComponent<MeshCollider>();
-                col.sharedMesh = ToMesh(mesh, go.name + " brush " + brush, meshes);
-                col.convex = true; // Unity triggers must be convex; each brush is
-                col.isTrigger = true;
-                col.enabled = e.Get("StartDisabled") != "1";
-            }
+            AddTriggerColliders(go, bsp, e, scale, meshes);
             var teleport = go.AddUdonSharpComponent<SourceMapTeleport>();
             teleport.destination = target;
             UdonSharpEditorUtility.CopyProxyToUdon(teleport);
             teleports++;
         }
+
+        // Pushes and boosters for SourceMovement (if it's in the project; looked up by name so SourceMaps compiles
+        // without it). Filtered ones stay markers, like filtered teleports.
+        var pushType = FindType("SourcePushTrigger");
+        var boostType = FindType("SourceBoostTrigger");
+        int pushes = 0, boosts = 0, filteredMechanics = 0;
+        for (int i = 0; i < bsp.Entities.Count; i++)
+        {
+            var e = bsp.Entities[i];
+            if (e.BrushModel <= 0) continue;
+            bool push = e.ClassName == "trigger_push";
+            var boostList = push ? new List<BspMechanics.Boost>() : BspMechanics.Boosts(e);
+            if (!push && boostList.Count == 0) continue;
+            if (e.Get("filtername") != "") { filteredMechanics++; continue; }
+            if ((push && pushType == null) || (!push && boostType == null)) continue;
+            var go = markers[i];
+            AddTriggerColliders(go, bsp, e, scale, meshes);
+            if (push)
+            {
+                var c = go.AddUdonSharpComponent(pushType);
+                pushType.GetField("push").SetValue(c, ToUnity(BspGeometry.DirectionToUnity(BspMechanics.Push(e))));
+                UdonSharpEditorUtility.CopyProxyToUdon(c);
+                pushes++;
+            }
+            foreach (var b in boostList)
+            {
+                var c = go.AddUdonSharpComponent(boostType);
+                boostType.GetField("addVelocity").SetValue(c, ToUnity(BspGeometry.DirectionToUnity(b.Velocity)));
+                boostType.GetField("setGravity").SetValue(c, b.SetGravity);
+                boostType.GetField("gravityScale").SetValue(c, b.Gravity);
+                boostType.GetField("onLeave").SetValue(c, b.OnLeave);
+                UdonSharpEditorUtility.CopyProxyToUdon(c);
+                boosts++;
+            }
+        }
+
+        // Water and ladder volumes as trigger boxes (SourceMovement's water layer 4 and ladder layer 22).
+        int water = AddVolumes(root.transform, "Water", bsp, BspFile.ContentsWater, 4, scale);
+        int ladders = AddVolumes(root.transform, "Ladders", bsp, BspFile.ContentsLadder, 22, scale);
 
         // Save all meshes in one asset file.
         AssetDatabase.CreateAsset(meshes[0], meshAssetPath);
@@ -154,8 +183,67 @@ public static class SourceMapImporter
 
         Debug.Log($"[Source Maps] {mapName}: {worldBrushes} solid brushes + {bsp.DispInfos.Length} displacements " +
                   $"({worldMesh.Triangles.Count / 3} triangles), {bsp.Entities.Count} entity markers, {teleports} working teleports, " +
-                  $"{filtered} filtered teleports left as markers, {noTarget} teleports without a destination");
+                  $"{filtered} filtered teleports left as markers, {noTarget} teleports without a destination, " +
+                  $"{pushes} pushes, {boosts} boosters, {filteredMechanics} filtered pushes/boosters left as markers, " +
+                  $"{water} water volumes, {ladders} ladders");
         return root;
+    }
+
+    /// <summary>One convex trigger collider per brush of the entity's brush model, on the marker itself.</summary>
+    static void AddTriggerColliders(GameObject go, BspFile bsp, Entity e, float scale, List<Mesh> meshes)
+    {
+        if (go.GetComponent<MeshCollider>() != null) return; // already done for another component
+        foreach (int brush in bsp.ModelBrushes(e.BrushModel))
+        {
+            var mesh = new MeshData();
+            BspGeometry.AddBrush(mesh, bsp, brush, scale, TriggerRaiseTop);
+            if (mesh.Triangles.Count == 0) continue;
+            var col = go.AddComponent<MeshCollider>();
+            col.sharedMesh = ToMesh(mesh, go.name + " brush " + brush, meshes);
+            col.convex = true; // Unity triggers must be convex; each brush is
+            col.isTrigger = true;
+            col.enabled = e.Get("StartDisabled") != "1";
+        }
+    }
+
+    /// <summary>A trigger box (on `layer`) per world brush with these contents, under a new child object.</summary>
+    static int AddVolumes(Transform root, string name, BspFile bsp, int contents, int layer, float scale)
+    {
+        GameObject parent = null;
+        int n = 0;
+        foreach (int brush in bsp.ModelBrushes(0))
+        {
+            if ((bsp.Brushes[brush].Contents & contents) == 0) continue;
+            var polys = BspGeometry.BrushPolygons(bsp, brush);
+            if (polys.Count == 0) continue;
+            var bounds = new Bounds(ToUnity(BspGeometry.ToUnity(polys[0][0], scale)), Vector3.zero);
+            foreach (var poly in polys)
+                foreach (var v in poly) bounds.Encapsulate(ToUnity(BspGeometry.ToUnity(v, scale)));
+            if (parent == null)
+            {
+                parent = new GameObject(name);
+                parent.transform.SetParent(root, false);
+            }
+            var box = new GameObject(name + " " + brush);
+            box.transform.SetParent(parent.transform, false);
+            box.layer = layer;
+            var col = box.AddComponent<BoxCollider>();
+            col.isTrigger = true;
+            col.center = bounds.center;
+            col.size = bounds.size;
+            n++;
+        }
+        return n;
+    }
+
+    static System.Type FindType(string name)
+    {
+        foreach (var a in System.AppDomain.CurrentDomain.GetAssemblies())
+        {
+            var t = a.GetType(name);
+            if (t != null) return t;
+        }
+        return null;
     }
 
     static bool IsSolid(Entity e)

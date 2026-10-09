@@ -32,6 +32,13 @@ if [ ! -d "$proj/Assets" ]; then
   run open -quit || true # a brand-new project hangs if the first launch also runs a method
 fi
 
+# The VRChat SDK adds these defines when an interactive editor opens (EnvConfig), not in batch mode; ClientSim's
+# player persistence (PlayerData) only works with VRC_ENABLE_PLAYER_PERSISTENCE.
+if ! grep -q "VRC_ENABLE_PLAYER_PERSISTENCE" "$proj/ProjectSettings/ProjectSettings.asset"; then
+  # Only the Standalone line inside scriptingDefineSymbols (other settings have Standalone lines too).
+  sed -i '/^  scriptingDefineSymbols:/,/^  [a-zA-Z]/ s|^    Standalone: \(.*\)$|    Standalone: \1;VRC_SDK_VRCSDK3;VRC_ENABLE_PLAYER_PERSISTENCE|' "$proj/ProjectSettings/ProjectSettings.asset"
+fi
+
 # The project gets a copy of the assets, so Unity never rewrites the committed files.
 copy_assets() {
   for d in SourceMovement SourceTimer SourceMaps; do

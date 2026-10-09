@@ -242,15 +242,21 @@ public class VotePlayTestRunner : MonoBehaviour
         int before = (int)legit.GetProgramVariable("count");
         player.TeleportTo(start.position, Quaternion.identity);
         yield return Seconds(0.5f);
-        player.TeleportTo(start.position + new Vector3(0, 0, 4f), Quaternion.identity); // leave the start zone
-        yield return Seconds(1.5f);
+        var timer = Loaded2(FindUdon("RunTimer"));
+        Log($"   {courseName}: in start zone, player {player.GetPosition():F1} (zone {start.position:F1}), timer {(timer != null ? "running " + timer.GetProgramVariable("running") : "missing")}");
+        // Leave the start zone upwards (8 m up, so it can't fall back in first) and go to the end before landing.
+        player.TeleportTo(start.position + new Vector3(0, 8f, 0), Quaternion.identity);
+        yield return Seconds(0.25f);
+        Log($"   {courseName}: left start, player {player.GetPosition():F1}, timer running {timer?.GetProgramVariable("running")}");
         player.TeleportTo(end.position, Quaternion.identity);
         yield return Seconds(0.5f);
+        Log($"   {courseName}: in end zone, player {player.GetPosition():F1} (zone {end.position:F1}), last time {timer?.GetProgramVariable("lastTime")}");
         int after = (int)legit.GetProgramVariable("count");
         float saved;
         bool hasSaved = VRC.SDK3.Persistence.PlayerData.TryGetFloat(player, key + "_legit", out saved);
         Check(after == before + 1, $"{courseName}: the run is on the course's legit board ({before} -> {after})");
-        Check(hasSaved && saved > 1f, $"{courseName}: best time saved with Persistence ({(hasSaved ? saved.ToString("F2") + " s" : "nothing")})");
+        float last = (float)Loaded2(FindUdon("RunTimer")).GetProgramVariable("lastTime");
+        Check(hasSaved && Mathf.Abs(saved - last) < 0.001f, $"{courseName}: best time saved with Persistence ({(hasSaved ? saved.ToString("F2") + " s" : "nothing")})");
         if (movement != null) movement.SetProgramVariable("autoBhop", true);
     }
 
@@ -323,6 +329,12 @@ public class VotePlayTestRunner : MonoBehaviour
         foreach (var udon in FindObjectsOfType<UdonBehaviour>())
             if (udon.gameObject.name == objectName) return udon;
         return null;
+    }
+
+    static UdonBehaviour Loaded2(UdonBehaviour udon)
+    {
+        try { return udon != null && udon.GetProgramVariable("running") != null ? udon : null; }
+        catch (System.NullReferenceException) { return null; }
     }
 
     static UdonBehaviour Loaded(UdonBehaviour udon)
