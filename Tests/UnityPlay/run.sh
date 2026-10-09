@@ -31,12 +31,28 @@ fi
 
 # The project gets a copy of the assets, so Unity never rewrites the committed files.
 copy_assets() {
-  for d in SourceMovement SourceTimer; do
+  for d in SourceMovement SourceTimer SourceMaps; do
     rm -rf "$proj/Assets/$d"
     cp -r "$repo/Assets/$d" "$proj/Assets/$d"
-    cp "$repo/Assets/$d.meta" "$proj/Assets/"
+    if [ -f "$repo/Assets/$d.meta" ]; then cp "$repo/Assets/$d.meta" "$proj/Assets/"; fi
   done
 }
+
+# Map mode: run.sh map a.bsp [b.bsp ...] imports each map and play-tests it at 90 fps.
+if [ "${1:-}" = "map" ]; then
+  shift
+  copy_assets
+  status=0
+  for bsp in "$@"; do
+    name=$(basename "$bsp" .bsp)
+    if run "import_$name" -quit -executeMethod PlayTestBootstrap.ImportMap -bsp "$(realpath "$bsp")" &&
+       run "map_$name" -executeMethod PlayTestBootstrap.RunMap -smFrameRate 90; then r="ALL PASSED"; else r="FAILED"; status=1; fi
+    echo "== $name: $r"
+    grep -h "\[Source Maps\]" "$logs/import_$name.log" | head -1 | sed 's/^/  /'
+    grep -ho "\[SMTEST\] .*" "$logs/map_$name.log" 2>/dev/null | grep -vE "^\[SMTEST\] $|ALL PASSED|FAILED$" | sed 's/^\[SMTEST\] /  /' | sort -u
+  done
+  exit $status
+fi
 
 echo "Building prefabs and test map"
 copy_assets

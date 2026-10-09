@@ -18,3 +18,8 @@ Tests/UdonCompile/.cache/
 # Unity play test project and Unity-generated metas for the test runner
 Tests/UnityPlay/.cache/
 Tests/UnityPlay/**/*.meta
+
+# BSP test maps and build output
+Tests/Bsp/.cache/
+Tests/Bsp/bin/
+Tests/Bsp/obj/

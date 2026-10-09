@@ -49,6 +49,19 @@ on it in the Inspector. It's off in the prefab and on in the test scene.
   **Category Source** to your SourceMovement (the test scene does this). If auto bhop is on at any
   moment during a run, the run counts as auto bhop.
 
+### Source maps (`Assets/SourceMaps`, independent of the movement and timer) — work in progress
+Imports the gameplay side of a CS:S map, for visuals from a converter (uSource/USource, step 2 of
+[the plan](docs/MAPVOTE_PLAN.md)). **Tools > Source Maps > Import BSP...** reads the `.bsp` directly and builds:
+- **Collision**: every player-solid world brush, including invisible `playerclip`/`clip` brushes, plus
+  displacements, as one MeshCollider. Solid brush entities (`func_wall`, `func_door`, ...) get their own.
+- **Entity markers**: one `SourceEntity` per BSP entity (triggers, boosters, buttons, props, lights...) keeping
+  classname, targetname, every keyvalue and output, and the brush volume. They do nothing by themselves.
+- **Teleports**: `trigger_teleport`s work right away (`SourceMapTeleport`, like Source: you face the
+  destination's direction and stop). Teleports with a filter (on bhop maps usually "bhop block" teleports that
+  fire when you stand on a platform too long) stay markers for now; the movement script will implement them.
+Same axes and scale as uSource (1 unit = 0.01905 m), so the converter's visuals line up. Meshes are saved to
+`Assets/SourceMapsImported/<map>/`. Not imported yet: static prop collision (comes with the converter step).
+
 ### Crouching
 Not built yet. The design is in [docs/CROUCH.md](docs/CROUCH.md).
 
@@ -76,6 +89,14 @@ compiler from the SDK and runs its full pipeline (Roslyn, bind, emit, Udon assem
 `Assets/`, failing on anything Udon doesn't support. With `UDON_TEST=1` it then runs the compiled
 SourceMovement program in VRChat's Udon VM. Every extern goes through VRChat's real Udon wrapper, except
 the Unity-native ones (Physics.BoxCast, input, time, euler angles), which the test world answers.
+
+Source maps:
+
+```
+Tests/Bsp/get_maps.sh                          # downloads the test maps from GameBanana (git-ignored)
+dotnet run --project Tests/Bsp                 # BSP reader + collision checks on the real maps
+Tests/UnityPlay/run.sh map Tests/Bsp/.cache/maps/bhop_japan.bsp   # import in Unity, play-test with ClientSim
+```
 
 What this can't cover: Unity's real PhysX collision and how the player controller responds to
 `SetVelocity`. For that there is a play test in a real Unity editor:

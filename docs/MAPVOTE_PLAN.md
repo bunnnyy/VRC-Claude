@@ -1,4 +1,6 @@
-# Multi-map bhop/surf world: plan, verification and questionnaire
+# SourceMaps (multi-map bhop world): plan, verification and questionnaire
+
+(File name kept as MAPVOTE_PLAN.md so earlier links still work.)
 
 Handoff from the session that built and Unity-tested the Source movement. Nothing here is built yet.
 Answer the questionnaire (bottom) before building.
@@ -184,9 +186,12 @@ bhop_exodus, bhop_cobblestone, bhop_lego2. (Popularity not verified on GameBanan
 14. **Converter:** hybrid: converter for visible geometry and textures, our own BSP reader for
     collision (incl. clip brushes) and entities. Both converters compared and reported.
 
-## Final design (proposed, waiting for go-ahead)
+## Final design (approved 2026-10-09)
 
-`Assets/MapVote/` (no dependency on SourceMovement/SourceTimer; it finds them by name if present):
+**Renamed to SourceMaps** (user: "MapVote" sounds like only the voting; the package also has the
+importer). Folder `Assets/SourceMaps/`, menu `Tools > Source Maps`. Class names below keep their roles.
+
+`Assets/SourceMaps/` (no dependency on SourceMovement/SourceTimer; it finds them by name if present):
 - `MapInfo`: name, author, thumbnail (rendered or override), spawn, map root, time limit, bhop-block toggle.
 - `MapVoteManager` (synced, owned by the master): state Lobby -> Voting -> Playing; 5 random maps,
   synced vote array, 60 s timer, master lock + Start, RTV 60%, time limit + extend, owner admin
