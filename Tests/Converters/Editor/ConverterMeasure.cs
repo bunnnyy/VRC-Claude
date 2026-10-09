@@ -41,6 +41,10 @@ public static class ConverterMeasure
         }
         // SourceMaps collision and markers next to it.
         var ours = SourceMapImporter.Import(bspPath, 0.01905f);
+        Bounds vb = new Bounds(), ob = ours.GetComponentInChildren<MeshCollider>().bounds;
+        bool first = true;
+        foreach (var r in renderers) { if (first) vb = r.bounds; else vb.Encapsulate(r.bounds); first = false; }
+        Log($"{label}: visual bounds {vb.min:F1}..{vb.max:F1}, our collision {ob.min:F1}..{ob.max:F1}");
         Physics.queriesHitBackfaces = true; // visual meshes may be single sided either way
         Physics.SyncTransforms();
 

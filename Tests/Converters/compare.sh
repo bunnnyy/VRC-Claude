@@ -24,7 +24,7 @@ fetch USource https://github.com/Shane-SDK/USource 46cfbe49f61d12d7a4b22fcc6e1a7
 # USource keeps its DLLs, icons and fonts in Git LFS: fetch the real files instead of the pointers.
 (cd "$cache/src/USource" && grep -rl "^version https://git-lfs" Assets | while read -r f; do
   curl -fsSL -o "$f" "https://media.githubusercontent.com/media/Shane-SDK/USource/46cfbe49f61d12d7a4b22fcc6e1a7788d9c5bf18/$f"
-done)
+done) || true
 
 # uSource loads maps from a game folder: fake one holding just the map.
 mkdir -p "$cache/game/cstrike/maps"
@@ -62,5 +62,12 @@ echo "== Shane-SDK/USource"
 project USource ImportWithShane.cs
 cp -r "$cache/src/USource/Assets/USource" "$cache/USource/Assets/USource"
 # VRChat worlds use the built-in render pipeline; USource's materials use a URP shader graph. Test patch only:
-sed -i 's|Shader.Find("Shader Graphs/USource")|Shader.Find("Standard")|' "$cache/USource/Assets/USource/Code/Converters/MaterialConverter.cs"
+sed -i -E 's#Shader.Find\("(Shader Graphs/[^"]*|Universal Render Pipeline/Lit)"\)#Shader.Find("Standard")#' \
+  "$cache/USource/Assets/USource/Code/Converters/MaterialConverter.cs" "$cache/USource/Assets/USource/Code/Converters/BspConverter.cs"
+# An unused "using PlasticPipe..." needs Unity's version control package, which VRChat projects don't have.
+grep -rl "using PlasticPipe" "$cache/USource/Assets/USource" | xargs -r sed -i 's/^\(\xEF\xBB\xBF\)\?using PlasticPipe.*$/\1/' || true
+# USource's static setup runs while a fresh project is still importing, fails, and stays failed for that editor
+# session (a failed static constructor isn't retried). So open the project once to finish importing first.
+x=(); command -v xvfb-run >/dev/null && x=(xvfb-run -a)
+"${x[@]}" "$unity" -batchmode -projectPath "$cache/USource" -logFile "$cache/logs/USource_warmup.log" -quit >/dev/null 2>&1 || true
 run USource "USource_$name" ImportWithShane.Run

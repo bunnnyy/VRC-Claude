@@ -229,3 +229,24 @@ Order of work, with a check-in after each:
   the same spot (you bounce until you strafe off, as in Source).
 - Not done yet: static prop collision (248 static props in bhop_japan, needs the converter's models),
   displacement "no collision" flags (all 0 in bhop_japan, bit meaning not verified).
+
+### Step 2: converter comparison on bhop_japan (done 2026-10-09)
+Real Unity 2022.3.22f1 (VRChat world project), `Tests/Converters/compare.sh`. Stock CS:S content isn't
+available here, so only what's packed in the BSP can show (white = stock texture, missing = stock model).
+Alignment = 2,575 vertical rays around every spawn/destination, visual geometry vs SourceMaps collision.
+
+| | DeadZoneLuna/uSource (2022-02) | Shane-SDK/USource (2025-02) |
+|---|---|---|
+| Gets running in a VRChat project | 2 fixes (asmdef "unsafe" flag, call setup its window does) | 6 fixes (Git LFS DLLs, unused PlasticPipe using, settings fail on first launch, URP shaders x3, no materials by default) |
+| Render pipeline | Built-in (its own shaders), what VRChat needs | URP shader graphs, pink in VRChat without replacing |
+| Import time | 136 s | 177-353 s |
+| Output | 476 renderers, 649k triangles, 144 materials (44 stock, no texture), packed textures and models (trees) load | 1,664 renderers, 159k triangles, **0 materials** |
+| Alignment with our collision | **79% within 5 cm, median 0 cm**; the rest are invisible clip/nodraw brushes and props | 5% (after turning it 90°: it maps axes as (x, z, y)), median 1.4 m |
+| Saves to project | materials + PNG textures as assets, meshes inside the scene | ScriptedImporter asset (prefab) |
+| Static prop collision | no (render meshes only) | yes (MDL physics), untested here |
+| License | none stated | none stated |
+
+**Choice: uSource** for the visuals (built-in pipeline, lines up with the collision, textures work).
+Not distributed with SourceMaps (no license): the world creator installs uSource; SourceMaps drives it
+(scale 0.01905, the creator's CS:S folder) and saves meshes as assets. Static prop collision: generate from
+the render meshes (needs a test). I did not dig into why USource's geometry doesn't line up.
