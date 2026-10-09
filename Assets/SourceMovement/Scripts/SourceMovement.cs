@@ -87,6 +87,8 @@ public class SourceMovement : UdonSharpBehaviour
     private Vector3 velocity;
     private bool onGround;
     private bool onLadder;
+    private Vector3 pushVelocity;  // trigger_push we're inside (Source's base velocity)
+    private float gravityScale = 1f; // player gravity from map triggers (AddOutput gravity, trigger_gravity)
     private int waterLevel;        // 0 dry, 1 feet, 2 waist, 3 eyes
     private float waterJumpTime;
     private Vector3 waterJumpVel;
@@ -167,6 +169,28 @@ public class SourceMovement : UdonSharpBehaviour
         teleportWait = TeleportWaitFrames;
     }
 
+    /// <summary>
+    /// trigger_push (SourcePushTrigger): push velocity in Source units/s while inside, Vector3.zero when leaving.
+    /// Like Source, a sideways push moves you without becoming your speed until you leave; then it is added as
+    /// momentum. An upward push accelerates you (against gravity) and keeps you off the ground.
+    /// </summary>
+    public void SetPush(Vector3 push)
+    {
+        if (push == Vector3.zero) velocity += new Vector3(pushVelocity.x, 0f, pushVelocity.z);
+        pushVelocity = push;
+        if (push.y > 0f) onGround = false;
+    }
+
+    /// <summary>Booster (AddOutput basevelocity, SourceBoostTrigger): add this velocity once, in Source units/s.</summary>
+    public void AddVelocity(Vector3 impulse)
+    {
+        velocity += impulse;
+        if (impulse.y > 0f) onGround = false;
+    }
+
+    /// <summary>Player gravity multiplier (AddOutput gravity, trigger_gravity). 1 is normal.</summary>
+    public void SetGravityScale(float scale) { gravityScale = scale; }
+
     public void _ToggleAutoBhop() { autoBhop = !autoBhop; }
 
     /// <summary>Horizontal speed in Source units per second (what a CS:S speedometer shows).</summary>
@@ -183,6 +207,8 @@ public class SourceMovement : UdonSharpBehaviour
     {
         if (!player.isLocal) return;
         velocity = Vector3.zero;
+        pushVelocity = Vector3.zero;
+        gravityScale = 1f;
         pendingResync = true;
     }
 
@@ -289,7 +315,7 @@ public class SourceMovement : UdonSharpBehaviour
     private void PlayerMove(float dt)
     {
         CategorizePosition();
-        if (LadderMove()) TryPlayerMove(dt); // FullLadderMove: no gravity, no friction
+        if (LadderMove()) MoveWithPush(dt); // FullLadderMove: no gravity, no friction
         else FullWalkMove(dt);
     }
 
@@ -350,7 +376,8 @@ public class SourceMovement : UdonSharpBehaviour
     private void FullWalkMove(float dt)
     {
         // StartGravity (not when swimming)
-        if (waterLevel < 2) velocity.y -= gravity * 0.5f * dt;
+        if (waterLevel < 2) velocity.y -= gravity * gravityScale * 0.5f * dt;
+        velocity.y += pushVelocity.y * dt; // an upward trigger_push accelerates you
         CheckVelocity();
 
         // Climbing out of water onto a ledge.
@@ -398,7 +425,7 @@ public class SourceMovement : UdonSharpBehaviour
         CheckVelocity();
 
         // FinishGravity
-        if (!onGround && waterLevel < 2) velocity.y -= gravity * 0.5f * dt;
+        if (!onGround && waterLevel < 2) velocity.y -= gravity * gravityScale * 0.5f * dt;
         if (onGround) velocity.y = 0f;
     }
 
@@ -421,7 +448,7 @@ public class SourceMovement : UdonSharpBehaviour
 
         onGround = false;
         velocity.y += jumpImpulse;
-        velocity.y -= gravity * 0.5f * dt; // FinishGravity
+        velocity.y -= gravity * gravityScale * 0.5f * dt; // FinishGravity
         oldJump = true;
     }
 
@@ -450,11 +477,15 @@ public class SourceMovement : UdonSharpBehaviour
         Accelerate(wishVel.normalized, wishVel.magnitude, accelerate, dt);
         velocity.y = 0f;
 
-        if (velocity.magnitude < 1f)
-        {
-            velocity = Vector3.zero;
-            return;
-        }
+        Vector3 push = new Vector3(pushVelocity.x, 0f, pushVelocity.z);
+        velocity += push;
+        if (velocity.magnitude < 1f) velocity = Vector3.zero;
+        else WalkStep(dt);
+        velocity -= push;
+    }
+
+    private void WalkStep(float dt)
+    {
 
         // First try moving straight to the destination.
         Vector3 dest = origin + velocity * dt;
@@ -474,7 +505,7 @@ public class SourceMovement : UdonSharpBehaviour
     {
         Vector3 wishVel = GetWishVelocity();
         AirAccelerate(wishVel.normalized, wishVel.magnitude, airAccelerate, dt);
-        TryPlayerMove(dt);
+        MoveWithPush(dt);
     }
 
     private void Accelerate(Vector3 wishDir, float wishSpeed, float accel, float dt)
@@ -635,7 +666,7 @@ public class SourceMovement : UdonSharpBehaviour
     private void CategorizePosition()
     {
         CheckWater();
-        if (velocity.y > NonJumpVelocity)
+        if (velocity.y > NonJumpVelocity || pushVelocity.y > 0f)
         {
             onGround = false;
             return;
@@ -653,6 +684,15 @@ public class SourceMovement : UdonSharpBehaviour
             velocity.y = 0f;
             surfaceFriction = 1f;
         }
+    }
+
+    /// <summary>TryPlayerMove with a horizontal trigger_push added for this move only (Source's base velocity).</summary>
+    private void MoveWithPush(float dt)
+    {
+        Vector3 push = new Vector3(pushVelocity.x, 0f, pushVelocity.z);
+        velocity += push;
+        TryPlayerMove(dt);
+        velocity -= push;
     }
 
     // ---------------------------------------------------------------- water
@@ -714,7 +754,14 @@ public class SourceMovement : UdonSharpBehaviour
             }
         }
 
-        // Move, pressing down from a step above so we swim up slopes and stairs.
+        velocity += pushVelocity;
+        SwimStep(dt);
+        velocity -= pushVelocity;
+    }
+
+    /// <summary>Move, pressing down from a step above so we swim up slopes and stairs.</summary>
+    private void SwimStep(float dt)
+    {
         Vector3 dest = origin + velocity * dt;
         TraceHull(origin, dest);
         if (trFraction == 1f)

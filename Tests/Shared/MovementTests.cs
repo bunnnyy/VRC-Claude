@@ -46,6 +46,10 @@ public static class MovementTests
         Test("Water: jump swims up", WaterSwimUp);
         Test("Water: ankle deep walks normally at 250 u/s", WaterShallow);
         Test("Water: waist deep at a ledge, W climbs out (water jump)", WaterJumpOut);
+        Test("Push: sideways trigger_push moves you, leaving keeps the speed", PushSideways);
+        Test("Push: upward trigger_push lifts you (push - gravity)", PushUp);
+        Test("Boost: basevelocity booster launches you once", BoostUp);
+        Test("Gravity: half gravity doubles the jump height", HalfGravity);
         Test("Teleport resets velocity", TeleportResets);
         Test("Teleport onto the floor stands on it (no sinking)", TeleportOntoFloor);
         Test("TeleportPlayer can keep velocity (portals)", TeleportKeepsVelocity);
@@ -571,6 +575,52 @@ public static class MovementTests
         r.Run(2f, () => maxY = Math.Max(maxY, r.Origin.y));
         Note($"after 2 s: at {r.Origin}, on ground {r.OnGround}, highest {maxY:F1} u");
         Check(r.OnGround && Math.Abs(r.Origin.y - 40) < 1 && r.Origin.z > 200, "did not climb out");
+    }
+
+    static void PushSideways()
+    {
+        var r = OnFloor();
+        r.SetPush(new Vector3(0, 0, 500));
+        float z0 = r.Origin.z;
+        r.Run(0.5f);
+        float moved = r.Origin.z - z0, inside = r.Vel.z;
+        r.SetPush(Vector3.zero);
+        r.Frame();
+        Note($"inside: moved {moved:F1} u in 0.5 s with own speed {inside:F1}; after leaving: speed {r.Vel.z:F1}");
+        Check(Math.Abs(moved - 250) < 3 && Math.Abs(inside) < 1, "push while inside");
+        Check(r.Vel.z > 470 && r.Vel.z <= 500, "momentum after leaving " + r.Vel.z);
+    }
+
+    static void PushUp()
+    {
+        var r = OnFloor();
+        r.SetPush(new Vector3(0, 1000, 0));
+        r.Run(1f);
+        Note($"after 1 s in a 1000 u/s upward push: height {r.Origin.y:F1}, vertical speed {r.Vel.y:F1} (theory 100, 200)");
+        Check(!r.OnGround && Math.Abs(r.Vel.y - 200) < 5 && Math.Abs(r.Origin.y - 100) < 8, "upward push"); // tick steps add ~5 u
+    }
+
+    static void BoostUp()
+    {
+        var r = OnFloor();
+        r.AddVelocity(new Vector3(0, 600, 0));
+        float maxY = 0;
+        r.Run(1.5f, () => maxY = Math.Max(maxY, r.Origin.y));
+        Note($"600 u/s booster: peak {maxY:F1} u (theory 600^2 / 1600 = 225)");
+        Check(Math.Abs(maxY - 225) < 5, "boost height " + maxY);
+    }
+
+    static void HalfGravity()
+    {
+        var r = OnFloor();
+        r.SetGravityScale(0.5f);
+        r.Jump(true);
+        r.Frame();
+        r.Jump(false);
+        float maxY = 0;
+        r.Run(2f, () => maxY = Math.Max(maxY, r.Origin.y));
+        Note($"jump at half gravity: peak {maxY:F1} u (normal ~55.5, theory ~2x)");
+        Check(Math.Abs(maxY - 111) < 4, "half gravity jump " + maxY);
     }
 
     static Rig Running()

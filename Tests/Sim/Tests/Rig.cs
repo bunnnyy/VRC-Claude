@@ -96,6 +96,9 @@ public class Rig
     public Vector3 Vel => move.GetSourceVelocity();
     public float Speed => move.GetSpeed();
     public bool OnGround => move.IsOnGround();
+    public void SetPush(Vector3 units) => move.SetPush(units);
+    public void AddVelocity(Vector3 units) => move.AddVelocity(units);
+    public void SetGravityScale(float scale) => move.SetGravityScale(scale);
     public bool OnLadder => Get<bool>("onLadder");
     public float VelYaw => Mathf.Atan2(Vel.x, Vel.z) * Mathf.Rad2Deg;
     public Vector3 PlayerVelocity => player.velocity;

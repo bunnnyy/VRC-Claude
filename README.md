@@ -39,6 +39,14 @@ The prefabs and the test map are made by **Tools > Source Movement > Create Pref
   out (water jump). Ankle deep is normal walking. Water is a **trigger collider on the water layer**
   (Inspector: `Water Layers`, default Unity's Water layer 4) filling the water; the pool floor is a normal
   collider. The test map has a deep pool and a waist-deep pool with a ledge.
+- **Boosters** (Source map triggers), each a script on a trigger collider. They find the object named
+  `SourceMovement` themselves, or set their `movement` field:
+  - `SourcePushTrigger` = `trigger_push`: `push` velocity (Source units/s). Inside, it moves you without
+    becoming your speed; leaving adds it as momentum. Upward pushes lift you against gravity.
+  - `SourceBoostTrigger` = bhop boosters (`AddOutput basevelocity ...`, `AddOutput gravity ...`,
+    `trigger_gravity`): `addVelocity` once, and/or set a `gravityScale`, on enter or on leave.
+  - Other scripts can call `SetPush(v)`, `AddVelocity(v)` and `SetGravityScale(s)` on SourceMovement.
+  The test map has a booster platform: push pad, push column, launch pad, half and normal gravity pads.
 - **Teleporting**: plain `VRCPlayerApi.TeleportTo` works. A jump over 64 units resets velocity, a
   smaller one keeps it. To choose, call `sourceMovement.TeleportPlayer(position, rotation, keepVelocity)`.
   VRChat keeps the player's old velocity for a moment after `TeleportTo`, so call
