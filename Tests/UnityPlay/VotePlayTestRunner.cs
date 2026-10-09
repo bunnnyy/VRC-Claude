@@ -133,6 +133,8 @@ public class VotePlayTestRunner : MonoBehaviour
         Check(first > 0 && second > 0 && other == 0, $"ties: a 2-2 tie goes to either map at random ({first}/{second}/{other})");
 
         yield return OwnerChanges();
+        yield return Practice("PracticeBhop", "practice_bhop");
+        yield return Practice("PracticeSurf", "practice_surf");
 
         Finish();
     }
@@ -220,6 +222,36 @@ public class VotePlayTestRunner : MonoBehaviour
         yield return Seconds(0.3f);
         Check(State() == 0, "rtv: when the other player leaves, 1 of 1 rocks the vote");
         player.GetClientSimPlayer().isInstanceOwner = true;
+    }
+
+    /// <summary>A run through a lobby practice course's zones lands on that course's own (saved) board.</summary>
+    IEnumerator Practice(string courseName, string key)
+    {
+        var course = GameObject.Find(courseName);
+        Check(course != null, $"{courseName}: practice course is next to the lobby");
+        if (course == null) yield break;
+        var start = course.transform.Find("StartZone");
+        var end = course.transform.Find("EndZone");
+        UdonBehaviour legit = null;
+        foreach (var u in course.GetComponentsInChildren<UdonBehaviour>())
+            if ((string)u.GetProgramVariable("saveKey") == key + "_legit") legit = u;
+        Check(start != null && end != null && legit != null, $"{courseName}: start/end zones and a board saved as {key}_legit");
+        if (start == null || end == null || legit == null) yield break;
+        var movement = Loaded(FindUdon("SourceMovement"));
+        if (movement != null) movement.SetProgramVariable("autoBhop", false); // a legit run
+        int before = (int)legit.GetProgramVariable("count");
+        player.TeleportTo(start.position, Quaternion.identity);
+        yield return Seconds(0.5f);
+        player.TeleportTo(start.position + new Vector3(0, 0, 4f), Quaternion.identity); // leave the start zone
+        yield return Seconds(1.5f);
+        player.TeleportTo(end.position, Quaternion.identity);
+        yield return Seconds(0.5f);
+        int after = (int)legit.GetProgramVariable("count");
+        float saved;
+        bool hasSaved = VRC.SDK3.Persistence.PlayerData.TryGetFloat(player, key + "_legit", out saved);
+        Check(after == before + 1, $"{courseName}: the run is on the course's legit board ({before} -> {after})");
+        Check(hasSaved && saved > 1f, $"{courseName}: best time saved with Persistence ({(hasSaved ? saved.ToString("F2") + " s" : "nothing")})");
+        if (movement != null) movement.SetProgramVariable("autoBhop", true);
     }
 
     VRCPlayerApi Remote(string name)

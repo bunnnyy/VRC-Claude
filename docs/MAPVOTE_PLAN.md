@@ -158,8 +158,8 @@ bhop_exodus, bhop_cobblestone, bhop_lego2. (Popularity not verified on GameBanan
 
 ## Answers (2026-10-09)
 
-1. **Mode:** *vote* is the default; the winning map pulls **everyone** in the instance. *Choose* stays
-   available as an Inspector option.
+1. **Mode:** *vote*; the winning map pulls **everyone** in the instance. **Update:** *choose* mode was
+   removed: only one map is active at a time; the lobby is always reachable (Back to lobby / Rejoin map).
 2. **Vote rules:** 60 s timer, starts on the first vote. Same 5 random maps for everyone (synced),
    re-rolled each round, ties broken at random, no minimum players. The master can **lock** the vote:
    the timer stops and the vote only ends when the master presses **Start**.
@@ -181,7 +181,9 @@ bhop_exodus, bhop_cobblestone, bhop_lego2. (Popularity not verified on GameBanan
     `SourceMovement.TeleportPlayer` when present, else `TeleportTo` + `SetVelocity(0)`).
     Timer zones: placed by hand with an editor tool when the map has none (bhop_japan has none).
 12. **Leaderboards:** per map and per category (auto/legit), shown in the lobby, best times persisted
-    with VRChat Persistence.
+    with VRChat Persistence. **Update:** the lobby also gets a small practice bhop lane and surf ramp, each
+    with its own saved legit/auto boards. (Persistence is per player: boards show the saved bests of
+    players who have been in the instance.)
 13. **Thumbnails:** rendered in the editor from the map spawn, with a per-map override slot.
 14. **Converter:** hybrid: converter for visible geometry and textures, our own BSP reader for
     collision (incl. clip brushes) and entities. Both converters compared and reported.

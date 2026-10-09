@@ -58,7 +58,8 @@ public static class SourceMapsSetup
 
     /// <summary>
     /// Lobby at `position`: a floor, the spawn, the vote board and the owner controls, plus a panel at every map's
-    /// spawn. Uses every SourceMapInfo in the scene. Moves the VRC World spawn into the lobby.
+    /// spawn, and SourceTimer's practice bhop/surf courses beside it if SourceTimer is there. Uses every
+    /// SourceMapInfo in the scene. Moves the VRC World spawn into the lobby.
     /// </summary>
     public static SourceMapManager CreateLobby(Vector3 position)
     {
@@ -88,6 +89,11 @@ public static class SourceMapsSetup
             if (map.spawn != null) screens.Add(CreatePanel(map, manager));
         manager.screens = screens.ToArray();
         UdonSharpEditorUtility.CopyProxyToUdon(manager);
+
+        // Practice bhop and surf courses with their own records, from SourceTimer if it's in the project
+        // (looked up by name so SourceMaps doesn't need SourceTimer).
+        var practice = System.AppDomain.CurrentDomain.GetAssemblies().Select(a => a.GetType("PracticeCourses")).FirstOrDefault(t => t != null);
+        if (practice != null) practice.GetMethod("Build").Invoke(null, new object[] { root.transform, Vector3.zero });
 
         var descriptor = Object.FindObjectOfType<VRC.SDKBase.VRC_SceneDescriptor>();
         if (descriptor != null) descriptor.transform.SetPositionAndRotation(spawn.position, spawn.rotation);
@@ -198,9 +204,9 @@ public static class SourceMapsSetup
             info.thumbnail = Swatch(colors[i]);
             UdonSharpEditorUtility.CopyProxyToUdon(info);
         }
-        CreateLobby(Vector3.zero);
         var movement = AssetDatabase.LoadAssetAtPath<GameObject>("Assets/SourceMovement/SourceMovement.prefab");
         if (movement != null) PrefabUtility.InstantiatePrefab(movement); // optional: works without it
+        CreateLobby(Vector3.zero);
         EditorSceneManager.SaveScene(scene, TestScenePath);
     }
 

@@ -4,7 +4,7 @@ Step by step, from nothing to an uploaded VRChat world with Source movement, a t
 players vote between imported CS:S bhop maps. Kept up to date as features are finished.
 
 > **Status (2026-10-09).** Done and tested: movement, timer, map import (collision, markers, teleports),
-> map rotation (vote/choose, rock the vote, time limit, owner controls). Still being built: the one-click
+> map rotation (vote, rock the vote, time limit, owner controls), lobby practice courses with saved records. Still being built: the one-click
 > visual import with uSource (step 6a is manual for now), placing timer zones on maps, per-map leaderboards,
 > thumbnails rendered in the editor. Those steps say "coming soon".
 > Pictures come from Unity itself; editor windows can't be screenshotted on the build machine, so menus are
@@ -98,16 +98,22 @@ For now, by hand: open uSource's window (its menu in Unity), set **Root path** t
 ## 8. Create the lobby
 
 **Tools > Source Maps > Create Lobby** builds the lobby at the scene origin: a floor, the spawn, the vote board,
-owner controls, and a small panel next to each map's spawn. It uses every map added in step 7 and moves the VRC
-World spawn into the lobby. Run it again whenever you add a map (it replaces the old lobby).
+owner controls, a small panel next to each map's spawn, and two **practice courses** beside the lobby (a short
+bhop lane on one side, a small surf ramp on the other, each with its own legit and auto-bhop boards). It uses every
+map added in step 7 and moves the VRC World spawn into the lobby. Run it again whenever you add a map (it replaces
+the old lobby). Add the SourceMovement prefab before you run it, so the practice boards split auto and legit bhop.
 
-![The vote board (test maps)](images/lobby_board.png)
+![The vote board during a vote (test maps with plain colour thumbnails)](images/lobby_vote.png)
+
+![The panel next to a map's spawn](images/map_panel.png)
+
+Only one map is ever active: everyone plays the map that won the vote. The lobby is always open (**Back to lobby**),
+and **Rejoin map** takes you back in.
 
 Settings on **SourceMapManager** (under "SourceMaps Lobby"):
 
 | Setting | Default | What it does |
 |---|---|---|
-| Mode | Vote | **Vote**: everyone votes, the whole instance plays the winner. **Choose**: each player picks a map and goes alone |
 | Choices | 5 | Maps offered per vote (2-6), picked at random from all maps; the map just played isn't offered |
 | Vote Seconds | 60 | Timer from the first vote to the result |
 | Rtv Ratio | 0.6 | Share of players needed to "rock the vote" (start a new vote) |
@@ -117,8 +123,12 @@ Settings on **SourceMapManager** (under "SourceMaps Lobby"):
 ## 9. Movement and timer
 
 1. Drag `Assets/SourceMovement/SourceMovement.prefab` into the scene (Source movement, auto bhop button).
-2. Drag `Assets/SourceTimer/SourceTimer.prefab` in for the run timer and leaderboards.
+2. The run timer (`SourceTimer.prefab`) is added by the lobby tool if it isn't in the scene yet.
 3. Timer zones per map: coming soon (bhop maps usually have no start/end zones in the file, they're placed by hand).
+
+**Saved records.** Boards with a **Save Key** (the practice boards have one) keep each player's best with VRChat
+Persistence. VRChat saves data per player, not per world, so a board shows the bests of everyone who has been in
+the current instance, including their saved bests from earlier sessions. There is no world-wide all-time board.
 
 ## 10. Test in Unity
 
@@ -134,6 +144,8 @@ owner, so you also see the owner buttons.
 
 ## 12. Playing it in VRChat
 
+- **Practice courses** next to the lobby: walk onto the green start pad, run to the red end pad. Falling off sends
+  you back to the start; **G** (desktop) restarts. Times go on the boards beside the course.
 - **Lobby board**: press a map to vote (press another to change your vote). The vote ends 60 s after the first
   vote; ties are broken at random. Everyone is teleported to the winner.
 - **In a map**: the panel next to the spawn shows the time left and the rock-the-vote count. **Rock the vote**
