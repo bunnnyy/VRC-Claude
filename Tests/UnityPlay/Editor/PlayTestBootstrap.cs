@@ -20,6 +20,9 @@ public static class PlayTestBootstrap
         ClientSimSettings.SaveSettings(settings);
 
         EditorSceneManager.OpenScene("Assets/SourceMovement/SourceTestMap.unity");
+        // Compile the U# programs like a fresh import would: run.sh copies the committed program assets in,
+        // and those point at compiled programs that only exist in the project that made them.
+        UdonSharp.Compiler.UdonSharpCompilerV1.CompileSync();
         var runner = new GameObject("PlayTestRunner").AddComponent<PlayTestRunner>();
         string[] args = System.Environment.GetCommandLineArgs();
         for (int i = 0; i < args.Length - 1; i++)
