@@ -16,7 +16,8 @@ mkdir -p "$logs"
 run() { # log name, Unity args...
   local log=$logs/$1.log; shift
   local x=(); command -v xvfb-run >/dev/null && x=(xvfb-run -a)
-  "${x[@]}" "$unity" -batchmode -projectPath "$proj" -logFile "$log" "$@" >/dev/null 2>&1 && return 0
+  # Time limit: a batchmode editor that hits a problem (e.g. compile errors) can wait forever.
+  timeout "${UNITY_TIMEOUT:-1800}" "${x[@]}" "$unity" -batchmode -projectPath "$proj" -logFile "$log" "$@" >/dev/null 2>&1 && return 0
   grep -E "error CS|Exception|\[SMTEST\] FAIL" "$log" | head -20; return 1
 }
 
