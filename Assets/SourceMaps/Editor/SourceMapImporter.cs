@@ -208,7 +208,7 @@ public static class SourceMapImporter
         return mesh;
     }
 
-    static void EnsureProgramAssets()
+    public static void EnsureProgramAssets()
     {
         bool created = false;
         foreach (string scriptPath in Directory.GetFiles("Assets/SourceMaps/Scripts", "*.cs"))
