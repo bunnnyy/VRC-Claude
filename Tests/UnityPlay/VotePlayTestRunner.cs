@@ -42,7 +42,7 @@ public class VotePlayTestRunner : MonoBehaviour
         Check(State() == 0 && Near(lobby.position), "lobby: player starts in the lobby, state lobby");
         Check(ActiveMaps() == 0, "lobby: no map switched on while in the lobby");
         Check(Status().Contains("Vote for the next map"), "lobby: board says 'Vote for the next map'");
-        yield return Shot("lobby_board");
+        yield return Shot("lobby_board", GameObject.Find("VoteBoard").transform, new Vector3(0, 1.9f, -5.2f), 50);
 
         // Vote: first vote starts the timer, the winner is played by everyone.
         manager.SetProgramVariable("voteSeconds", 3f);
@@ -51,6 +51,7 @@ public class VotePlayTestRunner : MonoBehaviour
         int[] votes = (int[])manager.GetProgramVariable("votes");
         Check(votes[2] == 1 && (int)manager.GetProgramVariable("voteEnd") != 0, "vote: vote counted on slot 3, timer started");
         Check(Status().Contains("0:0"), $"vote: board shows the countdown ('{Status().Replace("\n", " | ")}')");
+        yield return Shot("lobby_vote", GameObject.Find("VoteBoard").transform, new Vector3(0, 1.9f, -5.2f), 50);
         yield return Seconds(3.5f);
         int map = (int)manager.GetProgramVariable("currentMap");
         Check(State() == 1 && map == cands[2], $"vote: after the timer the voted map is played (map {map}, expected {cands[2]})");
@@ -59,6 +60,7 @@ public class VotePlayTestRunner : MonoBehaviour
         yield return Seconds(1f);
         var movement = Loaded(FindUdon("SourceMovement"));
         if (movement != null) Check((bool)movement.GetProgramVariable("onGround"), "vote: player stands on the map floor (SourceMovement)");
+        yield return Shot("map_panel", MapRoot(map).transform.Find("SourceMapPanel"), new Vector3(0, 1.45f, -1.9f), 55);
 
         // Rock the vote: 1 player = 100% >= 60%: new vote in the lobby with the timer running.
         Press("rtv", -1);
@@ -273,14 +275,13 @@ public class VotePlayTestRunner : MonoBehaviour
         while (Time.time < t) yield return null;
     }
 
-    /// <summary>Picture of the vote board for the guide (docs/images).</summary>
-    IEnumerator Shot(string name)
+    /// <summary>Picture for the guide (docs/images): a camera in front of `target` (offset in its local space).</summary>
+    IEnumerator Shot(string name, Transform target, Vector3 offset, float fov)
     {
         yield return null; // (WaitForEndOfFrame never comes in batch mode)
-        var board = GameObject.Find("VoteBoard").transform;
         var cam = new GameObject("ShotCamera").AddComponent<Camera>();
-        cam.transform.SetPositionAndRotation(board.position + new Vector3(0, 1.9f, -5.2f), Quaternion.Euler(0, 0, 0));
-        cam.fieldOfView = 50;
+        cam.transform.SetPositionAndRotation(target.TransformPoint(Vector3.zero) + target.rotation * offset, target.rotation);
+        cam.fieldOfView = fov;
         var rt = new RenderTexture(1280, 720, 24);
         cam.targetTexture = rt;
         cam.Render();

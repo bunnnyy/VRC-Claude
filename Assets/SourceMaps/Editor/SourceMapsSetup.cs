@@ -63,6 +63,7 @@ public static class SourceMapsSetup
     public static SourceMapManager CreateLobby(Vector3 position)
     {
         SourceMapImporter.EnsureProgramAssets();
+        EnsureTextMeshPro();
         foreach (var old in Object.FindObjectsOfType<SourceMapManager>(true)) Object.DestroyImmediate(old.transform.root.gameObject);
         var maps = Object.FindObjectsOfType<SourceMapInfo>(true).OrderBy(m => m.mapName).ToArray();
 
@@ -135,12 +136,12 @@ public static class SourceMapsSetup
         var admin = new GameObject("OwnerControls");
         admin.transform.SetParent(board.transform, false);
         screen.adminRoot = admin;
-        screen.adminText = Text(admin.transform, "OwnerText", "Owner controls", new Vector3(-3.0f, 0.55f, 0), new Vector2(1.6f, 0.3f), 0.09f);
+        screen.adminText = Text(admin.transform, "OwnerText", "Owner controls", new Vector3(-3.15f, 0.55f, 0), new Vector2(1.0f, 0.3f), 0.08f);
         string[] actions = { "lock", "start", "force", "forcelobby" };
         string[] labels = { "Lock / unlock vote", "Start now", "Force a map", "Everyone to lobby" };
         for (int i = 0; i < actions.Length; i++)
-            Button(admin.transform, actions[i], labels[i], manager, actions[i], -1, new Vector3(-1.2f + i * 1.25f, 0.55f, 0), new Vector3(1.15f, 0.25f, 0.04f), AdminColor);
-        Button(board.transform, "Rejoin", "Rejoin map", manager, "rejoin", -1, new Vector3(3.0f, 0.55f, 0), new Vector3(1.0f, 0.25f, 0.04f), ButtonColor);
+            Button(admin.transform, actions[i], labels[i], manager, actions[i], -1, new Vector3(-1.75f + i * 1.2f, 0.55f, 0), new Vector3(1.1f, 0.25f, 0.04f), AdminColor);
+        Button(board.transform, "Rejoin", "Rejoin map", manager, "rejoin", -1, new Vector3(3.15f, 0.55f, 0), new Vector3(0.9f, 0.25f, 0.04f), ButtonColor);
 
         UdonSharpEditorUtility.CopyProxyToUdon(screen);
         return screen;
@@ -205,6 +206,14 @@ public static class SourceMapsSetup
     }
 
     // ------------------------------------------------------------------ helpers
+
+    /// <summary>TextMeshPro needs its "Essential Resources" (default font) or every text is invisible.</summary>
+    static void EnsureTextMeshPro()
+    {
+        if (AssetDatabase.FindAssets("t:TMP_Settings").Length > 0) return;
+        AssetDatabase.ImportPackage("Packages/com.unity.textmeshpro/Package Resources/TMP Essential Resources.unitypackage", false);
+        AssetDatabase.Refresh();
+    }
 
     static GameObject Button(Transform parent, string name, string label, SourceMapManager manager, string action, int slot,
         Vector3 at, Vector3 size, Color color)
