@@ -59,6 +59,9 @@ Imports the gameplay side of a CS:S map, for visuals from a converter (uSource/U
 - **Teleports**: `trigger_teleport`s work right away (`SourceMapTeleport`, like Source: you face the
   destination's direction and stop). Teleports with a filter (on bhop maps usually "bhop block" teleports that
   fire when you stand on a platform too long) stay markers for now; the movement script will implement them.
+  Teleport triggers are made 8 units thicker on top: Source touches them with a flat-bottomed box, VRChat's
+  player is a rounded capsule hovering a few cm above the floor, so thin "don't touch the floor" triggers
+  would otherwise never fire.
 Same axes and scale as uSource (1 unit = 0.01905 m), so the converter's visuals line up. Meshes are saved to
 `Assets/SourceMapsImported/<map>/`. Not imported yet: static prop collision (comes with the converter step).
 

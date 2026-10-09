@@ -22,6 +22,8 @@ using Num = System.Numerics;
 public static class SourceMapImporter
 {
     const string OutputRoot = "Assets/SourceMapsImported";
+    /// <summary>Teleport triggers get this much taller (units), so a player standing on a thin trigger touches it.</summary>
+    const float TriggerRaiseTop = 8f;
 
     // Brush entities that don't block players (everything else named func_* does).
     static readonly HashSet<string> NonSolid = new HashSet<string>
@@ -131,7 +133,7 @@ public static class SourceMapImporter
             foreach (int brush in bsp.ModelBrushes(e.BrushModel))
             {
                 var mesh = new MeshData();
-                BspGeometry.AddBrush(mesh, bsp, brush, scale);
+                BspGeometry.AddBrush(mesh, bsp, brush, scale, TriggerRaiseTop);
                 if (mesh.Triangles.Count == 0) continue;
                 var col = go.AddComponent<MeshCollider>();
                 col.sharedMesh = ToMesh(mesh, go.name + " brush " + brush, meshes);

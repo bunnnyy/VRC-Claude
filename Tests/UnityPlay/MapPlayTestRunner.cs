@@ -56,38 +56,89 @@ public class MapPlayTestRunner : MonoBehaviour
         {
             yield return Teleport(p.transform.position, p.transform.rotation);
             yield return Frames(2f);
-            bool ok = OnGround() && player.GetPosition().y > floorY;
+            // Grounded, or still at the destination: some maps put a teleport back to the same destination on the
+            // floor below it (bhop_japan's tele_dest_33/34 over pillars), so in Source too you bounce until you move.
+            bool ok = player.GetPosition().y > floorY && (OnGround() || Vector3.Distance(player.GetPosition(), p.transform.position) < 2f);
             if (ok) stood++;
             else notStanding.Add($"{p.name} (grounded {OnGround()}, y {player.GetPosition().y:F2} m)");
         }
         Check(stood == points.Count, $"stand: player lands and stays on a floor at {stood}/{points.Count} destinations/spawns");
         foreach (var s in notStanding) Log("   not standing: " + s);
 
-        // teleports: start in the middle of each working teleport's trigger, expect to reach its destination.
+        // teleports: reset at the first point, then drop into each working teleport's trigger from above and expect to
+        // reach its destination.
         int arrived = 0, total = 0;
         var missed = new List<string>();
+        var unreachable = new List<string>();
         foreach (var t in FindObjectsOfType<SourceMapTeleport>())
         {
             var col = t.GetComponent<Collider>();
             if (col == null || !col.enabled) continue;
             total++;
-            Bounds b = col.bounds;
-            foreach (var c in t.GetComponents<Collider>()) b.Encapsulate(c.bounds);
+            // Drop in from above like a falling player: the first spot on a 5x5 grid over the trigger where there's
+            // room above it and no ground above the trigger's top.
+            Vector3? drop = DropPoint(t);
+            if (drop == null) { unreachable.Add(t.name + " " + t.GetComponent<SourceEntity>().GetValue("hammerid")); total--; continue; }
+            Vector3 start = drop.Value;
             Vector3 dest = t.destination.position;
-            yield return Teleport(new Vector3(b.center.x, b.min.y + 0.05f, b.center.z), Quaternion.identity);
+            yield return Teleport(points[0].transform.position, Quaternion.identity);
+            yield return Frames(0.3f);
+            yield return Teleport(start, Quaternion.identity);
             bool reached = false;
+            var trace = new StringBuilder();
             for (int i = 0; i < frameRate && !reached; i++)
             {
                 yield return null;
+                if (i % 10 == 0) trace.Append($" f{i} {player.GetPosition():F1}");
                 Vector3 d = player.GetPosition() - dest;
                 reached = new Vector2(d.x, d.z).magnitude < 0.5f && Mathf.Abs(d.y) < 1.5f;
             }
             if (reached) arrived++;
-            else missed.Add($"{t.name}: player at {player.GetPosition():F1}, destination {dest:F1}");
+            else
+            {
+                string overlap = "";
+                foreach (var cc in FindObjectsOfType<CharacterController>())
+                    foreach (var tc in t.GetComponents<MeshCollider>())
+                        overlap += Physics.ComputePenetration(cc, cc.transform.position, cc.transform.rotation, tc, tc.transform.position, tc.transform.rotation, out var dir, out var dist)
+                            ? $" overlaps {tc.sharedMesh.name} by {dist:F3} m;" : $" clear of {tc.sharedMesh.name} (cc bottom {cc.bounds.min.y:F2}, trigger {tc.bounds.min.y:F2}..{tc.bounds.max.y:F2});";
+                missed.Add($"{t.name} {t.GetComponent<SourceEntity>().GetValue("hammerid")}:{overlap} start {start:F1}, trigger size {col.bounds.size:F1}, destination {dest:F1}, player:{trace}");
+            }
         }
         Check(total > 0 && arrived == total, $"teleports: {arrived}/{total} working trigger_teleports send the player to their destination");
         foreach (var s in missed) Log("   missed: " + s);
+        Log($"   {unreachable.Count} teleports not reachable from above (ground above the trigger), not tested: " + string.Join(", ", unreachable));
         Finish();
+    }
+
+    /// <summary>
+    /// Where to drop the player into a teleport: on a 5x5 grid over each brush, the spot with room above it whose
+    /// ground (cast with the 32 x 32 unit hull, which rests on the rim of dips narrower than itself) is lowest.
+    /// Null if the ground is above the trigger's original top everywhere (the importer raised it by 8 units).
+    /// </summary>
+    static Vector3? DropPoint(SourceMapTeleport t)
+    {
+        const int Solid = 1 << 0; // world collision is on Default
+        Vector3? best = null;
+        float bestDepth = 0.3f + 9 * U;
+        foreach (var col in t.GetComponents<MeshCollider>())
+        {
+            if (!col.enabled) continue;
+            Bounds b = col.bounds;
+            for (int i = 0; i < 25; i++)
+            {
+                float x = Mathf.Lerp(b.min.x, b.max.x, (i % 5 + 0.5f) / 5f), z = Mathf.Lerp(b.min.z, b.max.z, (i / 5 + 0.5f) / 5f);
+                var above = new Vector3(x, b.max.y + 0.3f, z);
+                var inside = new Vector3(x, b.center.y, z);
+                if ((col.ClosestPoint(inside) - inside).sqrMagnitude > 1e-6f) continue; // not over this brush
+                if (Physics.Raycast(above, Vector3.up, 1.5f, Solid, QueryTriggerInteraction.Ignore)) continue; // no headroom
+                if (Physics.CheckBox(above + new Vector3(0, 37, 0) * U, new Vector3(17, 37, 17) * U, Quaternion.identity, Solid, QueryTriggerInteraction.Ignore)) continue; // hull in a wall
+                float depth = b.size.y + 0.3f;
+                if (Physics.BoxCast(above, new Vector3(16, 0.5f, 16) * U, Vector3.down, out var hit, Quaternion.identity, depth, Solid, QueryTriggerInteraction.Ignore))
+                    depth = hit.distance;
+                if (depth > bestDepth) { bestDepth = depth; best = above; }
+            }
+        }
+        return best;
     }
 
     IEnumerator Teleport(Vector3 position, Quaternion rotation)

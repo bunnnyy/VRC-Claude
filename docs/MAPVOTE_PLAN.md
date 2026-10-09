@@ -211,3 +211,21 @@ Order of work, with a check-in after each:
 3. MapVote runtime (manager, screen, travel, teleport) + vote logic tests in Tests/Sim + Udon compile.
 4. Sample world with the 5 maps; ClientSim play tests per map with SourceMovement.
 5. Persistent per-map leaderboards, thumbnails, docs.
+
+## Progress
+
+### Step 1: BSP reader, markers, collision (done 2026-10-09)
+- `Assets/SourceMaps/Editor/Bsp/` reads VBSP 19-21 (entities, brushes, brush models, displacements);
+  `SourceMapImporter` builds collision (player-solid world brushes incl. clips + displacements), one
+  `SourceEntity` marker per entity, and working `SourceMapTeleport`s.
+- bhop_japan: 3,142 solid brushes + 980 displacements = 176,733 collision triangles, 540 markers,
+  56 working teleports, 34 filtered "bhop block" teleports kept as markers (need the movement script).
+- Tests: `Tests/Bsp` 18/18 (simulated, real BSP). Real Unity 2022.3.22f1 + ClientSim + SourceMovement
+  (`run.sh map`): player stands on the floor at 40/40 destinations/spawns, 55/55 reachable teleports send
+  the player to their destination (1 trigger lies under the ground everywhere, so it can't be touched in
+  Source either).
+- Found while testing: thin floor triggers never fire for VRChat's capsule player, so teleport triggers
+  are 8 units thicker on top. bhop_japan's tele_dest_33/34 hover over pillars that teleport you back to
+  the same spot (you bounce until you strafe off, as in Source).
+- Not done yet: static prop collision (248 static props in bhop_japan, needs the converter's models),
+  displacement "no collision" flags (all 0 in bhop_japan, bit meaning not verified).

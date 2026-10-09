@@ -37,8 +37,9 @@ namespace SourceMaps.Bsp
         /// <summary>
         /// Faces of one brush as polygons (Source space): each non-bevel side's plane, clipped by all other sides.
         /// Side normals point out of the brush; inside is dot(n, p) &lt;= dist.
+        /// raiseTop moves upward-facing sides out by that many units (used to thicken triggers, see AddBrush).
         /// </summary>
-        public static List<Vector3[]> BrushPolygons(BspFile bsp, int brushIndex)
+        public static List<Vector3[]> BrushPolygons(BspFile bsp, int brushIndex, float raiseTop = 0f)
         {
             var brush = bsp.Brushes[brushIndex];
             var result = new List<Vector3[]>();
@@ -47,23 +48,33 @@ namespace SourceMaps.Bsp
                 var side = bsp.BrushSides[brush.FirstSide + s];
                 if (side.Bevel) continue;
                 var plane = bsp.Planes[side.Plane];
-                var poly = BasePolygon(plane.Normal, plane.Dist);
+                var poly = BasePolygon(plane.Normal, Dist(plane, raiseTop));
                 for (int o = 0; o < brush.NumSides && poly.Count >= 3; o++)
                 {
                     if (o == s) continue;
                     var other = bsp.Planes[bsp.BrushSides[brush.FirstSide + o].Plane];
                     if (bsp.BrushSides[brush.FirstSide + o].Plane == side.Plane) continue;
-                    poly = Clip(poly, other.Normal, other.Dist);
+                    poly = Clip(poly, other.Normal, Dist(other, raiseTop));
                 }
                 if (poly.Count >= 3) result.Add(poly.ToArray());
             }
             return result;
         }
 
-        /// <summary>Adds a brush's faces to a mesh (Unity space).</summary>
-        public static void AddBrush(MeshData mesh, BspFile bsp, int brushIndex, float scale)
+        static float Dist(BspFile.Plane plane, float raiseTop)
         {
-            foreach (var poly in BrushPolygons(bsp, brushIndex))
+            // Out along the normal, so sloped tops get just as much thicker as flat ones.
+            return plane.Normal.Z > 0.7f ? plane.Dist + raiseTop : plane.Dist;
+        }
+
+        /// <summary>
+        /// Adds a brush's faces to a mesh (Unity space). raiseTop (units) lifts its top: Source touches triggers
+        /// with a flat-bottomed box, VRChat's player is a rounded capsule floating a few cm above the ground, so a
+        /// thin trigger lying on a floor would never fire without it.
+        /// </summary>
+        public static void AddBrush(MeshData mesh, BspFile bsp, int brushIndex, float scale, float raiseTop = 0f)
+        {
+            foreach (var poly in BrushPolygons(bsp, brushIndex, raiseTop))
             {
                 Vector3 outward = DirectionToUnity(PlaneOf(poly));
                 for (int i = 1; i + 1 < poly.Length; i++)
