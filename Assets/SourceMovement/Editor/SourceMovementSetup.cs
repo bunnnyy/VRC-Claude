@@ -159,9 +159,7 @@ public static class SourceMovementSetup
 
         // Surf ramp: two 60 degree faces meeting at a ridge, running along Z below the end of the lane.
         Vector3 ridge = new Vector3(400, -256, 0);
-        const float halfWidth = 512, thickness = 64, length = 6000, rampZ = 7300;
-        SurfFace(map, "SurfRampLeft", ridge, 60, halfWidth, thickness, length, rampZ);
-        SurfFace(map, "SurfRampRight", ridge, -60, -halfWidth, thickness, length, rampZ);
+        SurfRamp(map, "SurfRamp", ridge, 60, 1024, 4300, 10300);
 
         // End platform past the ramp.
         Solid(map, "EndPlatform", new Vector3(400, -988, 10900), new Vector3(2048, 64, 1000));
@@ -174,12 +172,37 @@ public static class SourceMovementSetup
         if (descriptor != null) descriptor.transform.position = start.position;
     }
 
-    static void SurfFace(Transform parent, string name, Vector3 ridge, float angle, float halfWidth, float thickness, float length, float z)
+    /// <summary>
+    /// A surf ramp as one solid triangular prism (mesh collider, like a converted Source map): two faces at
+    /// the given angle meeting at the ridge, each slopeLength long, running along Z from z0 to z1.
+    /// </summary>
+    static void SurfRamp(Transform parent, string name, Vector3 ridge, float angle, float slopeLength, float z0, float z1)
     {
-        Quaternion rotation = Quaternion.Euler(0, 0, angle);
-        // The ridge is the box's top inner edge: local (halfWidth, thickness / 2).
-        Vector3 center = ridge - rotation * new Vector3(halfWidth, thickness / 2, 0) + new Vector3(0, 0, z);
-        Solid(parent, name, center, new Vector3(Mathf.Abs(halfWidth) * 2, thickness, length)).transform.rotation = rotation;
+        float rad = angle * Mathf.Deg2Rad;
+        Vector3 down = new Vector3(Mathf.Cos(rad), -Mathf.Sin(rad), 0) * slopeLength;
+        Vector3 top = ridge, left = ridge + new Vector3(-down.x, down.y, 0), right = ridge + down;
+        Vector3 a = new Vector3(0, 0, z0), b = new Vector3(0, 0, z1);
+        var vertices = new[]
+        {
+            left + a, top + a, top + b, left + b,      // left face
+            top + a, right + a, right + b, top + b,    // right face
+            right + a, left + a, left + b, right + b,  // bottom
+            left + a, right + a, top + a,              // front cap
+            left + b, top + b, right + b,              // back cap
+        };
+        for (int i = 0; i < vertices.Length; i++) vertices[i] *= U;
+        var mesh = new Mesh { name = name, vertices = vertices };
+        mesh.triangles = new[] { 0, 2, 1, 0, 3, 2, 4, 6, 5, 4, 7, 6, 8, 10, 9, 8, 11, 10, 12, 14, 13, 15, 17, 16 };
+        mesh.RecalculateNormals();
+        mesh.RecalculateBounds();
+
+        var go = GameObject.CreatePrimitive(PrimitiveType.Cube);
+        go.name = name;
+        go.transform.SetParent(parent, false);
+        Object.DestroyImmediate(go.GetComponent<BoxCollider>());
+        go.GetComponent<MeshFilter>().sharedMesh = mesh;
+        go.AddComponent<MeshCollider>().sharedMesh = mesh;
+        go.isStatic = true;
     }
 
     // ------------------------------------------------------------------ helpers (Source units in, metres out)
