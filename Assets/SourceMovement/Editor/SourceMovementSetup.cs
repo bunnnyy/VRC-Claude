@@ -129,6 +129,13 @@ public static class SourceMovementSetup
         Solid(map, "Step16", new Vector3(-400, 8, 600), new Vector3(256, 16, 256));
         Solid(map, "Wall24", new Vector3(-400, 12, 1000), new Vector3(256, 24, 256));
 
+        // A 512 unit tower beside the lane with a ladder on the side facing the lane (CS:S func_ladder style:
+        // a trigger volume on the ladder layer against the climbable face).
+        Solid(map, "LadderTower", new Vector3(200, 256, 500), new Vector3(96, 512, 96));
+        var ladder = Solid(map, "Ladder", new Vector3(148, 256, 500), new Vector3(8, 512, 64));
+        ladder.GetComponent<BoxCollider>().isTrigger = true;
+        ladder.layer = 22;
+
         // Surf ramp: two 60 degree faces meeting at a ridge, running along Z below the end of the lane.
         Vector3 ridge = new Vector3(400, -256, 0);
         const float halfWidth = 512, thickness = 64, length = 6000, rampZ = 7300;

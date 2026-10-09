@@ -25,6 +25,10 @@ if ! DOTNET_CLI_TELEMETRY_OPTOUT=1 DOTNET_NOLOGO=1 "$dotnet" build "$here/build/
 fi
 echo "Editor scripts OK"
 
+# Rebuild the harness too (incremental), so changes to the shared tests are picked up.
+DOTNET_CLI_TELEMETRY_OPTOUT=1 DOTNET_NOLOGO=1 "$dotnet" build "$here/build/Harness/Harness.csproj" -v q -nologo > "$cache/harness.log" 2>&1 \
+  || { grep -E "error" "$cache/harness.log" | sed 's/ \[.*//' | sort -u; echo "HARNESS BUILD FAILED"; exit 1; }
+
 # UdonSharp loads its messages from Packages/com.vrchat.worlds relative to the working directory.
 mkdir -p "$cache/run/Packages"
 ln -sfn "$cache/sdk/worlds" "$cache/run/Packages/com.vrchat.worlds"

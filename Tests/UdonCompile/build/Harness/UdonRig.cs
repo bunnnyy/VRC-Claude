@@ -29,7 +29,7 @@ public class Rig
     int teleportFramesLeft = -1;
     readonly UdonVM vm;
     Vector3 position, velocity, pendingVelocity;
-    float yaw, scroll, walk = 2f, run = 4f, strafe = 2f, jump = 3f, gravityStrength = 1f;
+    float yaw, pitch, scroll, walk = 2f, run = 4f, strafe = 2f, jump = 3f, gravityStrength = 1f;
     readonly HashSet<KeyCode> keysDown = new HashSet<KeyCode>();
 
     public static void Init(IUdonProgram compiled, IUdonWrapper realWrapper)
@@ -49,7 +49,7 @@ public class Rig
         Hook("_GetVelocity", (Func<VRCPlayerApi, Vector3>)(p => current.velocity));
         Hook("_SetVelocity", (Action<VRCPlayerApi, Vector3>)((p, v) => current.velocity = v));
         Hook("_GetTrackingData", (Func<VRCPlayerApi, VRCPlayerApi.TrackingDataType, VRCPlayerApi.TrackingData>)((p, t) =>
-            new VRCPlayerApi.TrackingData(current.position + new Vector3(0, 1.6f, 0), CollisionWorld.Euler(0, current.yaw, 0))));
+            new VRCPlayerApi.TrackingData(current.position + new Vector3(0, 1.6f, 0), CollisionWorld.Euler(current.pitch, current.yaw, 0))));
         Hook("_TeleportTo", (Action<VRCPlayerApi, Vector3, Quaternion>)((p, pos, rot) =>
         {
             current.pendingTeleport = pos;
@@ -91,6 +91,7 @@ public class Rig
 
     // ------------------------------------------------------------- world building (Source units)
     public static void Floor(float y = 0, float size = 100000) => Box(new Vector3(0, y - 50, 0), new Vector3(size, 100, size));
+    public static void Ladder(Vector3 center, Vector3 size) => CollisionWorld.Add(center * U, size * U, CollisionWorld.Euler(0, 0, 0), 22);
     public static void Box(Vector3 center, Vector3 size, float rotZ = 0, float rotX = 0) =>
         CollisionWorld.Add(center * U, size * U, CollisionWorld.Euler(rotX, 0, rotZ));
 
@@ -110,6 +111,7 @@ public class Rig
     public void Scroll(float delta) => scroll = delta;
     public void PressKey(KeyCode key) => keysDown.Add(key);
     public float Yaw { get => yaw; set => yaw = value; }
+    public float Pitch { get => pitch; set => pitch = value; }
     public bool AutoBhop { get => GetVar<bool>("autoBhop"); set => SetVar("autoBhop", value); }
     public void Respawn()
     {
@@ -173,6 +175,7 @@ public class Rig
         }
     }
     public bool OnGround => GetVar<bool>("onGround");
+    public bool OnLadder => GetVar<bool>("onLadder");
     public float VelYaw => (float)(Math.Atan2(Vel.x, Vel.z) * 180.0 / Math.PI);
     public Vector3 PlayerVelocity => velocity;
     public float PlayerWalk => walk;
@@ -233,7 +236,7 @@ public class Rig
                     Vector3 center = heap.GetHeapVariable<Vector3>(a[0]);
                     Vector3 dir = heap.GetHeapVariable<Vector3>(a[2]);
                     bool hit = CollisionWorld.BoxCast(center, heap.GetHeapVariable<Vector3>(a[1]), dir,
-                        heap.GetHeapVariable<float>(a[5]), out float distance, out Vector3 normal);
+                        heap.GetHeapVariable<float>(a[5]), out float distance, out Vector3 normal, heap.GetHeapVariable<int>(a[6]));
                     object boxed = new RaycastHit();
                     if (hit)
                     {
@@ -244,6 +247,9 @@ public class Rig
                     heap.SetHeapVariable(a[3], (RaycastHit)boxed);
                     heap.SetHeapVariable(a[8], hit);
                 };
+            overrides["UnityEnginePhysics.__CheckBox__UnityEngineVector3_UnityEngineVector3_UnityEngineQuaternion_SystemInt32_UnityEngineQueryTriggerInteraction__SystemBoolean"] =
+                (heap, a) => heap.SetHeapVariable(a[5], CollisionWorld.CheckBox(heap.GetHeapVariable<Vector3>(a[0]),
+                    heap.GetHeapVariable<Vector3>(a[1]), heap.GetHeapVariable<int>(a[3])));
         }
 
         public UdonExternDelegate GetExternFunctionDelegate(string signature) =>

@@ -29,6 +29,11 @@ The prefabs and the test map are made by **Tools > Source Movement > Create Pref
 - **AutoBhopButton** child: a world button (Interact) that toggles auto bhop, for VR players. Move it
   wherever you like; its label shows the current mode.
 - Desktop and VR both work: movement comes from VRChat's move/jump input, direction from head yaw.
+- **Ladders** work like CS:S: walk into one to grab it, W/S climb along your view (look up to go up, look
+  down past 45 degrees to go down), A/D move sideways, no keys hangs on, jump pushes off at 270 u/s,
+  climb speed 200 u/s. A ladder is a **trigger collider on the ladder layer** (Inspector: `Ladder Layers`,
+  default layer 22) placed against the climbable face; the wall behind it is a normal collider. The test
+  map has a ladder tower beside the bhop lane.
 - **Teleporting**: plain `VRCPlayerApi.TeleportTo` works. A jump over 64 units resets velocity, a
   smaller one keeps it. To choose, call `sourceMovement.TeleportPlayer(position, rotation, keepVelocity)`.
   VRChat keeps the player's old velocity for a moment after `TeleportTo`, so call

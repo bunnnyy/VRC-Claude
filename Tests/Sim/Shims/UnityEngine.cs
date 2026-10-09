@@ -180,12 +180,15 @@ namespace UnityEngine
             Quaternion orientation, float maxDistance, int layerMask, QueryTriggerInteraction q)
         {
             hitInfo = default;
-            if (!CollisionWorld.BoxCast(center, halfExtents, direction, maxDistance, out float distance, out Vector3 normal)) return false;
+            if (!CollisionWorld.BoxCast(center, halfExtents, direction, maxDistance, out float distance, out Vector3 normal, layerMask)) return false;
             hitInfo.distance = distance;
             hitInfo.normal = normal;
             hitInfo.point = center + direction * distance;
             return true;
         }
+
+        public static bool CheckBox(Vector3 center, Vector3 halfExtents, Quaternion orientation, int layerMask, QueryTriggerInteraction q) =>
+            CollisionWorld.CheckBox(center, halfExtents, layerMask);
     }
 }
 

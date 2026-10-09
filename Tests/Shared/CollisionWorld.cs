@@ -13,6 +13,7 @@ public static class CollisionWorld
     {
         public Vector3 center, half;
         public Quaternion rotation;
+        public int layer;
     }
 
     public static readonly List<Box> boxes = new List<Box>();
@@ -24,8 +25,8 @@ public static class CollisionWorld
         castCount = 0;
     }
 
-    public static void Add(Vector3 center, Vector3 size, Quaternion rotation) =>
-        boxes.Add(new Box { center = center, half = size * 0.5f, rotation = rotation });
+    public static void Add(Vector3 center, Vector3 size, Quaternion rotation, int layer = 0) =>
+        boxes.Add(new Box { center = center, half = size * 0.5f, rotation = rotation, layer = layer });
 
     /// <summary>Unity-style Euler rotation (Z, then X, then Y) without calling into the engine.</summary>
     public static Quaternion Euler(float x, float y, float z) => Mul(Mul(Axis(y, 0, 1, 0), Axis(x, 1, 0, 0)), Axis(z, 0, 0, 1));
@@ -58,13 +59,15 @@ public static class CollisionWorld
         return new Vector3((float)((pitch + 360) % 360), (float)((yaw + 360) % 360), 0);
     }
 
-    public static bool BoxCast(Vector3 center, Vector3 half, Vector3 dir, float maxDistance, out float distance, out Vector3 normal)
+    public static bool BoxCast(Vector3 center, Vector3 half, Vector3 dir, float maxDistance, out float distance, out Vector3 normal,
+        int layerMask = ~0)
     {
         castCount++;
         distance = float.MaxValue;
         normal = Vector3.zero;
         foreach (Box box in boxes)
         {
+            if ((layerMask & (1 << box.layer)) == 0) continue;
             if (Sweep(box, center, half, dir, maxDistance, out float t, out Vector3 n) && t < distance)
             {
                 distance = t;
@@ -72,6 +75,44 @@ public static class CollisionWorld
             }
         }
         return distance != float.MaxValue;
+    }
+
+    /// <summary>Physics.CheckBox: does the axis-aligned box overlap any box on these layers?</summary>
+    public static bool CheckBox(Vector3 center, Vector3 half, int layerMask)
+    {
+        castCount++;
+        foreach (Box box in boxes)
+            if ((layerMask & (1 << box.layer)) != 0 && Overlaps(box, center, half)) return true;
+        return false;
+    }
+
+    static bool Overlaps(Box box, Vector3 c, Vector3 h)
+    {
+        // Separating axis test on the 15 axes, the same as Sweep with no motion.
+        foreach (Vector3 axis in Axes(box))
+        {
+            float r = box.half.x * Math.Abs(Vector3.Dot(axis, Rotate(box.rotation, new Vector3(1, 0, 0))))
+                + box.half.y * Math.Abs(Vector3.Dot(axis, Rotate(box.rotation, new Vector3(0, 1, 0))))
+                + box.half.z * Math.Abs(Vector3.Dot(axis, Rotate(box.rotation, new Vector3(0, 0, 1))))
+                + h.x * Math.Abs(axis.x) + h.y * Math.Abs(axis.y) + h.z * Math.Abs(axis.z);
+            if (Math.Abs(Vector3.Dot(axis, c - box.center)) >= r) return false;
+        }
+        return true;
+    }
+
+    static List<Vector3> Axes(Box box)
+    {
+        Vector3[] obbAxes = { Rotate(box.rotation, new Vector3(1, 0, 0)), Rotate(box.rotation, new Vector3(0, 1, 0)), Rotate(box.rotation, new Vector3(0, 0, 1)) };
+        Vector3[] worldAxes = { new Vector3(1, 0, 0), new Vector3(0, 1, 0), new Vector3(0, 0, 1) };
+        var axes = new List<Vector3>(obbAxes);
+        axes.AddRange(worldAxes);
+        foreach (Vector3 a in obbAxes)
+            foreach (Vector3 w in worldAxes)
+            {
+                Vector3 cr = Vector3.Cross(a, w);
+                if (cr.sqrMagnitude > 1e-6f) axes.Add(cr / cr.magnitude);
+            }
+        return axes;
     }
 
     static bool Sweep(Box box, Vector3 c, Vector3 h, Vector3 dir, float maxDist, out float tHit, out Vector3 normal)

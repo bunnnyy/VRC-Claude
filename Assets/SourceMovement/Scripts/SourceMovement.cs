@@ -40,6 +40,9 @@ public class SourceMovement : UdonSharpBehaviour
     public float metersPerUnit = 0.01905f;
     [Tooltip("Layers the player hull collides with")]
     public LayerMask collisionLayers = (1 << 0) | (1 << 11); // Default, Environment
+    [Tooltip("Layers of ladder volumes (CS:S func_ladder): trigger colliders against the climbable face. " +
+        "You pass through them, the wall behind stops you. Layer 22 is the first free user layer in VRChat.")]
+    public LayerMask ladderLayers = 1 << 22;
 
     [Header("Controls")]
     [Tooltip("Start with Source movement on. Turn off if a SourceMovementZone switches it on.")]
@@ -58,6 +61,9 @@ public class SourceMovement : UdonSharpBehaviour
     private const float ResyncDistance = 8f;      // real player drifted from simulation
     private const float TeleportDistance = 64f;   // real player was teleported
     private const int TeleportWaitFrames = 30;    // how long to wait for VRChat to finish our teleport
+    private const float MaxClimbSpeed = 200f;     // MAX_CLIMB_SPEED
+    private const float LadderJumpSpeed = 270f;   // jumping off a ladder
+    private const float LadderDistance = 2f;      // how close a ladder must be to grab it
     private const int MaxBumps = 4;
     private const int MaxClipPlanes = 5;
     private const int MaxTicksPerFrame = 8;
@@ -74,6 +80,8 @@ public class SourceMovement : UdonSharpBehaviour
     private Vector3 lastTarget;
     private Vector3 velocity;
     private bool onGround;
+    private bool onLadder;
+    private Vector3 ladderNormal;
     private float surfaceFriction = 1f;
     private float accumulator;
 
@@ -86,6 +94,8 @@ public class SourceMovement : UdonSharpBehaviour
     private float prevYaw;
     private Vector3 wishForward;
     private Vector3 wishRight;
+    private Vector3 viewForward; // with pitch, for ladders
+    private float pitch;
 
     // Hull and trace results
     private Vector3 hullHalf;
@@ -216,7 +226,9 @@ public class SourceMovement : UdonSharpBehaviour
             ticks = MaxTicksPerFrame;
             accumulator = ticks * tick;
         }
-        float yaw = localPlayer.GetTrackingData(VRCPlayerApi.TrackingDataType.Head).rotation.eulerAngles.y;
+        Vector3 view = localPlayer.GetTrackingData(VRCPlayerApi.TrackingDataType.Head).rotation.eulerAngles;
+        float yaw = view.y;
+        pitch = view.x > 180f ? view.x - 360f : view.x;
         for (int i = 0; i < ticks; i++)
         {
             SetWishAxes(Mathf.LerpAngle(prevYaw, yaw, (i + 1f) / ticks));
@@ -248,6 +260,7 @@ public class SourceMovement : UdonSharpBehaviour
     {
         TraceHull(pos + Vector3.up * stepSize, pos);
         origin = trEnd;
+        onLadder = false;
         prevOrigin = origin;
         lastTarget = origin;
     }
@@ -257,6 +270,8 @@ public class SourceMovement : UdonSharpBehaviour
         float rad = yaw * Mathf.Deg2Rad;
         wishForward = new Vector3(Mathf.Sin(rad), 0f, Mathf.Cos(rad));
         wishRight = new Vector3(Mathf.Cos(rad), 0f, -Mathf.Sin(rad));
+        float p = pitch * Mathf.Deg2Rad; // looking down is positive in Unity
+        viewForward = wishForward * Mathf.Cos(p) + Vector3.down * Mathf.Sin(p);
     }
 
     // ---------------------------------------------------------------- Source movement
@@ -264,7 +279,62 @@ public class SourceMovement : UdonSharpBehaviour
     private void PlayerMove(float dt)
     {
         CategorizePosition();
-        FullWalkMove(dt);
+        if (LadderMove()) TryPlayerMove(dt); // FullLadderMove: no gravity, no friction
+        else FullWalkMove(dt);
+    }
+
+    /// <summary>
+    /// Source's LadderMove. Grab a ladder by moving towards it, then W/S climb along the view (look up or down),
+    /// A/D move sideways, jump pushes off. Sets the velocity; returns false when not on a ladder.
+    /// </summary>
+    private bool LadderMove()
+    {
+        Vector3 wishDir;
+        if (onLadder) wishDir = -ladderNormal; // already climbing: keep holding on
+        else
+        {
+            if (moveForward == 0f && moveRight == 0f) return false;
+            wishDir = (viewForward * moveForward + wishRight * moveRight).normalized;
+        }
+
+        // Is there a ladder within 2 units that way? We may already be inside the ladder volume, where a cast
+        // can't see it, so cast from one hull width back. A hit behind our position only counts if we touch it.
+        Vector3 start = origin - wishDir * hullWidth;
+        RaycastHit hit;
+        onLadder = Physics.BoxCast((start + hullCenter) * metersPerUnit, hullHalf * metersPerUnit, wishDir, out hit,
+            Quaternion.identity, (hullWidth + LadderDistance) * metersPerUnit, ladderLayers, QueryTriggerInteraction.Collide)
+            && hit.point != Vector3.zero
+            && (hit.distance >= hullWidth * metersPerUnit || Physics.CheckBox((origin + hullCenter) * metersPerUnit,
+                hullHalf * metersPerUnit, Quaternion.identity, ladderLayers, QueryTriggerInteraction.Collide));
+        if (!onLadder) return false;
+        ladderNormal = hit.normal;
+
+        bool jump = jumpHeld || scrollJump;
+        scrollJump = false;
+        if (jump)
+        {
+            onLadder = false;
+            oldJump = true;
+            velocity = ladderNormal * LadderJumpSpeed;
+            return true;
+        }
+
+        float forwardSpeed = moveForward * MaxClimbSpeed;
+        float rightSpeed = moveRight * MaxClimbSpeed;
+        if (forwardSpeed == 0f && rightSpeed == 0f)
+        {
+            velocity = Vector3.zero;
+            return true;
+        }
+
+        // Turn movement into the ladder face into climbing along it.
+        Vector3 wishVel = viewForward * forwardSpeed + wishRight * rightSpeed;
+        Vector3 perp = Vector3.Cross(Vector3.up, ladderNormal).normalized;
+        float into = Vector3.Dot(wishVel, ladderNormal);
+        Vector3 lateral = wishVel - ladderNormal * into;
+        velocity = lateral - Vector3.Cross(ladderNormal, perp) * into;
+        if (onGround && into > 0f) velocity += ladderNormal * MaxClimbSpeed; // walking away at the bottom
+        return true;
     }
 
     private void FullWalkMove(float dt)

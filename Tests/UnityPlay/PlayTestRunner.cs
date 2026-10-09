@@ -80,6 +80,7 @@ public class PlayTestRunner : MonoBehaviour
         yield return Run("strafe", AirStrafe());
         yield return Run("surf", Surf());
         yield return Run("teleport", Teleports());
+        yield return Run("ladder", Ladder());
         yield return Run("legit", Legit());
         yield return Run("timer", Timer());
         Finish();
@@ -278,6 +279,46 @@ public class PlayTestRunner : MonoBehaviour
         Keys();
         Log($"short TeleportTo 32 u: speed {s0:F1} -> {Speed():F1}, x {here.x:F1} -> {Real().x:F1}");
         Check("teleport", Speed() > 240f && Real().x - here.x > 28f, "short TeleportTo moves the player and keeps speed");
+    }
+
+    IEnumerator Ladder()
+    {
+        // Test map ladder: face at x = 144 on a 512 unit tower (top at y 512), facing the lane (-x).
+        yield return Spawn(new Vector3(60, 0, 500), 90f);
+        Keys(Key.W);
+        for (int i = 0; i < 2 * frameRate && !(bool)movement.GetProgramVariable("onLadder"); i++) yield return null;
+        Check("ladder", (bool)movement.GetProgramVariable("onLadder"), "walking into the ladder grabs it");
+        yield return Frames(0.3f, null);
+        float y0 = Real().y, maxErr = 0f;
+        yield return Frames(1f, () => maxErr = Mathf.Max(maxErr, TrackError()));
+        float climb = Real().y - y0;
+        Log($"ladder: real climb {climb:F1} u in 1 s (Source: 200), max tracking error beyond one physics step {maxErr:F2} u");
+        Check("ladder", Mathf.Abs(climb - 200f) < 5f, "climbs at 200 u/s");
+        Check("ladder", maxErr < 4f, "player follows the simulation on the ladder");
+
+        Keys();
+        yield return Frames(0.1f, null); // the key release reaches Udon a frame later
+        y0 = Real().y;
+        yield return Frames(0.5f, null);
+        Check("ladder", Mathf.Abs(Real().y - y0) < 1f, "hangs on with no keys");
+
+        Keys(Key.W); // climb until standing on top, then let go (holding on walks off the far side)
+        for (int i = 0; i < 4 * frameRate && !(OnGround() && Real().y > 500f); i++) yield return null;
+        Keys();
+        yield return Frames(0.5f, null);
+        Log($"ladder top: real {Real():F1}, grounded {OnGround()}");
+        Check("ladder", OnGround() && Mathf.Abs(Real().y - 512f) < 2f && Real().x > 136f, "climbs out onto the top"); // hull over the tower's edge at x 152
+
+        yield return Spawn(new Vector3(60, 0, 500), 90f);
+        Keys(Key.W);
+        yield return Frames(1f, null);
+        Keys(Key.Space);
+        for (int i = 0; i < frameRate / 2 && (bool)movement.GetProgramVariable("onLadder"); i++) yield return null;
+        Keys();
+        Vector3 v = (Vector3)movement.GetProgramVariable("velocity");
+        Log($"ladder jump off: velocity {v:F1}");
+        Check("ladder", !(bool)movement.GetProgramVariable("onLadder") && v.x < -200f, "jump pushes off the ladder");
+        yield return Frames(1.5f, null);
     }
 
     IEnumerator Legit()

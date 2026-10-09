@@ -34,6 +34,13 @@ public static class MovementTests
         Test("Step + surf: walking into a surf ramp never stands on it", WalkIntoRamp);
         Test("Walking down a 30 degree slope stays on the ground", WalkDownSlope);
         Test("Falling speed clamps at sv_maxvelocity 3500", MaxVelocity);
+        Test("Ladder: walking into it grabs it and W climbs at 200 u/s", LadderClimb);
+        Test("Ladder: looking down 60 degrees + W climbs down at 73 u/s", LadderClimbDown);
+        Test("Ladder: no keys hangs on without falling", LadderHang);
+        Test("Ladder: jump pushes off at 270 u/s", LadderJumpOff);
+        Test("Ladder: climbing to the top gets you onto the ledge", LadderTop);
+        Test("Ladder: S at the bottom walks off it", LadderWalkOff);
+        Test("Ladder: one behind you is not grabbed", LadderBehind);
         Test("Teleport resets velocity", TeleportResets);
         Test("Teleport onto the floor stands on it (no sinking)", TeleportOntoFloor);
         Test("TeleportPlayer can keep velocity (portals)", TeleportKeepsVelocity);
@@ -407,6 +414,102 @@ public static class MovementTests
             Check(lowest > -0.01f, "hull sank into the floor: " + lowest);
             Check(r.OnGround, "not standing after teleport");
         }
+    }
+
+    // Ladder test map: a 512 unit high block whose face is at z = 48, with an 8 unit ladder volume against it.
+    static Rig LadderWall()
+    {
+        var r = OnFloor();
+        Rig.Box(new Vector3(0, 256, 448), new Vector3(256, 512, 800));
+        Rig.Ladder(new Vector3(0, 256, 44), new Vector3(64, 512, 8));
+        return r;
+    }
+
+    static Rig OnLadder()
+    {
+        var r = LadderWall();
+        r.Move(1, 0);
+        r.Run(1f);
+        Check(r.OnLadder, "did not grab the ladder");
+        return r;
+    }
+
+    static void LadderClimb()
+    {
+        var r = OnLadder();
+        float y0 = r.Origin.y;
+        r.Run(1f);
+        float climb = r.Origin.y - y0;
+        Note($"climbed {climb:F1} u in 1 s, at z {r.Origin.z:F1} (ladder face 40)");
+        Check(Math.Abs(climb - 200) < 3, "climb speed " + climb);
+        Check(r.OnLadder, "fell off the ladder");
+    }
+
+    static void LadderClimbDown()
+    {
+        var r = OnLadder();
+        r.Run(1f); // up to y ~200
+        r.Pitch = 60;
+        float y0 = r.Origin.y;
+        r.Run(1f);
+        float rate = r.Origin.y - y0;
+        Note($"looking down 60 degrees: {rate:F1} u/s (Source: 200 * (cos 60 - sin 60) = -73.2)");
+        Check(Math.Abs(rate + 73.2f) < 2, "down speed " + rate);
+    }
+
+    static void LadderHang()
+    {
+        var r = OnLadder();
+        r.Run(0.5f);
+        r.Move(0, 0);
+        float y0 = r.Origin.y;
+        r.Run(1f);
+        Note($"hanging: moved {r.Origin.y - y0:F2} u in 1 s");
+        Check(Math.Abs(r.Origin.y - y0) < 0.5f && r.OnLadder, "did not hang on");
+    }
+
+    static void LadderJumpOff()
+    {
+        var r = OnLadder();
+        r.Run(0.5f);
+        r.Move(0, 0);
+        r.Jump(true);
+        r.Frame();
+        Note($"after jump: velocity {r.Vel}");
+        Check(!r.OnLadder, "still on the ladder");
+        Check(Math.Abs(r.Vel.z + 270) < 1 && Math.Abs(r.Vel.x) < 1, "push off velocity " + r.Vel);
+    }
+
+    static void LadderTop()
+    {
+        var r = OnLadder();
+        r.Run(4f);
+        Note($"after 4 s: at {r.Origin}, on ground {r.OnGround}, on ladder {r.OnLadder}");
+        Check(r.OnGround && Math.Abs(r.Origin.y - 512) < 1 && r.Origin.z > 32, "not standing on the ledge");
+    }
+
+    static void LadderWalkOff()
+    {
+        var r = LadderWall();
+        r.Move(1, 0);
+        for (int i = 0; i < 100 && !r.OnLadder; i++) r.Frame();
+        Check(r.OnLadder, "did not grab the ladder");
+        r.Move(-1, 0);
+        float z0 = r.Origin.z;
+        r.Run(0.5f);
+        Note($"S at the bottom: z {z0:F1} -> {r.Origin.z:F1}, on ladder {r.OnLadder}");
+        Check(r.Origin.z < z0 - 50 && !r.OnLadder, "did not walk off");
+    }
+
+    static void LadderBehind()
+    {
+        var r = LadderWall();
+        r.TeleportPlayer(new Vector3(0, 0, 4), 180, false); // ladder face 4 units behind the hull's back
+        r.Run(0.1f);
+        r.Move(1, 0);
+        r.Run(0.5f);
+        Note($"walking away from it: z {r.Origin.z:F1}, on ladder {r.OnLadder}");
+        Check(!r.OnLadder && r.Origin.z < -50, "grabbed a ladder behind");
     }
 
     static Rig Running()
