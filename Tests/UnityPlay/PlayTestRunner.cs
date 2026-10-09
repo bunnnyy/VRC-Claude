@@ -19,6 +19,8 @@ public class PlayTestRunner : MonoBehaviour
 {
     public int frameRate = 90;
     public string only = "";
+    [Tooltip("Demo recording: folder for the frames (only with only = demo)")]
+    public string recordDir = "";
 
     const float U = 0.01905f;
     readonly List<string> report = new List<string>();
@@ -74,6 +76,12 @@ public class PlayTestRunner : MonoBehaviour
         for (int i = 0; i < 10; i++) yield return null;
         Check("setup", (bool)movement.GetProgramVariable("active"), "SourceMovement active on start");
 
+        if (only == "demo")
+        {
+            yield return Run("demo", Demo());
+            Finish();
+            yield break;
+        }
         yield return Run("walk", Walk());
         yield return Run("hud", Hud());
         yield return Run("bhop", Bhop());
@@ -464,6 +472,84 @@ public class PlayTestRunner : MonoBehaviour
         Check("timer", (bool)movement.GetProgramVariable("autoBhop"), "button turns auto bhop back on");
     }
 
+    // ------------------------------------------------------------------ demo video
+
+    Camera recordCamera;
+    RenderTexture recordTarget;
+    Texture2D recordFrame;
+    int recordFrameNumber;
+
+    IEnumerator Demo()
+    {
+        // Dev-texture grid on the map so motion is visible.
+        var grey = new Material(Shader.Find("SourceDemo/Grid"));
+        var blue = new Material(grey) { color = new Color(0.45f, 0.6f, 0.85f) };
+        foreach (var r in GameObject.Find("TestMap").GetComponentsInChildren<MeshRenderer>())
+        {
+            var c = r.GetComponent<Collider>();
+            if (c != null && c.isTrigger) r.enabled = false; // timer and water volumes
+            else r.sharedMaterial = r.name.StartsWith("Surf") ? blue : grey;
+        }
+        foreach (var cam in FindObjectsOfType<Camera>())
+            if (cam.enabled && (recordCamera == null || cam.depth > recordCamera.depth)) recordCamera = cam;
+        Log($"recording with camera '{recordCamera.name}', fov {recordCamera.fieldOfView}");
+        recordCamera.fieldOfView = 74f; // CS:S 90 degree horizontal fov at 4:3
+
+        // Bhop: auto bhop down the lane, strafing left and right in sync with turning to gain speed.
+        yield return Spawn(new Vector3(0, 0, 100), 0f);
+        string dir = recordDir;
+        recordDir = "";
+        yield return Frames(0.2f, null);
+        recordDir = dir;
+        yield return Frames(0.6f, null);
+        Keys(Key.W);
+        yield return Frames(0.4f, null);
+        float yaw = 0f;
+        for (int i = 0; i < 12; i++)
+        {
+            bool left = i % 2 == 0;
+            float rate = (left ? -120f : 120f) * (i == 0 ? 0.5f : 1f);
+            Keys(Key.Space, left ? Key.A : Key.D);
+            yield return Frames(0.6f, () => { yaw += rate * Time.deltaTime; SetYaw(yaw); });
+        }
+        Keys();
+        yield return Frames(0.6f, () => { yaw = Mathf.MoveTowards(yaw, 0f, 60f * Time.deltaTime); SetYaw(yaw); });
+        Log($"demo bhop: {Speed():F0} u/s at z {Real().z:F0}");
+
+        // Surf: onto the 60 degree ramp at 900 u/s, holding D into it, small look-arounds.
+        yield return Teleport(new Vector3(200, -560, 4400), 0f, false);
+        movement.SetProgramVariable("velocity", new Vector3(0, 0, 900));
+        Keys(Key.D);
+        float t = 0f;
+        yield return Frames(6.5f, () =>
+        {
+            t += Time.deltaTime;
+            SetYaw(Mathf.Sin(t * 1.3f) * 12f);
+        });
+        Keys();
+        yield return Frames(1.5f, null);
+        Log($"demo surf end: {Speed():F0} u/s at {Real():F0}, {recordFrameNumber} frames");
+    }
+
+    void Capture()
+    {
+        if (recordCamera == null) return;
+        if (recordTarget == null)
+        {
+            recordTarget = new RenderTexture(1280, 720, 24);
+            recordFrame = new Texture2D(1280, 720, TextureFormat.RGB24, false);
+        }
+        var previous = recordCamera.targetTexture;
+        recordCamera.targetTexture = recordTarget;
+        recordCamera.Render();
+        recordCamera.targetTexture = previous;
+        RenderTexture.active = recordTarget;
+        recordFrame.ReadPixels(new Rect(0, 0, 1280, 720), 0, 0);
+        recordFrame.Apply();
+        RenderTexture.active = null;
+        System.IO.File.WriteAllBytes(System.IO.Path.Combine(recordDir, $"f{recordFrameNumber++:D5}.jpg"), recordFrame.EncodeToJPG(90));
+    }
+
     // ------------------------------------------------------------------ helpers
 
     static string RunTimerFormat(float seconds)
@@ -535,6 +621,7 @@ public class PlayTestRunner : MonoBehaviour
         {
             int f0 = fixedSteps;
             yield return null;
+            if (recordDir != "") Capture();
             each?.Invoke();
             if (trace) Log($"trace f{i} fixed {fixedSteps - f0} real {Real():F2} prevTarget {prevTarget:F2} err {TrackError():F2} gap {RampGap(Real()):F2} simgap {RampGap(SimOrigin()):F2} origin {SimOrigin():F2} wait {movement.GetProgramVariable("teleportWait")} vel {(Vector3)movement.GetProgramVariable("velocity"):F1}");
             prevTarget = SimTarget();

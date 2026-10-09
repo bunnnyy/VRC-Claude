@@ -105,7 +105,8 @@ fi
 
 echo "Building prefabs and test map"
 copy_assets
-run build -quit -executeMethod SourceMovementSetup.BuildTestScene
+run build -quit -executeMethod SourceMovementSetup.BuildTestScene || true
+grep -q "Test scene saved" "$logs/build.log" || { echo "BUILD FAILED (see $logs/build.log)"; exit 1; }
 # That checks the menu code. Then play-test the committed prefabs and map (what users get). KEEP_BUILD=1 copies
 # the rebuilt ones into the repo instead: a rebuild gives every object new IDs, so only do it when the setup changed.
 if [ -n "${KEEP_BUILD:-}" ]; then
