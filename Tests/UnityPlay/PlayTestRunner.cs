@@ -82,6 +82,7 @@ public class PlayTestRunner : MonoBehaviour
         yield return Run("teleport", Teleports());
         yield return Run("ladder", Ladder());
         yield return Run("water", Water());
+        yield return Run("boost", Boost());
         yield return Run("legit", Legit());
         yield return Run("timer", Timer());
         Finish();
@@ -354,6 +355,47 @@ public class PlayTestRunner : MonoBehaviour
         Check("water", OnGround() && Mathf.Abs(Real().y - 40f) < 2f && Real().z > 1890f, "climbs out of waist-deep water onto the ledge");
     }
 
+    IEnumerator Boost()
+    {
+        // Test map booster platform at x 900 (pads find SourceMovement by name).
+        // Sideways push pad at z 536..664 pushing +z at 800 u/s: walk through it.
+        yield return Spawn(new Vector3(900, 0, 450), 0f);
+        Keys(Key.W);
+        float maxSpeed = 0f, maxErr = 0f;
+        yield return Frames(1f, () => { maxSpeed = Mathf.Max(maxSpeed, Speed()); maxErr = Mathf.Max(maxErr, TrackError()); });
+        Keys();
+        Log($"push pad: top own speed after leaving {maxSpeed:F0} u/s (250 walk + 800 push), max tracking error beyond one physics step {maxErr:F2} u");
+        Check("boost", maxSpeed > 800f, "sideways push pad adds its speed when you leave"); // ground friction already acts by the next frame
+        Check("boost", maxErr < 4f, "player follows the simulation through the push pad");
+
+        // Launch pad: +600 u/s up once.
+        yield return Teleport(new Vector3(900, 0, 1000), 0f, false);
+        float peak = 0f;
+        yield return Frames(1.2f, () => peak = Mathf.Max(peak, Real().y));
+        Log($"launch pad: real peak {peak:F1} u (theory 225)");
+        Check("boost", Mathf.Abs(peak - 225f) < 12f, "launch pad launches about 225 u high");
+
+        // Upward push column: 1000 u/s push against 800 gravity.
+        yield return Teleport(new Vector3(1060, 0, 1000), 0f, false);
+        yield return Frames(1f, null);
+        Vector3 v = (Vector3)movement.GetProgramVariable("velocity");
+        Log($"push column: after 1 s real height {Real().y:F1}, vertical speed {v.y:F1} (theory ~100, 200)");
+        Check("boost", Real().y > 80f && Mathf.Abs(v.y - 200f) < 20f, "upward push lifts against gravity");
+
+        // Half gravity pad, then the normal gravity pad.
+        yield return Spawn(new Vector3(900, 0, 1300), 0f);
+        float g = (float)movement.GetProgramVariable("gravityScale");
+        Keys(Key.Space);
+        yield return Frames(0.1f, null);
+        Keys();
+        peak = 0f;
+        yield return Frames(1.5f, () => peak = Mathf.Max(peak, Real().y));
+        Log($"half gravity pad: gravity scale {g}, real jump peak {peak:F1} u (normal 57)");
+        Check("boost", g == 0.5f && peak > 100f, "half gravity pad doubles the jump");
+        yield return Spawn(new Vector3(900, 0, 1500), 0f);
+        Check("boost", (float)movement.GetProgramVariable("gravityScale") == 1f, "normal gravity pad resets gravity");
+    }
+
     IEnumerator Legit()
     {
         // The world button (what VR players use) switches auto bhop off.
@@ -523,7 +565,8 @@ public class PlayTestRunner : MonoBehaviour
     float TrackError()
     {
         float step = Mathf.Max(Time.fixedDeltaTime, 1f / frameRate);
-        float travel = ((Vector3)movement.GetProgramVariable("velocity")).magnitude * step;
+        Vector3 moving = (Vector3)movement.GetProgramVariable("velocity") + (Vector3)movement.GetProgramVariable("pushVelocity");
+        float travel = moving.magnitude * step;
         return Mathf.Max(0f, (Real() - prevTarget).magnitude - travel);
     }
 

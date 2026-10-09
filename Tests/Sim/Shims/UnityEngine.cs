@@ -144,6 +144,8 @@ namespace UnityEngine
         Transform _transform;
         public Transform transform => _transform ??= new Transform { owner = this };
         public void SetActive(bool v) => activeSelf = v;
+        public static GameObject Find(string name) => null;
+        public T GetComponent<T>() where T : class => null;
     }
     public class Component : Object
     {

@@ -27,6 +27,8 @@ if [ ! -d "$proj/Assets" ]; then
   vpm new Project World -p "$(dirname "$proj")"
   vpm add package com.vrchat.worlds@3.10.5 -p "$proj"
   ln -s "$here" "$proj/Assets/SourcePlayTests"
+  echo "First import (several minutes)"
+  run open -quit || true # a brand-new project hangs if the first launch also runs a method
 fi
 
 # The project gets a copy of the assets, so Unity never rewrites the committed files.
@@ -62,6 +64,10 @@ run build -quit -executeMethod SourceMovementSetup.BuildTestScene
 if [ -n "${KEEP_BUILD:-}" ]; then
   for f in SourceMovement/SourceMovement.prefab SourceMovement/SourceTestMap.unity SourceTimer/SourceTimer.prefab; do
     cp "$proj/Assets/$f" "$repo/Assets/$f"
+  done
+  # Plus files Unity made for new scripts (.meta, U# program assets), which the rebuilt map refers to.
+  (cd "$proj/Assets" && find SourceMovement SourceTimer -type f) | while read -r f; do
+    [ -e "$repo/Assets/$f" ] || { cp "$proj/Assets/$f" "$repo/Assets/$f"; echo "  new: Assets/$f"; }
   done
 fi
 copy_assets

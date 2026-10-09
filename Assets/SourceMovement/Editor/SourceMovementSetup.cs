@@ -143,6 +143,20 @@ public static class SourceMovementSetup
         Water(map, "ShallowWater", new Vector3(-900, 20, 1600), new Vector3(512, 40, 600));
         Solid(map, "PoolLedge", new Vector3(-900, 20, 2100), new Vector3(512, 40, 400));
 
+        // Boosters on their own platform: a sideways trigger_push, an upward push column, a basevelocity
+        // launch pad, and half-gravity / normal-gravity pads. Their movement field is left empty on purpose:
+        // they find the object named SourceMovement.
+        Solid(map, "BoostFloor", new Vector3(900, -32, 1000), new Vector3(512, 64, 1200));
+        Trigger<SourcePushTrigger>(map, "PushPad", new Vector3(900, 64, 600), new Vector3(256, 128, 128)).push = new Vector3(0, 0, 800);
+        Trigger<SourcePushTrigger>(map, "PushUp", new Vector3(1060, 256, 1000), new Vector3(128, 512, 128)).push = new Vector3(0, 1000, 0);
+        Trigger<SourceBoostTrigger>(map, "LaunchPad", new Vector3(900, 32, 1000), new Vector3(128, 64, 128)).addVelocity = new Vector3(0, 600, 0);
+        var low = Trigger<SourceBoostTrigger>(map, "HalfGravityPad", new Vector3(900, 32, 1300), new Vector3(128, 64, 128));
+        low.setGravity = true;
+        low.gravityScale = 0.5f;
+        Trigger<SourceBoostTrigger>(map, "NormalGravityPad", new Vector3(900, 32, 1500), new Vector3(128, 64, 128)).setGravity = true;
+        foreach (var trigger in map.GetComponentsInChildren<UdonSharpBehaviour>())
+            if (trigger is SourcePushTrigger || trigger is SourceBoostTrigger) UdonSharpEditorUtility.CopyProxyToUdon(trigger);
+
         // Surf ramp: two 60 degree faces meeting at a ridge, running along Z below the end of the lane.
         Vector3 ridge = new Vector3(400, -256, 0);
         const float halfWidth = 512, thickness = 64, length = 6000, rampZ = 7300;
@@ -193,12 +207,18 @@ public static class SourceMovementSetup
         return cube;
     }
 
-    static void Water(Transform parent, string name, Vector3 center, Vector3 size)
+    /// <summary>A visible, see-through trigger box with a U# behaviour on it.</summary>
+    static T Trigger<T>(Transform parent, string name, Vector3 center, Vector3 size) where T : UdonSharpBehaviour
     {
-        var water = Solid(parent, name, center, size);
-        water.GetComponent<BoxCollider>().isTrigger = true;
-        water.layer = 4;
-        var material = new Material(Shader.Find("Standard")) { color = new Color(0.2f, 0.45f, 0.9f, 0.4f) };
+        var box = Solid(parent, name, center, size);
+        box.GetComponent<BoxCollider>().isTrigger = true;
+        box.GetComponent<MeshRenderer>().sharedMaterial = SeeThrough(new Color(1f, 0.6f, 0.1f, 0.35f));
+        return box.AddUdonSharpComponent<T>();
+    }
+
+    static Material SeeThrough(Color color)
+    {
+        var material = new Material(Shader.Find("Standard")) { color = color };
         // Standard shader in transparent mode.
         material.SetFloat("_Mode", 3);
         material.SetInt("_SrcBlend", (int)UnityEngine.Rendering.BlendMode.One);
@@ -206,7 +226,15 @@ public static class SourceMovementSetup
         material.SetInt("_ZWrite", 0);
         material.EnableKeyword("_ALPHAPREMULTIPLY_ON");
         material.renderQueue = 3000;
-        water.GetComponent<MeshRenderer>().sharedMaterial = material;
+        return material;
+    }
+
+    static void Water(Transform parent, string name, Vector3 center, Vector3 size)
+    {
+        var water = Solid(parent, name, center, size);
+        water.GetComponent<BoxCollider>().isTrigger = true;
+        water.layer = 4;
+        water.GetComponent<MeshRenderer>().sharedMaterial = SeeThrough(new Color(0.2f, 0.45f, 0.9f, 0.4f));
     }
 
     static TimerZone Zone(Transform parent, string name, TimerZoneType type, RunTimer timer, Vector3 center, Vector3 size)

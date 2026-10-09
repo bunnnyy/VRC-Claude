@@ -128,6 +128,9 @@ public class Rig
     }
     public void Teleport(Vector3 units) => position = units * U;
     public void SetVelocity(Vector3 v) => SetVar("velocity", v);
+    public void SetPush(Vector3 units) { SetVar("__0_push__param", units); RunEvent("__0_SetPush"); }
+    public void AddVelocity(Vector3 units) { SetVar("__0_impulse__param", units); RunEvent("__0_AddVelocity"); }
+    public void SetGravityScale(float scale) { SetVar("__0_scale__param", scale); RunEvent("__0_SetGravityScale"); }
     public void TeleportPlayer(Vector3 units, float yaw, bool keepVelocity)
     {
         SetVar("__0_position__param", units * U);
