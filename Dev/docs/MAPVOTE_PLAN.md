@@ -23,13 +23,13 @@ A CS:S bhop-server style VRChat world, made with the VRChat Creator Companion, p
    start/end/checkpoints, speed boosters, jump boosters, etc. Markers keep the original data so the
    movement script can implement them later.
 7. **Maps from GameBanana:** bhop_japan, bhop_kitsune, plus 3 other popular CS:S bhop maps.
-8. **Everything tested with the existing movement system** (Tests/UnityPlay with ClientSim).
+8. **Everything tested with the existing movement system** (Dev/Tests/UnityPlay with ClientSim).
 
 ## Verification: what holds up, what doesn't
 
 ### Fine as planned
 - Creator Companion: on Linux only the CLI exists (`vpm`, `dotnet tool install --global vrchat.vpm.cli`).
-  `Tests/UnityPlay/run.sh` already creates projects from VRChat's official World template with it.
+  `Dev/Tests/UnityPlay/run.sh` already creates projects from VRChat's official World template with it.
   On Windows the user uses the normal VCC app; same template.
 - Scale: the movement already works in Source units (1 u = 0.01905 m), so converted maps at that scale
   play with CS:S distances and jump heights.
@@ -135,8 +135,8 @@ bhop_exodus, bhop_cobblestone, bhop_lego2. (Popularity not verified on GameBanan
 ## Context the new session needs
 - Repo: `bunnnyy/vrc-claude`. Read `README.md` first. Previous work is on branch
   `claude/vrchat-source-movement-mn0xl0`.
-- Tests: `dotnet run --project Tests/Sim`, `UDON_TEST=1 Tests/UdonCompile/compile.sh` (with
-  `Tests/UdonCompile/setup.sh`), `Tests/UnityPlay/run.sh` (real Unity + ClientSim at 30/90/144 fps,
+- Tests: `dotnet run --project Dev/Tests/Sim`, `UDON_TEST=1 Dev/Tests/UdonCompile/compile.sh` (with
+  `Dev/Tests/UdonCompile/setup.sh`), `Dev/Tests/UnityPlay/run.sh` (real Unity + ClientSim at 30/90/144 fps,
   47 checks).
 - Unity: download 2022.3.22f1 from
   `https://download.unity3d.com/download_unity/887be4894c44/LinuxEditorInstaller/Unity.tar.xz`, extract to
@@ -145,7 +145,7 @@ bhop_exodus, bhop_cobblestone, bhop_lego2. (Popularity not verified on GameBanan
   activates the Personal license; `--return-ulf` returns it at the end. The editor's own
   `-username/-password` does not activate Personal licenses.
 - Run Unity headless with `xvfb-run -a Unity -batchmode ...`. ClientSim needs its startup menu accepted
-  and the Input System told to ignore focus (see `Tests/UnityPlay/PlayTestRunner.cs`).
+  and the Input System told to ignore focus (see `Dev/Tests/UnityPlay/PlayTestRunner.cs`).
 - vpm: `dotnet tool install --global vrchat.vpm.cli`, `vpm install templates`,
   `vpm new <name> World -p <dir>`, `vpm add package com.vrchat.worlds@3.10.5 -p <project>`.
 - Lessons from Unity testing: PhysX treats an exactly touching box as starting inside (BoxCast ignores it);
@@ -210,7 +210,7 @@ importer). Folder `Assets/SourceMaps/`, menu `Tools > Source Maps`. Class names 
 Order of work, with a check-in after each:
 1. BSP reader + entity markers + collision on bhop_japan (simulation tests on the real BSP).
 2. Converter comparison (uSource vs USource) on bhop_japan visuals, in real Unity.
-3. MapVote runtime (manager, screen, travel, teleport) + vote logic tests in Tests/Sim + Udon compile.
+3. MapVote runtime (manager, screen, travel, teleport) + vote logic tests in Dev/Tests/Sim + Udon compile.
 4. Sample world with the 5 maps; ClientSim play tests per map with SourceMovement.
 5. Persistent per-map leaderboards, thumbnails, docs.
 
@@ -222,7 +222,7 @@ Order of work, with a check-in after each:
   `SourceEntity` marker per entity, and working `SourceMapTeleport`s.
 - bhop_japan: 3,142 solid brushes + 980 displacements = 176,733 collision triangles, 540 markers,
   56 working teleports, 34 filtered "bhop block" teleports kept as markers (need the movement script).
-- Tests: `Tests/Bsp` 18/18 (simulated, real BSP). Real Unity 2022.3.22f1 + ClientSim + SourceMovement
+- Tests: `Dev/Tests/Bsp` 18/18 (simulated, real BSP). Real Unity 2022.3.22f1 + ClientSim + SourceMovement
   (`run.sh map`): player stands on the floor at 40/40 destinations/spawns, 55/55 reachable teleports send
   the player to their destination (1 trigger lies under the ground everywhere, so it can't be touched in
   Source either).
@@ -233,7 +233,7 @@ Order of work, with a check-in after each:
   displacement "no collision" flags (all 0 in bhop_japan, bit meaning not verified).
 
 ### Step 2: converter comparison on bhop_japan (done 2026-10-09)
-Real Unity 2022.3.22f1 (VRChat world project), `Tests/Converters/compare.sh`. Stock CS:S content isn't
+Real Unity 2022.3.22f1 (VRChat world project), `Dev/Tests/Converters/compare.sh`. Stock CS:S content isn't
 available here, so only what's packed in the BSP can show (white = stock texture, missing = stock model).
 Alignment = 2,575 vertical rays around every spawn/destination, visual geometry vs SourceMaps collision.
 
@@ -270,12 +270,12 @@ the render meshes (needs a test). I did not dig into why USource's geometry does
   2 pushes are filtered.
 - Tests: real Unity + ClientSim `run.sh vote` 44/44 (voting flow, owner changes with ClientSim's simulated
   remote players, practice runs and saved bests); `run.sh 90` (movement) all passed; `run.sh map` bhop_japan
-  40/40 + 55/55; `Tests/Bsp` 24/24 (incl. booster/push parsing); `Tests/Sim` all passed.
+  40/40 + 55/55; `Dev/Tests/Bsp` 24/24 (incl. booster/push parsing); `Dev/Tests/Sim` all passed.
   Not testable here: two real VRChat clients at once (ClientSim is one client).
 
 ### Step 4: the sample world with all 5 maps (2026-10-10)
-- Maps from GameBanana (`Tests/Bsp/get_maps.sh`, zip/rar/7z): bhop_japan, bhop_kitsune, bhop_eazy_v2,
-  bhop_arcane_v1, bhop_badges. `Tests/Bsp` 56/56 on all five (arcane's 91 `*_stop` destinations sit inside
+- Maps from GameBanana (`Dev/Tests/Bsp/get_maps.sh`, zip/rar/7z): bhop_japan, bhop_kitsune, bhop_eazy_v2,
+  bhop_arcane_v1, bhop_badges. `Dev/Tests/Bsp` 56/56 on all five (arcane's 91 `*_stop` destinations sit inside
   player clips and kitsune has 7 teleports without a target: both map design, counted separately).
 - Timer zones: not in the BSPs, but the zone files CS:S bhop servers use exist for all five
   ([srcwr/zones-cstrike](https://github.com/srcwr/zones-cstrike), downloaded at import, not stored here):
@@ -313,8 +313,8 @@ the render meshes (needs a test). I did not dig into why USource's geometry does
 - **Results (real Unity 2022.3.22f1 + ClientSim + SourceMovement):** `run.sh sample` all passed (5 maps, lightmaps,
   sampled teleports 89/89). `run.sh map` per map: stand at every destination/spawn (japan 40/40, eazy 46/46, badges
   55/55, kitsune 20/20, arcane 185/185); teleports japan 55/55, eazy 44/44, badges 134/134, kitsune 28/29, arcane 22/25;
-  bhop runs 0 stalls on 4 maps (top speeds 300-530 u/s), surf runs 0 stalls on all. `Tests/Bsp` 57/57 (incl. the trimmed
-  ramp seam), `Tests/Sim` all passed, `run.sh 90` all passed, UdonSharp compile OK.
+  bhop runs 0 stalls on 4 maps (top speeds 300-530 u/s), surf runs 0 stalls on all. `Dev/Tests/Bsp` 57/57 (incl. the trimmed
+  ramp seam), `Dev/Tests/Sim` all passed, `run.sh 90` all passed, UdonSharp compile OK.
 - **Still open:** arcane's 3 remaining misses are huge out-of-bounds `*_stop` volumes (326264, 326616, 326929) where
   every drop spot the test finds ends up pushed out of geometry (was 7 misses before this step). kitsune: one tiny
   trigger (0.6 m) the falling player slides off; one grounded stop at a 2 u diagonal lip near `restartred`, reported to
@@ -340,7 +340,7 @@ the render meshes (needs a test). I did not dig into why USource's geometry does
 - **Results (real Unity + ClientSim + SourceMovement, `run.sh map`)**, bhop blocks (stand 1 s / bounce with jump held /
   blocks off): japan 6/6, 5/5, 6/6; badges 6/6, 6/6, 6/6; arcane 4/4, 3/3, 4/4; eazy doors 6/6, -, 6/6. Bounce is only
   tested on blocks whose teleport reaches at most 20 units above them (arcane has 65-unit ones that catch bouncers
-  in CS:S too). badges and eazy_v2 all passed; `Tests/Bsp` 74/74.
+  in CS:S too). badges and eazy_v2 all passed; `Dev/Tests/Bsp` 74/74.
 - Collision trim fix: touching faces are now matched by the BSP's exact plane (the clipped corners can be ~0.1 unit off,
   e.g. 6847.913 vs 6848, which kept some wall joins' hidden end faces). With the movement session's e069413 the arcane
   wall-slide stalls are gone; the runs ignore speed changes inside pushes/boosters (arcane's launch pads).

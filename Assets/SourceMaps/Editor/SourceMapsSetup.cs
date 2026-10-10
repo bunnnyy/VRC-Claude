@@ -16,7 +16,6 @@ using UnityEngine.UI;
 /// </summary>
 public static class SourceMapsSetup
 {
-    const string TestScenePath = "Assets/SourceMaps/SourceMapsTest.unity";
     static readonly Color ButtonColor = new Color(0.2f, 0.45f, 0.85f), AdminColor = new Color(0.85f, 0.35f, 0.2f);
 
     [MenuItem("Tools/Source Maps/Add Selected Map To Rotation")]
@@ -264,39 +263,6 @@ public static class SourceMapsSetup
         return AssetDatabase.LoadAssetAtPath<Texture2D>(path);
     }
 
-    [MenuItem("Tools/Source Maps/Build Test Scene")]
-    public static void BuildTestScene()
-    {
-        SourceMapImporter.EnsureProgramAssets();
-        var scene = EditorSceneManager.NewScene(NewSceneSetup.DefaultGameObjects, NewSceneMode.Single);
-        var world = AssetDatabase.LoadAssetAtPath<GameObject>("Packages/com.vrchat.worlds/Samples/UdonExampleScene/Prefabs/VRCWorld.prefab");
-        if (world != null) PrefabUtility.InstantiatePrefab(world);
-        // Six small maps far apart (like imported maps at their own offsets), each a floor with a coloured pillar.
-        Color[] colors = { Color.red, Color.green, Color.blue, Color.yellow, Color.cyan, Color.magenta };
-        for (int i = 0; i < 6; i++)
-        {
-            var root = new GameObject("test_map_" + (i + 1));
-            root.transform.position = new Vector3(200 + i * 100, 0, 0);
-            var floor = GameObject.CreatePrimitive(PrimitiveType.Cube);
-            floor.transform.SetParent(root.transform, false);
-            floor.transform.localPosition = new Vector3(0, -0.5f, 10);
-            floor.transform.localScale = new Vector3(20, 1, 40);
-            var pillar = GameObject.CreatePrimitive(PrimitiveType.Cube);
-            pillar.transform.SetParent(root.transform, false);
-            pillar.transform.localPosition = new Vector3(0, 2, 20);
-            pillar.transform.localScale = new Vector3(2, 4, 2);
-            pillar.GetComponent<MeshRenderer>().sharedMaterial = Colored(colors[i]);
-            var info = AddMap(root);
-            info.author = "Test author " + (i + 1);
-            info.thumbnail = Swatch(colors[i]);
-            UdonSharpEditorUtility.CopyProxyToUdon(info);
-        }
-        var movement = AssetDatabase.LoadAssetAtPath<GameObject>("Assets/SourceMovement/SourceMovement.prefab");
-        if (movement != null) PrefabUtility.InstantiatePrefab(movement); // optional: works without it
-        CreateLobby(Vector3.zero);
-        EditorSceneManager.SaveScene(scene, TestScenePath);
-    }
-
     // ------------------------------------------------------------------ helpers
 
     static System.Type FindType(string name)
@@ -388,7 +354,7 @@ public static class SourceMapsSetup
 
     static readonly Dictionary<Color, Material> materials = new Dictionary<Color, Material>();
 
-    static Material Colored(Color color)
+    internal static Material Colored(Color color)
     {
         if (materials.TryGetValue(color, out var m) && m != null) return m;
         m = new Material(Shader.Find("Standard")) { color = color };
@@ -402,7 +368,7 @@ public static class SourceMapsSetup
     }
 
     /// <summary>A plain coloured texture asset (test thumbnails).</summary>
-    static Texture2D Swatch(Color color)
+    internal static Texture2D Swatch(Color color)
     {
         string path = "Assets/SourceMaps/Materials/thumb_" + ColorUtility.ToHtmlStringRGB(color) + ".asset";
         var tex = AssetDatabase.LoadAssetAtPath<Texture2D>(path);

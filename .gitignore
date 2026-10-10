@@ -9,18 +9,18 @@
 *.csproj.user
 
 # Simulation build output
-Tests/Sim/bin/
-Tests/Sim/obj/
+Dev/Tests/Sim/bin/
+Dev/Tests/Sim/obj/
 
 # Headless UdonSharp compiler downloads and build output
-Tests/UdonCompile/.cache/
+Dev/Tests/UdonCompile/.cache/
 
 # Unity play test project and Unity-generated metas for the test runner
-Tests/UnityPlay/.cache/
-Tests/UnityPlay/**/*.meta
+Dev/Tests/UnityPlay/.cache/
+Dev/Tests/UnityPlay/**/*.meta
 
 # BSP test maps and build output
-Tests/Bsp/.cache/
-Tests/Bsp/bin/
-Tests/Bsp/obj/
-Tests/Converters/.cache/
+Dev/Tests/Bsp/.cache/
+Dev/Tests/Bsp/bin/
+Dev/Tests/Bsp/obj/
+Dev/Tests/Converters/.cache/

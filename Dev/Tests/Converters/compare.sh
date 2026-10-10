@@ -1,18 +1,18 @@
 #!/usr/bin/env bash
 # Compares the two BSP converters on a map in real Unity (step 2 of docs/MAPVOTE_PLAN.md):
 #   DeadZoneLuna/uSource and Shane-SDK/USource, each in its own copy of the UnityPlay test project.
-# Usage: Tests/Converters/compare.sh path/to/map.bsp   (needs Tests/UnityPlay/run.sh to have created the project)
+# Usage: Dev/Tests/Converters/compare.sh path/to/map.bsp   (needs Dev/Tests/UnityPlay/run.sh to have created the project)
 # The converters are downloaded into .cache (git-ignored, neither states a license) at the commits below.
 # Stock CS:S textures aren't available here (no game install), so only textures packed in the BSP can show.
 set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
-repo=$(cd "$here/../.." && pwd)
+repo=$(cd "$here/../../.." && pwd)
 unity=${UNITY:-/opt/unity/Editor/Unity}
-base=$repo/Tests/UnityPlay/.cache/Project
+base=$repo/Dev/Tests/UnityPlay/.cache/Project
 cache=$here/.cache
 bsp=$(realpath "$1")
 name=$(basename "$bsp" .bsp)
-[ -d "$base/Library" ] || { echo "Run Tests/UnityPlay/run.sh first (creates the Unity project)"; exit 1; }
+[ -d "$base/Library" ] || { echo "Run Dev/Tests/UnityPlay/run.sh first (creates the Unity project)"; exit 1; }
 mkdir -p "$cache/src" "$cache/logs" "$cache/shots"
 
 fetch() { # dir url commit

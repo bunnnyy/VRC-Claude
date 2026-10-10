@@ -3,10 +3,10 @@
 # then runs PlayTestRunner in play mode with VRChat's ClientSim (real PhysX, ClientSim's player controller
 # and input path) at each frame rate given (default 30 90 144).
 # Needs an activated Unity license, UNITY pointing at the editor binary and VRChat's vpm CLI
-# (dotnet tool install --global vrchat.vpm.cli). The project is created in Tests/UnityPlay/.cache (git-ignored).
+# (dotnet tool install --global vrchat.vpm.cli). The project is created in Dev/Tests/UnityPlay/.cache (git-ignored).
 set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
-repo=$(cd "$here/../.." && pwd)
+repo=$(cd "$here/../../.." && pwd)
 unity=${UNITY:-/opt/unity/Editor/Unity}
 proj=$here/.cache/Project
 logs=$here/.cache/logs
@@ -31,6 +31,9 @@ if [ ! -d "$proj/Assets" ]; then
   echo "First import (several minutes)"
   run open -quit || true # a brand-new project hangs if the first launch also runs a method
 fi
+
+# The test runners are linked into the project (relinked if the repo moved, e.g. Tests/ -> Dev/Tests/).
+[ "$(readlink "$proj/Assets/SourcePlayTests")" = "$here" ] || ln -sfn "$here" "$proj/Assets/SourcePlayTests"
 
 # The VRChat SDK adds these defines when an interactive editor opens (EnvConfig), not in batch mode; ClientSim's
 # player persistence (PlayerData) only works with VRC_ENABLE_PLAYER_PERSISTENCE.
@@ -71,7 +74,7 @@ if [ "${1:-}" = "route" ]; then
   [ -n "${4:-}" ] && { rm -rf "$4"; record=(-smRecord "$(realpath -m "$4")"); }
   copy_assets
   # The map's visible geometry and textures need DeadZoneLuna's uSource (no license stated: kept in the
-  # git-ignored cache, as Tests/Converters/compare.sh does), at the commit the converter comparison used.
+  # git-ignored cache, as Dev/Tests/Converters/compare.sh does), at the commit the converter comparison used.
   if [ ! -d "$proj/Assets/uSource" ]; then
     src=$here/.cache/uSource
     [ -d "$src" ] || git clone -q https://github.com/DeadZoneLuna/uSource "$src"
@@ -119,26 +122,26 @@ for guid, parts in names.items():
 PY
 }
 
-# Sample mode: run.sh sample builds the sample world from every map in Tests/Bsp/.cache/maps (get_maps.sh), with
-# uSource (Tests/Converters/compare.sh fetches it) for the visuals and zones-cstrike zone files, and play-tests it.
+# Sample mode: run.sh sample builds the sample world from every map in Dev/Tests/Bsp/.cache/maps (get_maps.sh), with
+# uSource (Dev/Tests/Converters/compare.sh fetches it) for the visuals and zones-cstrike zone files, and play-tests it.
 if [ "${1:-}" = "sample" ]; then
   copy_assets
   tmp_essentials
   rm -rf "$proj/ClientSimStorage"
-  src=$repo/Tests/Converters/.cache/src/uSource
-  [ -d "$src" ] || { echo "Run Tests/Converters/compare.sh once (downloads uSource)"; exit 1; }
+  src=$repo/Dev/Tests/Converters/.cache/src/uSource
+  [ -d "$src" ] || { echo "Run Dev/Tests/Converters/compare.sh once (downloads uSource)"; exit 1; }
   if [ ! -d "$proj/Assets/uSource" ]; then
     cp -r "$src" "$proj/Assets/uSource"; rm -rf "$proj/Assets/uSource/.git"
     sed -i 's|"references": \[\],|"references": [], "allowUnsafeCode": true,|' "$proj/Assets/uSource/uSource.asmdef"
   fi
   zones=$here/.cache/zones; mkdir -p "$zones"
-  for bsp in "$repo"/Tests/Bsp/.cache/maps/*.bsp; do
+  for bsp in "$repo"/Dev/Tests/Bsp/.cache/maps/*.bsp; do
     m=$(basename "$bsp" .bsp)
     [ -f "$zones/$m.json" ] || curl -fsSL -o "$zones/$m.json" "https://srcwr.github.io/zones-cstrike/z/$m.json" || rm -f "$zones/$m.json"
   done
   run program_assets -quit -executeMethod SourceMapImporter.EnsureProgramAssets
   status=0
-  if run build_sample -quit -executeMethod PlayTestBootstrap.BuildSample -bspDir "$(realpath "$repo/Tests/Bsp/.cache/maps")" -zonesDir "$zones" &&
+  if run build_sample -quit -executeMethod PlayTestBootstrap.BuildSample -bspDir "$(realpath "$repo/Dev/Tests/Bsp/.cache/maps")" -zonesDir "$zones" &&
      run sample -executeMethod PlayTestBootstrap.RunSample; then r="ALL PASSED"; else r="FAILED"; status=1; fi
   echo "== sample world: $r"
   grep -h "\[Source Maps\]" "$logs/build_sample.log" | sed 's/^/  /'
@@ -153,7 +156,7 @@ if [ "${1:-}" = "vote" ]; then
   rm -rf "$proj/ClientSimStorage" # ClientSim keeps PlayerData between runs: start without saved times
   run program_assets -quit -executeMethod SourceMapImporter.EnsureProgramAssets
   status=0
-  if run build_vote -quit -executeMethod SourceMapsSetup.BuildTestScene && run vote -executeMethod PlayTestBootstrap.RunVote; then r="ALL PASSED"; else r="FAILED"; status=1; fi
+  if run build_vote -quit -executeMethod SourceMapsTestScene.Build && run vote -executeMethod PlayTestBootstrap.RunVote; then r="ALL PASSED"; else r="FAILED"; status=1; fi
   echo "== map rotation: $r"
   grep -ho "\[SMTEST\] [PF][AI][SL].*" "$logs/vote.log" 2>/dev/null | sed 's/^\[SMTEST\] /  /' | awk '!seen[$0]++'
   exit $status
