@@ -732,10 +732,10 @@ public class RouteRunner : MonoBehaviour
         Log($"probe: movement onGround {movement.GetProgramVariable("onGround")} origin {Origin():F3} velocity {(Vector3)movement.GetProgramVariable("velocity"):F2}");
     }
 
-    /// <summary>Whether the floor at `p` (feet height) is a bhop block that sinks when stood on.</summary>
+    /// <summary>Whether the floor below `p` (feet, possibly mid-jump) is a bhop block that sinks when stood on.</summary>
     bool OnBlock(Vector3 p)
     {
-        return Physics.Raycast(new Vector3(p.x, p.y + 8f, p.z) * U, Vector3.down, out RaycastHit hit, 40f * U, layers, QueryTriggerInteraction.Ignore)
+        return Physics.Raycast(new Vector3(p.x, p.y + 8f, p.z) * U, Vector3.down, out RaycastHit hit, 200f * U, layers, QueryTriggerInteraction.Ignore)
             && hit.collider.GetComponentInParent<SourceMapDoor>() != null;
     }
 
