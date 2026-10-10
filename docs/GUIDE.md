@@ -44,7 +44,7 @@ The three parts are independent: SourceMaps works without the other two, but you
 
 uSource turns a map's geometry and textures into Unity meshes and materials. We compared it with Shane-SDK's
 USource; uSource works with VRChat's render pipeline and lines up with our collision (79% of test rays within
-5 cm; the rest are invisible clip brushes and props). Details in [MAPVOTE_PLAN.md](MAPVOTE_PLAN.md), step 2.
+5 cm; the rest are invisible clip brushes and props). Details in [MAPVOTE_PLAN.md](../Dev/docs/MAPVOTE_PLAN.md), step 2.
 
 1. Download uSource from GitHub (Code > Download ZIP) and unzip it into `Assets/uSource` in your project.
 2. In Unity, select `Assets/uSource/uSource.asmdef` and tick **Allow 'unsafe' Code**, then **Apply**

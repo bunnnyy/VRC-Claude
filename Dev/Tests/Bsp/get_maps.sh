@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Downloads the test maps from GameBanana into Tests/Bsp/.cache/maps (git-ignored; maps belong to their authors).
+# Downloads the test maps from GameBanana into Dev/Tests/Bsp/.cache/maps (git-ignored; maps belong to their authors).
 # GameBanana sometimes blocks plain clients, so a browser User-Agent is sent and failed downloads are retried.
 # Archives are zip, rar or 7z: needs 7-Zip (7z) and, for rar, unar (Debian/Ubuntu packages "7zip" and "unar").
 set -euo pipefail

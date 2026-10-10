@@ -4,11 +4,15 @@ UdonSharp prefab that recreates Source engine movement (CS:S / HL2 / GMod) in VR
 bunny hopping, air strafing and surfing, using a direct port of Source SDK 2013 `gamemovement.cpp`.
 
 Status: **work in progress**. Play-tested in Unity 2022.3.22f1 with VRChat's ClientSim (walking, bhop,
-air strafing, surfing on real PhysX colliders, teleports, HUD; see Tests). Not yet tested in the VRChat
+air strafing, surfing on real PhysX colliders, teleports, HUD; see Tests below). Not yet tested in the VRChat
 client itself.
 
 - **Step-by-step setup guide: [docs/GUIDE.md](docs/GUIDE.md)** (from an empty VRChat project to an uploaded world)
 - **All settings: [docs/SETTINGS.md](docs/SETTINGS.md)**
+
+**What you need to make a world:** `Assets/` (SourceMovement, SourceTimer, SourceMaps), or `SourceMovement.unitypackage`,
+plus `docs/` (guide, settings). **`Dev/`** is for developing this project only: tests and their tools (`Dev/Tests`) and
+internal notes (`Dev/docs`: plans, handoffs, designs); you can ignore it.
 
 ## Using it
 
@@ -72,7 +76,7 @@ on it in the Inspector. It's off in the prefab and on in the test scene.
 
 ### Source maps (`Assets/SourceMaps`, independent of the movement and timer)
 A CS:S bhop-server style world: imported maps, a lobby with a map vote, rock the vote and a time limit.
-Step-by-step setup: **[docs/GUIDE.md](docs/GUIDE.md)**; design and test history: [docs/MAPVOTE_PLAN.md](docs/MAPVOTE_PLAN.md).
+Step-by-step setup: **[docs/GUIDE.md](docs/GUIDE.md)**; design and test history: [Dev/docs/MAPVOTE_PLAN.md](Dev/docs/MAPVOTE_PLAN.md).
 - **Import** (**Tools > Source Maps > Import BSP...**, our own BSP reader): collision from every player-solid brush
   (incl. invisible clips) and displacement, without the faces where two brushes touch (Source never collides with
   those; in a mesh their edges stop surfers); one `SourceEntity` marker per entity with all its keyvalues and outputs;
@@ -87,7 +91,7 @@ Step-by-step setup: **[docs/GUIDE.md](docs/GUIDE.md)**; design and test history:
 Same axes and scale as uSource (1 unit = 0.01905 m).
 
 ### Crouching
-Not built yet. The design is in [docs/CROUCH.md](docs/CROUCH.md).
+Not built yet. The design is in [Dev/docs/CROUCH.md](Dev/docs/CROUCH.md).
 
 ## How it works
 
@@ -97,17 +101,17 @@ Not built yet. The design is in [docs/CROUCH.md](docs/CROUCH.md).
 - The real player is moved with `SetVelocity` so they land where the simulation says.
 - Everything is in Source units (1 unit = 0.01905 m), so imported Source maps feel the same.
 
-## Tests
+## Tests (in `Dev/`, for development)
 
 Two ways to run the movement tests (expected numbers come from Source's own maths):
 
 ```
-dotnet run --project Tests/Sim              # C# scripts against small Unity/VRChat stand-ins (+ timer tests)
-UDON_TEST=1 Tests/UdonCompile/compile.sh    # real UdonSharp compile, then the Udon program in the Udon VM
-Tests/UdonCompile/compile.sh                # real UdonSharp compile + editor script compile only
+dotnet run --project Dev/Tests/Sim              # C# scripts against small Unity/VRChat stand-ins (+ timer tests)
+UDON_TEST=1 Dev/Tests/UdonCompile/compile.sh    # real UdonSharp compile, then the Udon program in the Udon VM
+Dev/Tests/UdonCompile/compile.sh                # real UdonSharp compile + editor script compile only
 ```
 
-`Tests/UdonCompile` downloads the VRChat Worlds SDK 3.10.5, Unity 2022.3.22f1's managed DLLs and a few
+`Dev/Tests/UdonCompile` downloads the VRChat Worlds SDK 3.10.5, Unity 2022.3.22f1's managed DLLs and a few
 Unity packages into a git-ignored cache (first run takes a few minutes), builds VRChat's UdonSharp
 compiler from the SDK and runs its full pipeline (Roslyn, bind, emit, Udon assembly) on every script in
 `Assets/`, failing on anything Udon doesn't support. With `UDON_TEST=1` it then runs the compiled
@@ -117,22 +121,22 @@ the Unity-native ones (Physics.BoxCast, input, time, euler angles), which the te
 Source maps:
 
 ```
-Tests/Bsp/get_maps.sh                          # downloads the test maps from GameBanana (git-ignored)
-dotnet run --project Tests/Bsp                 # BSP reader + collision checks on the real maps
-Tests/UnityPlay/run.sh map Tests/Bsp/.cache/maps/bhop_japan.bsp   # import in Unity, play-test with ClientSim:
+Dev/Tests/Bsp/get_maps.sh                          # downloads the test maps from GameBanana (git-ignored)
+dotnet run --project Dev/Tests/Bsp                 # BSP reader + collision checks on the real maps
+Dev/Tests/UnityPlay/run.sh map Dev/Tests/Bsp/.cache/maps/bhop_japan.bsp   # import in Unity, play-test with ClientSim:
                                                # stand at every destination, teleports, bhop and surf runs (no stalls)
-Tests/UnityPlay/run.sh vote                    # map rotation (vote, owner changes, practice courses)
-Tests/UnityPlay/run.sh sample                  # the whole sample world with uSource visuals and zones
+Dev/Tests/UnityPlay/run.sh vote                    # map rotation (vote, owner changes, practice courses)
+Dev/Tests/UnityPlay/run.sh sample                  # the whole sample world with uSource visuals and zones
 ```
 
 What this can't cover: Unity's real PhysX collision and how the player controller responds to
 `SetVelocity`. For that there is a play test in a real Unity editor:
 
 ```
-Tests/UnityPlay/run.sh            # needs UNITY=<path to Editor/Unity>, an activated license and vpm
+Dev/Tests/UnityPlay/run.sh            # needs UNITY=<path to Editor/Unity>, an activated license and vpm
 ```
 
-It creates a VRChat world project in `Tests/UnityPlay/.cache` with `vpm`, the command-line version of the
+It creates a VRChat world project in `Dev/Tests/UnityPlay/.cache` with `vpm`, the command-line version of the
 VRChat Creator Companion (`dotnet tool install --global vrchat.vpm.cli`), from VRChat's official World
 template with Worlds SDK 3.10.5, so it has VRChat's layers and project settings. It copies
 `Assets/SourceMovement` and `Assets/SourceTimer` in, builds the test map with the
@@ -144,6 +148,6 @@ world button (no pogo), and a timed run through the real trigger zones (checkpoi
 legit leaderboard). The `.unitypackage` was also imported into an empty project and passes the same tests.
 
 To re-export the package after changes (from the project `run.sh` made):
-`Unity -batchmode -quit -projectPath Tests/UnityPlay/.cache/Project -executeMethod PlayTestBootstrap.ExportPackage -smPackage $PWD/SourceMovement.unitypackage`
+`Unity -batchmode -quit -projectPath Dev/Tests/UnityPlay/.cache/Project -executeMethod PlayTestBootstrap.ExportPackage -smPackage $PWD/SourceMovement.unitypackage`
 
 ClientSim's player is not the VRChat client's, so the last step is still a test in VRChat itself.

@@ -9,6 +9,6 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="*.cs" />
-    <Compile Include="../../Assets/SourceMaps/Editor/Bsp/*.cs" />
+    <Compile Include="../../../Assets/SourceMaps/Editor/Bsp/*.cs" />
   </ItemGroup>
 </Project>

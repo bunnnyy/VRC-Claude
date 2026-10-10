@@ -7,8 +7,8 @@ using SourceMaps.Bsp;
 
 /// <summary>
 /// Tests the BSP reader and collision builder on real CS:S maps.
-///   dotnet run --project Tests/Bsp            (maps from Tests/Bsp/.cache/maps, see get_maps.sh)
-///   dotnet run --project Tests/Bsp -- a.bsp   (specific files)
+///   dotnet run --project Dev/Tests/Bsp            (maps from Dev/Tests/Bsp/.cache/maps, see get_maps.sh)
+///   dotnet run --project Dev/Tests/Bsp -- a.bsp   (specific files)
 /// Checks are map-independent (teleport targets exist, spawns stand on a floor, nobody spawns inside a wall),
 /// plus exact entity counts for maps listed in Expected.
 /// </summary>
@@ -33,7 +33,7 @@ static class Program
             : Directory.Exists(CacheDir) ? Directory.GetFiles(CacheDir, "*.bsp").OrderBy(f => f).ToList() : new List<string>();
         if (files.Count == 0)
         {
-            Console.WriteLine("No maps. Run Tests/Bsp/get_maps.sh first, or pass .bsp paths.");
+            Console.WriteLine("No maps. Run Dev/Tests/Bsp/get_maps.sh first, or pass .bsp paths.");
             return 1;
         }
         TestMechanics();

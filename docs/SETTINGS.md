@@ -30,7 +30,7 @@ metres, so values from CS:S servers and maps can be copied straight over.
 | Setting | Default | What it does |
 |---|---|---|
 | Hull Width | 32 | Width and depth of the player's collision box (CS:S standing hull) |
-| Hull Height | 72 | Its height. Crouching isn't built yet ([CROUCH.md](CROUCH.md)) |
+| Hull Height | 72 | Its height. Crouching isn't built yet ([CROUCH.md](../Dev/docs/CROUCH.md)) |
 
 **World**:
 

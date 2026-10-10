@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # Compiles the UdonSharp scripts in Assets/ with VRChat's real UdonSharp compiler, outside Unity.
-# Usage: Tests/UdonCompile/compile.sh [script.cs ...]   (default: every Assets/**/Scripts/*.cs)
+# Usage: Dev/Tests/UdonCompile/compile.sh [script.cs ...]   (default: every Assets/**/Scripts/*.cs)
 set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
-repo=$(cd "$here/../.." && pwd)
+repo=$(cd "$here/../../.." && pwd)
 cache=$here/.cache
 bin=$cache/bin/Harness/Debug/net8.0
 dotnet=$(command -v dotnet || echo /opt/dotnet/dotnet)

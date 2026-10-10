@@ -1,14 +1,14 @@
 # Handoff: SourceMaps session (2026-10-10)
 
-For the next session working on SourceMaps (map import, rotation, sample world). Read `docs/MAPVOTE_PLAN.md`
+For the next session working on SourceMaps (map import, rotation, sample world). Read `Dev/docs/MAPVOTE_PLAN.md`
 (answers, design, Progress steps 1-4), `docs/GUIDE.md` (user guide, keep it updated), `docs/SETTINGS.md`
 (Inspector reference, owned by the movement session; update it when you add/rename SourceMaps/SourceTimer fields).
 
 ## State
 - Steps 1-4 done (see the plan's Progress). Branch `claude/vrchat-source-movement-mn0xl0`, shared with the
   **movement session** (`session_01Fy3JhzJ1Bebcs6vM4FPYaR`, SourceMovement): always `git pull --no-rebase` before
-  pushing; tell it (send_message) before changing shared files (SourceTimer, Tests/UnityPlay/run.sh,
-  PlayTestBootstrap.cs, Tests/Sim shims). It owns SourceMovement; don't edit SourceMovement.
+  pushing; tell it (send_message) before changing shared files (SourceTimer, Dev/Tests/UnityPlay/run.sh,
+  PlayTestBootstrap.cs, Dev/Tests/Sim shims). It owns SourceMovement; don't edit SourceMovement.
 - Unity license: activations share one machine id across containers. Don't return it (`--return-ulf`) while the
   other session may use Unity; the last session to finish returns it, and tell the user.
 
@@ -34,20 +34,20 @@ dotnet tool install --global vrchat.vpm.cli
 apt-get install -y 7zip unar            # map archives (rar needs unar)
 # Unity 2022.3.22f1 into /opt/unity (URL in MAPVOTE_PLAN.md "Context"), license:
 /opt/unity/Editor/Data/Resources/Licensing/Client/Unity.Licensing.Client --activate-ulf --username "$UNITY_EMAIL" --password "$UNITY_PASSWORD"
-Tests/Bsp/get_maps.sh                   # the 5 maps from GameBanana
-Tests/Converters/compare.sh Tests/Bsp/.cache/maps/bhop_japan.bsp   # downloads uSource (needed by run.sh sample)
+Dev/Tests/Bsp/get_maps.sh                   # the 5 maps from GameBanana
+Dev/Tests/Converters/compare.sh Dev/Tests/Bsp/.cache/maps/bhop_japan.bsp   # downloads uSource (needed by run.sh sample)
 ```
 
 ## Tests
 | Command | What | Last result |
 |---|---|---|
-| `dotnet run --project Tests/Bsp` | BSP reader/collision on all 5 maps + booster parsing | 74/74 |
-| `dotnet run --project Tests/Sim` | movement + timer simulation (incl. course boards, saved bests) | all passed |
-| `Tests/UdonCompile/compile.sh` | real UdonSharp compile + editor scripts | OK |
-| `Tests/UnityPlay/run.sh vote` | rotation, owner changes, practice courses (ClientSim) | 44/44 |
-| `Tests/UnityPlay/run.sh map <bsp>` | one map: stand, reachable teleports, bhop/surf runs (SM_ONLY=runs: runs only) | japan/eazy/badges all passed |
-| `Tests/UnityPlay/run.sh sample` | whole sample world, per map (needs uSource, zones downloaded) | 38/40 (2 drop-probe teleports) |
-| `Tests/UnityPlay/run.sh 90` | movement suite (movement session's) | all passed |
+| `dotnet run --project Dev/Tests/Bsp` | BSP reader/collision on all 5 maps + booster parsing | 74/74 |
+| `dotnet run --project Dev/Tests/Sim` | movement + timer simulation (incl. course boards, saved bests) | all passed |
+| `Dev/Tests/UdonCompile/compile.sh` | real UdonSharp compile + editor scripts | OK |
+| `Dev/Tests/UnityPlay/run.sh vote` | rotation, owner changes, practice courses (ClientSim) | 44/44 |
+| `Dev/Tests/UnityPlay/run.sh map <bsp>` | one map: stand, reachable teleports, bhop/surf runs (SM_ONLY=runs: runs only) | japan/eazy/badges all passed |
+| `Dev/Tests/UnityPlay/run.sh sample` | whole sample world, per map (needs uSource, zones downloaded) | 38/40 (2 drop-probe teleports) |
+| `Dev/Tests/UnityPlay/run.sh 90` | movement suite (movement session's) | all passed |
 
 ## Lessons
 - uSource: needs `allowUnsafeCode` in its asmdef; clears the previous map on load (detach `BSP_WorldSpawn`);

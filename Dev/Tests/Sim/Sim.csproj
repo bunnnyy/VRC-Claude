@@ -12,6 +12,6 @@
     <Compile Include="Shims/**/*.cs" />
     <Compile Include="Tests/**/*.cs" />
     <Compile Include="../Shared/**/*.cs" />
-    <Compile Include="../../Assets/SourceMovement/Scripts/*.cs;../../Assets/SourceTimer/Scripts/*.cs" />
+    <Compile Include="../../../Assets/SourceMovement/Scripts/*.cs;../../../Assets/SourceTimer/Scripts/*.cs" />
   </ItemGroup>
 </Project>

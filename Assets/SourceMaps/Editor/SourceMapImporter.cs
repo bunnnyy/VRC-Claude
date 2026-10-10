@@ -47,14 +47,6 @@ public static class SourceMapImporter
         Selection.activeGameObject = root;
     }
 
-    /// <summary>For batch mode: -executeMethod SourceMapImporter.ImportFromCommandLine -bsp path/to/map.bsp</summary>
-    public static void ImportFromCommandLine()
-    {
-        string[] args = System.Environment.GetCommandLineArgs();
-        for (int i = 0; i < args.Length - 1; i++)
-            if (args[i] == "-bsp") Import(args[i + 1], BspGeometry.DefaultScale);
-    }
-
     public static GameObject Import(string bspPath, float scale)
     {
         EnsureProgramAssets();

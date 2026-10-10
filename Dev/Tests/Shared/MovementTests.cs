@@ -6,7 +6,7 @@ using UnityEngine;
 /// Movement tests for SourceMovement. Every expected number comes from Source's own maths
 /// (gamemovement.cpp with CS:S / bhop server cvars), so passing means it moves like Source.
 /// The same tests run against two backends that each provide a Rig class: the C# script
-/// (Tests/Sim) and the compiled Udon program in VRChat's Udon VM (Tests/UdonCompile).
+/// (Dev/Tests/Sim) and the compiled Udon program in VRChat's Udon VM (Dev/Tests/UdonCompile).
 /// </summary>
 public static class MovementTests
 {
