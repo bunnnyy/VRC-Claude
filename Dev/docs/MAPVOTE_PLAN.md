@@ -346,3 +346,21 @@ the render meshes (needs a test). I did not dig into why USource's geometry does
   wall-slide stalls are gone; the runs ignore speed changes inside pushes/boosters (arcane's launch pads).
 - Still open: arcane's 3 out-of-bounds teleports and one japan/kitsune teleport per run in the drop-in test (the probe,
   not the triggers); kitsune's 2-unit diagonal lip (movement session).
+
+### Step 7: breakable glass (2026-10-10, asked by the user; done by the movement session)
+- **Why**: bhop_eazy_v2's red lanes 3 and 4 have glass doors (`func_breakable`, glass, health 1) with player clip
+  either side, z 72..168. In CS:S you knife or shoot the glass; imported as a plain solid, nobody could get through.
+- **Rule** (`BspMechanics.BreaksOnApproach`, as one CS:S knife hit): `func_breakable`/`_surf` with a brush model, not
+  "Only Break on Trigger" (spawnflag 1), not unbreakable glass (material 7), 0 < health <= 15, minhealthdmg <= 15.
+  eazy_v2: 4 of 6 (red lane 3, lane 4 twice, the bonus door); `glass_to_m249` (trigger only, health 0, broken by a
+  shot button) and the health-170 plate under a spawn stay solid; arcane's wood crate (health 100) too.
+- **How** (user's choice): `SourceMapBreakable` on the glass's "Break" child, a trigger box = the glass grown by knife
+  reach (48 u) sideways only, so glass you stand on or under stays. Entering it switches off the glass's collider and
+  its uSource model (linked like door visuals). Local per player; nothing resets it, so it stays broken until you
+  leave the instance (map rotation only switches maps off and on). The doors need Hull Only: VRChat's 84 u capsule
+  doesn't fit through them over the (raised) teleport strip under the glass.
+- **Results**: `Dev/Tests/Bsp` 83/83 (9 new); U# compile OK. Real Unity + ClientSim + SourceMovement (`run.sh map`,
+  `SM_ONLY=glass` for just this): each eazy pane breaks with the hull 26-30 u away, flown through at 400 u/s without
+  losing speed (Hull Only), 4/4 still broken after the map is switched off and on, the 2 others stay solid; the rest
+  of eazy's map test still passes (stand 46/46, teleports 44/44, blocks, runs). Route build: 4/4 glass models linked.
+- Still open: the route bot's plan treats the glass as a wall, so it doesn't get through red lanes 3 and 4 yet.

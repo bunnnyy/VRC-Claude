@@ -159,6 +159,9 @@ Seconds, Rtv Ratio, Time Limit Minutes, Extend Minutes). The rest is wiring the 
 OnEndTouch), **Wait** = seconds before it fires again while you touch it (Source's `wait`; negative = once).
 **SourceMapDoor** (`func_door` blocks that open on touch; on the door's "Touch" child, it moves the door): **Move Local** (metres), **Speed** (m/s), **Wait** (seconds
 open), **Drop Through** (lets you fall into the teleport below when fully open), **Visuals** (the model moved with it).
+**SourceMapBreakable** (`func_breakable` glass that one knife hit breaks in CS:S; on the glass's "Break" child, whose
+trigger box is the glass grown by knife reach, 48 units, sideways): when you come within reach it switches off
+**Solid** (the glass's collider) and **Visuals** (its model), for you only; **Broken** stays on until you leave the instance.
 **SourceEntity** (markers): read-only copies of the map entity's data (class name, name, keyvalues, outputs,
 volume); changing them does nothing.
 

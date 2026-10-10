@@ -81,7 +81,9 @@ Step-by-step setup: **[docs/GUIDE.md](docs/GUIDE.md)**; design and test history:
   (incl. invisible clips) and displacement, without the faces where two brushes touch (Source never collides with
   those; in a mesh their edges stop surfers); one `SourceEntity` marker per entity with all its keyvalues and outputs;
   working teleports, pushes, boosters, gravity, water and ladders for SourceMovement; **bhop blocks** like CS:S
-  (name-filtered teleports and sinking `func_door` blocks: stand too long and you're sent back), switchable per map.
+  (name-filtered teleports and sinking `func_door` blocks: stand too long and you're sent back), switchable per map;
+  **breakable glass** (`func_breakable` that one knife hit breaks in CS:S, e.g. bhop_eazy_v2's red glass doors) breaks
+  when you come within knife reach, for you only, and stays broken until you leave the instance.
 - **Visuals** with [uSource](https://github.com/DeadZoneLuna/uSource) (installed by you, not included): the map's own
   Source **lightmaps** on a small `SourceMaps/Lightmapped` shader (nothing to bake), static props lit from the map's
   ambient light and lights like CS:S lights models, tool surfaces removed, solid props get colliders.
@@ -138,8 +140,9 @@ A bot plays bhop_eazy_v2 with only a player's inputs (A/D strafes with the view,
 and can record it: `ROUTE_SECTION=n` starts at a section, the frames and a HUD log go to the folder given, and
 `make_video.sh` turns them into an mp4 with the speed, the map timer and the keys burnt in. It plans each hop by
 flying it in a model of the movement (input lag, air acceleration, the map's collision, surf faces) and checks a
-hop on from where it lands; the route, red lane 1's ridge surf (built up to speed by circle strafing first) and
-the zig-zag lines round glass pillars are specific to that map.
+hop on from where it lands; the route and red lane 1's ridge surf (built up to speed by circle strafing first) are
+specific to that map. It doesn't get through red lanes 3 and 4 yet (glass doors you go through: its plan still sees
+the glass as a wall).
 
 ```
 Dev/Tests/UnityPlay/run.sh route bhop_eazy_v2.bsp zones.json [framesdir]

@@ -26,6 +26,11 @@ scene's behaviours lose their program. In batch mode the importer now recompiles
 VRChat's capsule floats ~6 units above the floor: thin triggers need the 8-unit raise; anything timing-sensitive
 (bhop blocks) tests touches with Source's box (`Physics.OverlapBox`, null entries = VRChat-hidden colliders).
 
+## Step 7 done (breakable glass, by the movement session; see the plan)
+`func_breakable` that one knife hit breaks (`BspMechanics.BreaksOnApproach`) gets `SourceMapBreakable` on a "Break"
+child (trigger = glass + 48 u sideways): coming close switches off its collider and visuals, locally, until the player
+leaves the instance. `run.sh map` runs the glass test first (it stays broken); `SM_ONLY=glass` runs only that.
+
 ## Setting up a fresh container
 ```
 # .NET 8 (dotnet-install.sh --channel 8.0 --install-dir /opt/dotnet; ln -s /opt/dotnet/dotnet /usr/local/bin/)
@@ -41,11 +46,11 @@ Dev/Tests/Converters/compare.sh Dev/Tests/Bsp/.cache/maps/bhop_japan.bsp   # dow
 ## Tests
 | Command | What | Last result |
 |---|---|---|
-| `dotnet run --project Dev/Tests/Bsp` | BSP reader/collision on all 5 maps + booster parsing | 74/74 |
+| `dotnet run --project Dev/Tests/Bsp` | BSP reader/collision on all 5 maps + booster parsing + breakable glass rule | 83/83 |
 | `dotnet run --project Dev/Tests/Sim` | movement + timer simulation (incl. course boards, saved bests) | all passed |
 | `Dev/Tests/UdonCompile/compile.sh` | real UdonSharp compile + editor scripts | OK |
 | `Dev/Tests/UnityPlay/run.sh vote` | rotation, owner changes, practice courses (ClientSim) | 44/44 |
-| `Dev/Tests/UnityPlay/run.sh map <bsp>` | one map: stand, reachable teleports, bhop/surf runs (SM_ONLY=runs: runs only) | japan/eazy/badges all passed |
+| `Dev/Tests/UnityPlay/run.sh map <bsp>` | one map: breakable glass, stand, reachable teleports, bhop/surf runs (SM_ONLY=runs or glass: only that) | japan/eazy/badges all passed |
 | `Dev/Tests/UnityPlay/run.sh sample` | whole sample world, per map (needs uSource, zones downloaded) | 38/40 (2 drop-probe teleports) |
 | `Dev/Tests/UnityPlay/run.sh 90` | movement suite (movement session's) | all passed |
 

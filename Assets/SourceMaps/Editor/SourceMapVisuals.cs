@@ -97,13 +97,14 @@ public static class SourceMapVisuals
         foreach (var c in visuals.GetComponentsInChildren<Collider>(true)) { Object.DestroyImmediate(c); strayColliders++; }
         int removed = RemoveHiddenSurfaces(visuals);
         int doors = LinkDoors(visuals);
+        int glass = LinkBreakables(visuals);
         int lit = !UseLightmaps ? 0 : ApplyLightmaps(visuals, "Assets/SourceMapsImported/" + mapName + "/Lightmaps");
         var bsp = BspFile.Load(bspPath);
         int propColliders = AddPropColliders(visuals, bsp, scale);
         int propsLit = !UseLightmaps ? 0 : LightProps(visuals, bsp, scale, "Assets/SourceMapsImported/" + mapName + "/Props");
         int meshes = SaveMeshes(visuals, "Assets/SourceMapsImported/" + mapName + "/" + mapName + "_visuals.asset");
         Debug.Log($"[Source Maps] {mapName} visuals: {visuals.GetComponentsInChildren<MeshRenderer>(true).Length} renderers, " +
-                  $"{removed} tool surfaces removed, {strayColliders} uSource colliders removed, {lit} surfaces with Source lightmaps, {propsLit} props lit, {doors} door blocks linked, {propColliders} solid props given colliders, {meshes} meshes saved" +
+                  $"{removed} tool surfaces removed, {strayColliders} uSource colliders removed, {lit} surfaces with Source lightmaps, {propsLit} props lit, {doors} door blocks linked, {glass} breakable glass linked, {propColliders} solid props given colliders, {meshes} meshes saved" +
                   (css == "" ? " (no CS:S folder set: stock textures missing)" : ""));
         return visuals;
     }
@@ -159,14 +160,40 @@ public static class SourceMapVisuals
         int linked = 0;
         foreach (var door in root.GetComponentsInChildren<SourceMapDoor>(true))
         {
-            var marker = door.GetComponentInParent<SourceEntity>();
-            int model;
-            if (marker == null || !int.TryParse(marker.GetValue("model").TrimStart('*'), out model) || model >= faces.childCount) continue;
-            door.visuals = faces.GetChild(model);
+            var model = ModelVisuals(faces, door);
+            if (model == null) continue;
+            door.visuals = model;
             UdonSharpEditor.UdonSharpEditorUtility.CopyProxyToUdon(door);
             linked++;
         }
         return linked;
+    }
+
+    /// <summary>Breakable glass (SourceMapBreakable) gets its model's visuals, which it switches off when it breaks.</summary>
+    static int LinkBreakables(GameObject visuals)
+    {
+        var faces = visuals.transform.Find("[Faces]");
+        var root = visuals.transform.parent;
+        if (faces == null || root == null) return 0;
+        int linked = 0;
+        foreach (var glass in root.GetComponentsInChildren<SourceMapBreakable>(true))
+        {
+            var model = ModelVisuals(faces, glass);
+            if (model == null) continue;
+            glass.visuals = model;
+            UdonSharpEditor.UdonSharpEditorUtility.CopyProxyToUdon(glass);
+            linked++;
+        }
+        return linked;
+    }
+
+    /// <summary>uSource's object for the brush model ("*N" -> [Faces] child N) of the entity `part` belongs to.</summary>
+    static Transform ModelVisuals(Transform faces, Component part)
+    {
+        var marker = part.GetComponentInParent<SourceEntity>();
+        int model;
+        if (marker == null || !int.TryParse(marker.GetValue("model").TrimStart('*'), out model) || model >= faces.childCount) return null;
+        return faces.GetChild(model);
     }
 
     // uSource's shaders for surfaces Source draws with a lightmap (LightmappedGeneric, WorldVertexTransition, alpha tested).

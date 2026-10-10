@@ -260,6 +260,27 @@ public static class SourceMapImporter
             UdonSharpEditorUtility.CopyProxyToUdon(door);
             doors++;
         }
+
+        // Breakable glass (func_breakable that one knife hit breaks in CS:S): VRChat has no knife, so it breaks when the
+        // player comes within knife reach. Other breakables stay solid.
+        int glass = 0;
+        for (int i = 0; i < bsp.Entities.Count; i++)
+        {
+            var e = bsp.Entities[i];
+            var go = markers[i];
+            if (!BspMechanics.BreaksOnApproach(e) || go.GetComponent<MeshCollider>() == null) continue;
+            var marker = go.GetComponent<SourceEntity>();
+            var breakObject = new GameObject("Break"); // the trigger on its own object (see SourceMapBreakable)
+            breakObject.transform.SetParent(go.transform, false);
+            var breakable = breakObject.AddUdonSharpComponent<SourceMapBreakable>();
+            breakable.solid = go.GetComponent<MeshCollider>();
+            var reach = breakObject.AddComponent<BoxCollider>(); // the glass grown by knife reach sideways
+            reach.isTrigger = true;
+            reach.center = marker.bounds.center;
+            reach.size = marker.bounds.size + new Vector3(2f, 0f, 2f) * (BspMechanics.KnifeReach * scale);
+            UdonSharpEditorUtility.CopyProxyToUdon(breakable);
+            glass++;
+        }
         if (blocks != null)
         {
             blocks.filtered = blockTeleports.ToArray();
@@ -289,6 +310,7 @@ public static class SourceMapImporter
                   $"({worldMesh.Triangles.Count / 3} triangles, {innerFaces} faces trimmed where brushes touch), {bsp.Entities.Count} entity markers, {teleports} working teleports, " +
                   $"{filtered} filtered teleports left as markers, {noTarget} teleports without a destination, " +
                   $"bhop blocks: {blockTeleports.Count} filtered teleports, {nameTriggers} name triggers, {gated.Count} name-gated push/booster brushes, {doors} doors; " +
+                  $"{glass} breakable glass; " +
                   $"{pushes} pushes, {boosts} boosters, {filteredMechanics} filtered pushes/boosters left as markers, " +
                   $"{water} water volumes, {ladders} ladders");
         return root;
