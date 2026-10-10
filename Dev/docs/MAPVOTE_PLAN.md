@@ -350,17 +350,24 @@ the render meshes (needs a test). I did not dig into why USource's geometry does
 ### Step 7: breakable glass (2026-10-10, asked by the user; done by the movement session)
 - **Why**: bhop_eazy_v2's red lanes 3 and 4 have glass doors (`func_breakable`, glass, health 1) with player clip
   either side, z 72..168. In CS:S you knife or shoot the glass; imported as a plain solid, nobody could get through.
-- **Rule** (`BspMechanics.BreaksOnApproach`, as one CS:S knife hit): `func_breakable`/`_surf` with a brush model, not
-  "Only Break on Trigger" (spawnflag 1), not unbreakable glass (material 7), 0 < health <= 15, minhealthdmg <= 15.
-  eazy_v2: 4 of 6 (red lane 3, lane 4 twice, the bonus door); `glass_to_m249` (trigger only, health 0, broken by a
-  shot button) and the health-170 plate under a spawn stay solid; arcane's wood crate (health 100) too.
-- **How** (user's choice): `SourceMapBreakable` on the glass's "Break" child, a trigger box = the glass grown by knife
-  reach (48 u) sideways only, so glass you stand on or under stays. Entering it switches off the glass's collider and
-  its uSource model (linked like door visuals). Local per player; nothing resets it, so it stays broken until you
-  leave the instance (map rotation only switches maps off and on). The doors need Hull Only: VRChat's 84 u capsule
-  doesn't fit through them over the (raised) teleport strip under the glass.
-- **Results**: `Dev/Tests/Bsp` 83/83 (9 new); U# compile OK. Real Unity + ClientSim + SourceMovement (`run.sh map`,
-  `SM_ONLY=glass` for just this): each eazy pane breaks with the hull 26-30 u away, flown through at 400 u/s without
-  losing speed (Hull Only), 4/4 still broken after the map is switched off and on, the 2 others stay solid; the rest
-  of eazy's map test still passes (stand 46/46, teleports 44/44, blocks, runs). Route build: 4/4 glass models linked.
+- **Rule** (`BspMechanics.BreaksOnApproach`, one CS:S knife hit): `func_breakable` with a brush model, not "Only
+  Break on Trigger" (spawnflag 1), not unbreakable glass (material 7), 0 < health <= 15, minhealthdmg <= 15, no prop
+  data; `func_breakable_surf` always (window glass breaks on any hit); neither with a damage filter. The importer
+  only does upright panes (flat ones you could land on stay solid). eazy_v2: 4 of 6 (red lane 3, lane 4 twice, the
+  bonus door); `glass_to_m249` (trigger only, health 0, broken by a shot button) and the health-170 plate under a
+  spawn stay solid; arcane's wood crate (health 100) too.
+- **How** (user's choice): `SourceMapBreakable` on the glass's "Break" child. Its trigger box (256 u round the glass)
+  only switches the check on; every frame there it breaks the glass once CS:S's player box is within knife reach
+  (48 u) beside it, plus how far the player gets in a physics step and a frame (VRChat's player trails the hull by up
+  to a step: a capsule trigger alone let the hull hit the glass first above ~1000 u/s). Breaking switches off the
+  collider and the uSource model (linked like door visuals). Local per player; nothing resets it, so it stays broken
+  until you leave the instance (map rotation only switches maps off and on). The doors need Hull Only: VRChat's 84 u
+  capsule doesn't fit through them over the (raised) teleport strip under the glass.
+- **Results**: `Dev/Tests/Bsp` 87/87 (13 new); U# compile OK. Real Unity + ClientSim + SourceMovement (`run.sh map`
+  eazy_v2; `SM_ONLY=glass` for just this), flying at each pane with Hull Only: 4/4 break with the hull 50-58 u away at
+  400 u/s and 39-69 u at 1500 u/s, flown through without losing speed, 4/4 still broken after the map is switched off
+  and on, the 2 others stay solid; the rest of eazy's map test still passes (stand 46/46, teleports 44/44, blocks,
+  runs). Route build with uSource: 4/4 glass models linked (each model centred on its collider, glass textures).
+  A multi-lens review (12 findings, each checked by a skeptic) led to the hull-based check, the surf, damage filter
+  and prop data rules, and upright panes only.
 - Still open: the route bot's plan treats the glass as a wall, so it doesn't get through red lanes 3 and 4 yet.

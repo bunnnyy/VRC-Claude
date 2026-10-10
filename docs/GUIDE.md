@@ -103,12 +103,13 @@ atlas).
      (bhop_japan, arcane, badges), and `func_door` blocks that sink when touched (bhop_eazy_v2). To make every block a
      plain platform, select the map's **Bhop Blocks** object and untick **On**. Each player's blocks are their own
      (someone else standing on a block doesn't move it for you), as on most bhop servers.
-   - **Breakable glass**: `func_breakable` that one knife hit breaks in CS:S (the glass doors in bhop_eazy_v2's red
-     lanes 3 and 4 and its bonus) breaks when you come within knife reach (48 units), so you hop straight through.
-     VRChat has no knife, so coming close counts as the hit. It breaks only for you and stays broken until you
-     leave the instance (in CS:S it's gone for everyone until the next round). Tougher breakables and ones only an
-     output breaks stay solid. The doors need the map in SourceMovement's **Hull Only** (Create Lobby does that):
-     VRChat's own capsule is too tall to fit through them.
+   - **Breakable glass**: glass that one knife hit breaks in CS:S (upright `func_breakable` with 15 health or less,
+     like the glass doors in bhop_eazy_v2's red lanes 3 and 4 and its bonus, and `func_breakable_surf` windows)
+     breaks when you come within knife reach (48 units), also at speed, so you hop straight through. VRChat has no
+     knife, so coming close counts as the hit. It breaks only for you and stays broken until you leave the instance
+     (in CS:S it's gone for everyone until the next round). Breakables with more health, flat ones (you could stand
+     on them) and ones only an output breaks stay solid. The doors need the map in SourceMovement's **Hull Only**
+     (Create Lobby does that): VRChat's own capsule is too tall to fit through them.
 2. Move the map's object to a free spot: every map needs its own place in the world (maps are up to ~620 m across;
    the sample world puts them 700 m apart along X). Do this before adding visuals and zones.
 3. **Visuals**: with uSource installed, the sample world builder imports them automatically

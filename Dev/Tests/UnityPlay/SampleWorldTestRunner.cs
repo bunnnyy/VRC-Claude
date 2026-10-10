@@ -109,6 +109,32 @@ public class SampleWorldTestRunner : MonoBehaviour
             $"{name}: Source lighting on {litProps}/{propRenderers} prop renderers; {linked}/{doors.Length} door blocks move their model");
         yield return Shot(name, spawn);
 
+        // Breakable glass: its model is linked; beside a pane (within knife reach) it breaks and its model goes; after
+        // the lobby and Rejoin map (the map switched off and on) it is still broken.
+        var glass = root.GetComponentsInChildren<SourceMapBreakable>(true);
+        if (glass.Length > 0)
+        {
+            int glassLinked = 0;
+            foreach (var g in glass)
+                if (GlassUdon(g).GetProgramVariable("visuals") != null) glassLinked++;
+            var pane = glass[0];
+            Bounds b = pane.solid.bounds;
+            Vector3 n = b.extents.x < b.extents.z ? Vector3.right : Vector3.forward;
+            Vector3 beside = b.center - n * (Vector3.Dot(b.extents, n) + 40f * U); // the hull 24 u from it
+            beside.y = b.min.y + 28f * U;
+            Teleport(beside);
+            yield return Seconds(0.3f);
+            bool broke = (bool)GlassUdon(pane).GetProgramVariable("broken") && !pane.solid.enabled && pane.visuals != null && !pane.visuals.gameObject.activeSelf;
+            Press("lobby", -1); // only this player: the map is switched off for them
+            yield return Seconds(0.5f);
+            bool off = !root.activeSelf;
+            Press("rejoin", -1);
+            yield return Seconds(0.5f);
+            bool still = off && root.activeSelf && (bool)GlassUdon(pane).GetProgramVariable("broken") && !pane.solid.enabled && !pane.visuals.gameObject.activeSelf;
+            Check(glassLinked == glass.Length && broke && still,
+                $"{name}: {glassLinked}/{glass.Length} breakable glass linked to its model; beside one it breaks and its model goes ({broke}), still broken after the lobby and Rejoin map ({still})");
+        }
+
         // Teleports: up to 15, spread over the map.
         var teleports = root.GetComponentsInChildren<SourceMapTeleport>(true);
         int tested = 0, arrived = 0;
@@ -275,6 +301,9 @@ public class SampleWorldTestRunner : MonoBehaviour
         float t = Time.time + s;
         while (Time.time < t) yield return null;
     }
+
+    /// <summary>The glass's Udon program (its object has only that one).</summary>
+    static UdonBehaviour GlassUdon(SourceMapBreakable g) { return g.GetComponent<UdonBehaviour>(); }
 
     static UdonBehaviour Find(string objectName)
     {

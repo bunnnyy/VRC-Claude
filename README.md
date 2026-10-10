@@ -82,8 +82,9 @@ Step-by-step setup: **[docs/GUIDE.md](docs/GUIDE.md)**; design and test history:
   those; in a mesh their edges stop surfers); one `SourceEntity` marker per entity with all its keyvalues and outputs;
   working teleports, pushes, boosters, gravity, water and ladders for SourceMovement; **bhop blocks** like CS:S
   (name-filtered teleports and sinking `func_door` blocks: stand too long and you're sent back), switchable per map;
-  **breakable glass** (`func_breakable` that one knife hit breaks in CS:S, e.g. bhop_eazy_v2's red glass doors) breaks
-  when you come within knife reach, for you only, and stays broken until you leave the instance.
+  **breakable glass** (upright `func_breakable` with 15 health or less, which one knife hit breaks in CS:S, and
+  `func_breakable_surf` windows; e.g. bhop_eazy_v2's red glass doors) breaks when you come within knife reach, for
+  you only, and stays broken until you leave the instance.
 - **Visuals** with [uSource](https://github.com/DeadZoneLuna/uSource) (installed by you, not included): the map's own
   Source **lightmaps** on a small `SourceMaps/Lightmapped` shader (nothing to bake), static props lit from the map's
   ambient light and lights like CS:S lights models, tool surfaces removed, solid props get colliders.

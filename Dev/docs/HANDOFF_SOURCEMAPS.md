@@ -27,9 +27,11 @@ VRChat's capsule floats ~6 units above the floor: thin triggers need the 8-unit 
 (bhop blocks) tests touches with Source's box (`Physics.OverlapBox`, null entries = VRChat-hidden colliders).
 
 ## Step 7 done (breakable glass, by the movement session; see the plan)
-`func_breakable` that one knife hit breaks (`BspMechanics.BreaksOnApproach`) gets `SourceMapBreakable` on a "Break"
-child (trigger = glass + 48 u sideways): coming close switches off its collider and visuals, locally, until the player
-leaves the instance. `run.sh map` runs the glass test first (it stays broken); `SM_ONLY=glass` runs only that.
+Upright breakables one knife hit breaks (`BspMechanics.BreaksOnApproach`) get `SourceMapBreakable` on a "Break" child:
+its trigger (256 u round the glass) switches on a per-frame check of CS:S's box against knife reach (48 u, plus a step
+and a frame of travel), which switches off the collider and visuals, locally, until the player leaves the instance.
+`run.sh map` runs the glass test first (it stays broken); `SM_ONLY=glass` runs only that; `run.sh sample` checks the
+linked model goes and it stays broken after Back to lobby / Rejoin map.
 
 ## Setting up a fresh container
 ```
@@ -46,7 +48,7 @@ Dev/Tests/Converters/compare.sh Dev/Tests/Bsp/.cache/maps/bhop_japan.bsp   # dow
 ## Tests
 | Command | What | Last result |
 |---|---|---|
-| `dotnet run --project Dev/Tests/Bsp` | BSP reader/collision on all 5 maps + booster parsing + breakable glass rule | 83/83 |
+| `dotnet run --project Dev/Tests/Bsp` | BSP reader/collision on all 5 maps + booster parsing + breakable glass rule | 87/87 |
 | `dotnet run --project Dev/Tests/Sim` | movement + timer simulation (incl. course boards, saved bests) | all passed |
 | `Dev/Tests/UdonCompile/compile.sh` | real UdonSharp compile + editor scripts | OK |
 | `Dev/Tests/UnityPlay/run.sh vote` | rotation, owner changes, practice courses (ClientSim) | 44/44 |

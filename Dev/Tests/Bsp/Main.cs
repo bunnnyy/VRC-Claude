@@ -73,6 +73,12 @@ static class Program
         Check(!BspMechanics.BreaksOnApproach(Breakable("\"material\" \"1\"\n\"health\" \"100\"\n")), "tougher than one knife hit (health 100) -> stays");
         Check(!BspMechanics.BreaksOnApproach(Breakable("\"material\" \"0\"\n\"health\" \"1\"\n\"minhealthdmg\" \"50\"\n")), "needs more damage than a knife hit -> stays");
         Check(!BspMechanics.BreaksOnApproach(Parse("{\n\"classname\" \"func_wall\"\n\"model\" \"*1\"\n\"health\" \"1\"\n}")), "not a breakable -> stays");
+        Check(!BspMechanics.BreaksOnApproach(Breakable("\"material\" \"0\"\n\"health\" \"1\"\n\"damagefilter\" \"onlyme\"\n")), "with a damage filter -> stays");
+        Check(!BspMechanics.BreaksOnApproach(Breakable("\"material\" \"0\"\n\"health\" \"1\"\n\"propdata\" \"3\"\n")), "health from prop data -> stays");
+        Check(BspMechanics.BreaksOnApproach(Breakable("\"material\" \"0\"\n\"health\" \"15\"\n")) && !BspMechanics.BreaksOnApproach(Breakable("\"material\" \"0\"\n\"health\" \"16\"\n")),
+            "health 15 breaks, 16 stays");
+        Check(BspMechanics.BreaksOnApproach(Parse("{\n\"classname\" \"func_breakable_surf\"\n\"model\" \"*1\"\n\"health\" \"100\"\n\"spawnflags\" \"1\"\n}")),
+            "func_breakable_surf (window glass breaks on any hit in CS:S) -> breaks, whatever its health or flags");
     }
 
     static string CacheDir => Path.Combine(AppContext.BaseDirectory, "../../../.cache/maps");

@@ -262,7 +262,8 @@ public static class SourceMapImporter
         }
 
         // Breakable glass (func_breakable that one knife hit breaks in CS:S): VRChat has no knife, so it breaks when the
-        // player comes within knife reach. Other breakables stay solid.
+        // player comes within knife reach. Upright panes only: flat ones (floors, lids) you could land on stay solid,
+        // like the other breakables.
         int glass = 0;
         for (int i = 0; i < bsp.Entities.Count; i++)
         {
@@ -270,14 +271,17 @@ public static class SourceMapImporter
             var go = markers[i];
             if (!BspMechanics.BreaksOnApproach(e) || go.GetComponent<MeshCollider>() == null) continue;
             var marker = go.GetComponent<SourceEntity>();
+            if (marker.bounds.size.y <= Mathf.Min(marker.bounds.size.x, marker.bounds.size.z)) continue;
             var breakObject = new GameObject("Break"); // the trigger on its own object (see SourceMapBreakable)
             breakObject.transform.SetParent(go.transform, false);
             var breakable = breakObject.AddUdonSharpComponent<SourceMapBreakable>();
             breakable.solid = go.GetComponent<MeshCollider>();
-            var reach = breakObject.AddComponent<BoxCollider>(); // the glass grown by knife reach sideways
-            reach.isTrigger = true;
-            reach.center = marker.bounds.center;
-            reach.size = marker.bounds.size + new Vector3(2f, 0f, 2f) * (BspMechanics.KnifeReach * scale);
+            breakable.reach = BspMechanics.KnifeReach;
+            breakable.unitScale = scale;
+            var nearby = breakObject.AddComponent<BoxCollider>(); // where it checks the reach every frame
+            nearby.isTrigger = true;
+            nearby.center = marker.bounds.center;
+            nearby.size = marker.bounds.size + new Vector3(512f, 128f, 512f) * scale; // 256 units round it, 64 over and under
             UdonSharpEditorUtility.CopyProxyToUdon(breakable);
             glass++;
         }

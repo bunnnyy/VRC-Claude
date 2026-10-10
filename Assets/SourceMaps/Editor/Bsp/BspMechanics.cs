@@ -92,20 +92,25 @@ namespace SourceMaps.Bsp
             return e.ClassName == "func_door" && int.TryParse(e.Get("spawnflags", "0"), out flags) && (flags & 1024) != 0;
         }
 
-        /// <summary>CS:S knife: how far a slash reaches (units, from the eyes) and the least damage one hit does.</summary>
-        public const float KnifeReach = 48f, KnifeDamage = 15f;
+        /// <summary>CS:S knife: how far a slash reaches (units, from the eyes); health a single knife hit surely breaks.</summary>
+        public const float KnifeReach = 48f, KnifeHealth = 15f;
 
         /// <summary>
-        /// A func_breakable that one knife hit breaks in CS:S, like the glass panes in bhop maps (health 1). VRChat has no
-        /// knife, so these break when the player comes within knife reach. Not: unbreakable glass (material 7), health 0
-        /// or "Only Break on Trigger" (spawnflag 1; such ones take no damage, an output breaks them), or tougher ones.
+        /// A breakable that one knife hit breaks in CS:S, like the glass panes in bhop maps (func_breakable, health 1).
+        /// VRChat has no knife, so these break when the player comes within knife reach (the importer does it for upright
+        /// panes only: glass you stand on stays). func_breakable_surf (window glass) breaks on any hit. A func_breakable
+        /// doesn't if it's unbreakable glass (material 7), health 0 or "Only Break on Trigger" (spawnflag 1; such ones take
+        /// no damage, an output breaks them), or has more than 15 health. Not either kind with a damage filter or (for
+        /// func_breakable) health from prop data: those we can't tell.
         /// </summary>
         public static bool BreaksOnApproach(Entity e)
         {
-            if ((e.ClassName != "func_breakable" && e.ClassName != "func_breakable_surf") || e.BrushModel <= 0) return false;
+            if (e.BrushModel <= 0 || e.Get("damagefilter") != "") return false;
+            if (e.ClassName == "func_breakable_surf") return true;
+            if (e.ClassName != "func_breakable" || e.GetInt("propdata") != 0) return false;
             float health = Number(e, "health"), minDamage = Number(e, "minhealthdmg");
             return (e.GetInt("spawnflags") & 1) == 0 && e.GetInt("material") != 7 &&
-                   health > 0f && health <= KnifeDamage && minDamage <= KnifeDamage;
+                   health > 0f && health <= KnifeHealth && minDamage <= KnifeHealth;
         }
 
         static float Number(Entity e, string key)

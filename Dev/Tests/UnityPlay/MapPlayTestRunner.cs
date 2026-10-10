@@ -148,71 +148,101 @@ public class MapPlayTestRunner : MonoBehaviour
     // ------------------------------------------------------------------ breakable glass
 
     /// <summary>
-    /// Breakable glass (SourceMapBreakable): glass that one knife hit breaks in CS:S breaks when the player comes within
-    /// knife reach (48 u), before the hull touches it, and the player flies through without losing speed. It stays
-    /// broken when the map is switched off and on (as SourceMapManager does). Other breakables stay solid.
+    /// Breakable glass (SourceMapBreakable): glass that one knife hit breaks in CS:S breaks when the player's CS:S box
+    /// comes within knife reach (48 u), before it touches the glass, also when fast, and the player flies through
+    /// without losing speed. It stays broken when the map is switched off and on (as SourceMapManager does). Other
+    /// breakables stay solid.
     /// </summary>
     IEnumerator BreakableGlass()
     {
         var glass = FindObjectsOfType<SourceMapBreakable>();
-        int others = 0, othersSolid = 0;
+        int others = 0, othersSolid = 0, expected = 0;
         foreach (var m in FindObjectsOfType<SourceEntity>())
         {
-            if (!m.className.StartsWith("func_breakable") || m.GetComponentInChildren<SourceMapBreakable>() != null) continue;
+            if (!m.className.StartsWith("func_breakable")) continue;
+            // CS:S: one knife hit breaks it (the importer's rule, written again here so the test checks it)
+            float.TryParse(m.GetValue("health"), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out float health);
+            float.TryParse(m.GetValue("minhealthdmg"), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out float minDamage);
+            int.TryParse(m.GetValue("spawnflags"), out int flags);
+            bool surf = m.className == "func_breakable_surf"; // window glass: any hit breaks it
+            bool upright = m.bounds.size.y > Mathf.Min(m.bounds.size.x, m.bounds.size.z); // flat ones stay
+            int.TryParse(m.GetValue("propdata"), out int propData);
+            if (m.GetValue("model").StartsWith("*") && upright && m.GetValue("damagefilter") == "" && (surf ||
+                (propData == 0 && (flags & 1) == 0 && m.GetValue("material") != "7" && health > 0f && health <= 15f && minDamage <= 15f)))
+                expected++;
+            if (m.GetComponentInChildren<SourceMapBreakable>() != null) continue;
             others++;
             var c = m.GetComponent<MeshCollider>();
             if (c != null && c.enabled) othersSolid++;
         }
         Log($"breakable glass: {glass.Length} panes, {others} other breakables");
+        Check(glass.Length == expected, $"glass: {glass.Length}/{expected} breakables one knife hit breaks become breakable glass");
+        if (others > 0) Check(othersSolid == others, $"glass: the other breakables (trigger-only, tougher) stay solid ({othersSolid}/{others})");
         if (glass.Length == 0) yield break;
-        Check(othersSolid == others, $"glass: the other breakables (trigger-only, tougher) stay solid ({othersSolid}/{others})");
 
         // Fly at each pane square to it, through its middle, with gravity off: feet 28 u over its bottom, so the hull
         // passes over the teleport strip under it and under the frame over it (bhop_eazy_v2: z 72..168). VRChat's
-        // 84 u capsule doesn't fit there, so the map is Hull Only, as in a world (the lobby setup does that).
+        // 84 u capsule doesn't fit there, so the map is Hull Only, as in a world (the lobby setup does that). Each pane
+        // twice: at 400 u/s, then (made whole again) at 1500 u/s, where VRChat's player trails the hull more.
         var root = glass[0].transform.root.gameObject;
         var layers = HullOnly(root, null);
-        int broke = 0, early = 0, through = 0;
+        float[] speeds = { 400f, 1500f };
+        int[] broke = new int[speeds.Length], early = new int[speeds.Length], through = new int[speeds.Length];
         movement.SetProgramVariable("gravityScale", 0f);
         foreach (var g in glass)
         {
             var udon = UdonOf(g);
             Bounds b = g.solid.bounds;
-            bool whole = g.solid.enabled && !(bool)udon.GetProgramVariable("broken");
             Vector3 n = b.extents.x < b.extents.z ? Vector3.right : Vector3.forward; // across the pane
             float half = Vector3.Dot(b.extents, n);
             Vector3 start = b.center - n * (half + 130f * U);
             start.y = b.min.y + 28f * U;
-            yield return Teleport(start, Quaternion.LookRotation(n));
-            yield return Frames(0.2f);
-            movement.SetProgramVariable("velocity", n * 400f);
-            float gapAtBreak = float.NaN, minSpeed = float.MaxValue, past = 0f;
-            bool teleported = false;
-            Vector3 prev = player.GetPosition();
-            for (int i = 0; i < frameRate && past < 64f; i++)
+            for (int k = 0; k < speeds.Length; k++)
             {
-                yield return null;
-                Vector3 pos = player.GetPosition();
-                if ((pos - prev).magnitude > 64f * U) { teleported = true; break; }
-                prev = pos;
-                // Gap between the 32 u wide hull and the pane, along the flight.
-                float gap = (Vector3.Dot(b.center - pos, n) - half) / U - 16f;
-                if (float.IsNaN(gapAtBreak) && (bool)udon.GetProgramVariable("broken")) gapAtBreak = gap;
-                past = -gap - 2f * (half / U) - 32f; // how far the hull's back is past the pane
-                minSpeed = Mathf.Min(minSpeed, Speed());
+                if (k > 0) // whole again (the test only: the script never restores it)
+                {
+                    udon.SetProgramVariable("broken", false);
+                    g.solid.enabled = true;
+                    if (g.visuals != null) g.visuals.gameObject.SetActive(true);
+                }
+                bool whole = g.solid.enabled && !(bool)udon.GetProgramVariable("broken");
+                yield return Teleport(start, Quaternion.LookRotation(n));
+                yield return Frames(0.2f);
+                movement.SetProgramVariable("velocity", n * speeds[k]);
+                float gapAtBreak = float.NaN, minSpeed = float.MaxValue, past = 0f;
+                bool teleported = false;
+                Vector3 prev = player.GetPosition();
+                for (int i = 0; i < frameRate && past < 64f; i++)
+                {
+                    yield return null;
+                    Vector3 pos = player.GetPosition();
+                    if ((pos - prev).magnitude > (speeds[k] * Time.deltaTime + 64f) * U) { teleported = true; break; }
+                    prev = pos;
+                    // Gap between SourceMovement's 32 u wide hull and the pane, along the flight.
+                    Vector3 hull = (Vector3)movement.GetProgramVariable("origin") * U;
+                    float gap = (Vector3.Dot(b.center - hull, n) - half) / U - 16f;
+                    if (float.IsNaN(gapAtBreak) && (bool)udon.GetProgramVariable("broken")) gapAtBreak = gap;
+                    past = -gap - 2f * (half / U) - 32f; // how far the hull's back is past the pane
+                    minSpeed = Mathf.Min(minSpeed, Speed());
+                }
+                // Breaks within reach, plus how far the player gets in a physics step and two frames (the check's allowance).
+                float most = BspReach + speeds[k] * (Time.fixedDeltaTime + 2f / frameRate) + 2f;
+                bool ok = whole && !float.IsNaN(gapAtBreak) && (g.visuals == null || !g.visuals.gameObject.activeSelf);
+                if (ok) broke[k]++;
+                if (ok && gapAtBreak > 0f && gapAtBreak <= most) early[k]++;
+                if (ok && !teleported && past >= 64f && minSpeed > speeds[k] - 1f) through[k]++;
+                Log($"   pane at {g.transform.position / U:F0}, {speeds[k]:F0} u/s: broke {(float.IsNaN(gapAtBreak) ? "never" : $"with the hull {gapAtBreak:F1} u away (at most {most:F0})")}, " +
+                    $"slowest {minSpeed:F0} u/s, {(teleported ? "teleported" : $"{past:F0} u past it")}, visuals {(g.visuals != null ? "linked" : "none (no uSource)")}");
             }
-            bool ok = whole && !float.IsNaN(gapAtBreak);
-            if (ok) broke++;
-            if (ok && gapAtBreak > 0f && gapAtBreak <= BspReach + 16f) early++;
-            if (ok && !teleported && past >= 64f && minSpeed > 399f) through++;
-            Log($"   pane at {g.transform.position / U:F0}: whole {whole}, broke {(float.IsNaN(gapAtBreak) ? "never" : $"with the hull {gapAtBreak:F1} u away")}, " +
-                $"slowest {minSpeed:F0} u/s, {(teleported ? "teleported" : $"{past:F0} u past it")}, visuals {(g.visuals != null ? "linked" : "none (no uSource)")}");
         }
         movement.SetProgramVariable("gravityScale", 1f);
         HullOnly(root, layers);
-        Check(broke == glass.Length, $"glass: {broke}/{glass.Length} panes break when the player comes close");
-        Check(early == glass.Length, $"glass: {early}/{glass.Length} break before the hull touches them (within knife reach, {BspReach:F0} u)");
-        Check(through == glass.Length, $"glass: {through}/{glass.Length} flown through at 400 u/s without losing speed");
+        for (int k = 0; k < speeds.Length; k++)
+        {
+            Check(broke[k] == glass.Length, $"glass: {broke[k]}/{glass.Length} panes break when the player comes close at {speeds[k]:F0} u/s");
+            Check(early[k] == glass.Length, $"glass: {early[k]}/{glass.Length} break before the hull touches them, within knife reach ({BspReach:F0} u) plus a step's travel, at {speeds[k]:F0} u/s");
+            Check(through[k] == glass.Length, $"glass: {through[k]}/{glass.Length} flown through at {speeds[k]:F0} u/s without losing speed");
+        }
 
         // Switched off and on (SourceMapManager.ShowMap): still broken, until the player leaves the instance.
         root.SetActive(false);
@@ -221,7 +251,7 @@ public class MapPlayTestRunner : MonoBehaviour
         yield return Frames(0.2f);
         int still = 0;
         foreach (var g in glass)
-            if ((bool)UdonOf(g).GetProgramVariable("broken") && !g.solid.enabled && !g.GetComponent<Collider>().enabled) still++;
+            if ((bool)UdonOf(g).GetProgramVariable("broken") && !g.solid.enabled) still++;
         Check(still == glass.Length, $"glass: {still}/{glass.Length} still broken after the map is switched off and on");
     }
 
