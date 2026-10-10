@@ -36,9 +36,33 @@ static class Program
             Console.WriteLine("No maps. Run Tests/Bsp/get_maps.sh first, or pass .bsp paths.");
             return 1;
         }
+        TestMechanics();
         foreach (var file in files) TestMap(file);
         Console.WriteLine($"\n{checks - failures}/{checks} checks passed");
         return failures == 0 ? 0 : 1;
+    }
+
+    /// <summary>Booster/push parsing on entities written like the entity lump (no map needed).</summary>
+    static void TestMechanics()
+    {
+        Console.WriteLine("\n== booster and push parsing");
+        Entity Parse(string text) => Entity.ParseAll(text)[0];
+        var esc = "\u001b";
+        var boost = Parse("{\n\"classname\" \"trigger_multiple\"\n\"OnStartTouch\" \"!activator" + esc + "AddOutput" + esc + "basevelocity 0 0 800" + esc + "0" + esc + "-1\"\n" +
+                          "\"OnEndTouch\" \"!activator,AddOutput,gravity 0.5,0,-1\"\n\"OnTrigger\" \"!activator,AddOutput,targetname x,0,-1\"\n}");
+        var b = BspMechanics.Boosts(boost);
+        Check(b.Count == 2 && b[0].Velocity == new System.Numerics.Vector3(0, 0, 800) && !b[0].OnLeave && !b[0].SetGravity,
+            "basevelocity output (ESC separated) -> boost on entering");
+        Check(b.Count == 2 && b[1].OnLeave && b[1].SetGravity && b[1].Gravity == 0.5f, "gravity output on OnEndTouch (comma separated) -> on leaving");
+        var plain = Parse("{\n\"classname\" \"trigger_multiple\"\n\"OnTrigger\" \"!activator,AddOutput,targetname activator,0.09,-1\"\n}");
+        Check(BspMechanics.Boosts(plain).Count == 0, "other AddOutputs (targetname) are not boosters");
+        var grav = Parse("{\n\"classname\" \"trigger_gravity\"\n\"gravity\" \"0.25\"\n}");
+        Check(BspMechanics.Boosts(grav).Count == 1 && BspMechanics.Boosts(grav)[0].Gravity == 0.25f, "trigger_gravity -> gravity scale");
+        var push = Parse("{\n\"classname\" \"trigger_push\"\n\"speed\" \"1500\"\n\"pushdir\" \"-90 0 0\"\n}");
+        var v = BspMechanics.Push(push);
+        Check(Math.Abs(v.Z - 1500) < 0.5f && Math.Abs(v.X) < 0.5f && Math.Abs(v.Y) < 0.5f, $"trigger_push pushdir -90 0 0 speed 1500 -> straight up ({v})");
+        var fwd = BspMechanics.Push(Parse("{\n\"classname\" \"trigger_push\"\n\"speed\" \"100\"\n\"pushdir\" \"0 90 0\"\n}"));
+        Check(Math.Abs(fwd.Y - 100) < 0.5f, $"trigger_push yaw 90 -> +y ({fwd})");
     }
 
     static string CacheDir => Path.Combine(AppContext.BaseDirectory, "../../../.cache/maps");

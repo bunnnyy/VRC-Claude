@@ -252,3 +252,23 @@ Alignment = 2,575 vertical rays around every spawn/destination, visual geometry 
 Not distributed with SourceMaps (no license): the world creator installs uSource; SourceMaps drives it
 (scale 0.01905, the creator's CS:S folder) and saves meshes as assets. Static prop collision: generate from
 the render meshes (needs a test). I did not dig into why USource's geometry doesn't line up.
+
+### Step 3: map rotation runtime (done 2026-10-10)
+- `SourceMapManager` (vote, 60 s timer from the first vote, owner lock/start/force/everyone-to-lobby/+time,
+  rock the vote 60%, time limit with "extend", random ties, map just played not offered again),
+  `SourceMapScreen` (lobby board, panel at each map's spawn), `SourceMapButton` (Interact, desktop and VR),
+  `SourceMapInfo` (per map). Editor: Add Selected Map To Rotation, Create Lobby, Build Test Scene.
+- Changes asked for during the step: choose mode removed (one active map at a time, lobby always open);
+  practice bhop lane and surf ramp beside the lobby with their own saved legit/auto boards (SourceTimer:
+  per-course boards on start zones, Leaderboard save key with VRChat PlayerData).
+- Owner changes: all vote state is synced, so a new owner carries on; leavers' votes and rtv are dropped
+  (recount a frame after OnPlayerLeft / ownership transfer); admin = instance owner, else the master
+  (`Networking.InstanceOwner` is null when the owner is away, per VRChat's docs).
+- Importer additions for SourceMovement (by name, so SourceMaps compiles without it): trigger_push ->
+  SourcePushTrigger, basevelocity/gravity boosters and trigger_gravity -> SourceBoostTrigger, water ->
+  layer 4 trigger boxes, ladders -> layer 22. Filtered ones stay markers. bhop_japan: 5 water volumes, its
+  2 pushes are filtered.
+- Tests: real Unity + ClientSim `run.sh vote` 44/44 (voting flow, owner changes with ClientSim's simulated
+  remote players, practice runs and saved bests); `run.sh 90` (movement) all passed; `run.sh map` bhop_japan
+  40/40 + 55/55; `Tests/Bsp` 24/24 (incl. booster/push parsing); `Tests/Sim` all passed.
+  Not testable here: two real VRChat clients at once (ClientSim is one client).

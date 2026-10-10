@@ -95,6 +95,7 @@ PY
 if [ "${1:-}" = "vote" ]; then
   copy_assets
   tmp_essentials
+  rm -rf "$proj/ClientSimStorage" # ClientSim keeps PlayerData between runs: start without saved times
   run program_assets -quit -executeMethod SourceMapImporter.EnsureProgramAssets
   status=0
   if run build_vote -quit -executeMethod SourceMapsSetup.BuildTestScene && run vote -executeMethod PlayTestBootstrap.RunVote; then r="ALL PASSED"; else r="FAILED"; status=1; fi
