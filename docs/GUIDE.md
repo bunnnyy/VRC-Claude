@@ -157,10 +157,11 @@ Settings on **SourceMapManager** (under "SourceMaps Lobby"):
 2. The run timer (`SourceTimer.prefab`) is added by the lobby tool if it isn't in the scene yet.
 3. Records: Create Lobby puts a **records wall** behind the lobby spawn with a legit and an auto-bhop board for
    every course (each map, each bonus track) that has a start zone named "Start <course>".
-4. Select **SourceMovement** and add each map's object to **Hull Only**. VRChat's own player capsule is taller
-   than the CS:S hull (84 against 62 units, and it doesn't shrink when you duck), so without this it gets stuck
-   under low ceilings, in vents and in duck tunnels. While Source movement is on, those maps' colliders move to
-   VRChat's Walkthrough layer and only the Source hull collides with them.
+4. **Hull Only** (on SourceMovement): Create Lobby fills it with every map in the rotation, so add the
+   SourceMovement prefab before you run Create Lobby (or run it again). VRChat's own player capsule is taller than
+   the CS:S hull (84 against 62 units, and it doesn't shrink when you duck), so without this it gets stuck under low
+   ceilings, in vents and in duck tunnels. While Source movement is on, those maps' colliders move to VRChat's
+   Walkthrough layer and only the Source hull collides with them. Other objects you add to the list by hand stay.
 
 **Saved records.** Boards with a **Save Key** (the practice boards have one) keep each player's best with VRChat
 Persistence. VRChat saves data per player, not per world, so a board shows the bests of everyone who has been in

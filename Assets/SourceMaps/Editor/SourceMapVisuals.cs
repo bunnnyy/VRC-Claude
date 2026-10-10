@@ -152,7 +152,7 @@ public static class SourceMapVisuals
         int linked = 0;
         foreach (var door in root.GetComponentsInChildren<SourceMapDoor>(true))
         {
-            var marker = door.GetComponent<SourceEntity>();
+            var marker = door.GetComponentInParent<SourceEntity>();
             int model;
             if (marker == null || !int.TryParse(marker.GetValue("model").TrimStart('*'), out model) || model >= faces.childCount) continue;
             door.visuals = faces.GetChild(model);

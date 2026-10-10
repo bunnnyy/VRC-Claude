@@ -103,6 +103,8 @@ public class SampleWorldTestRunner : MonoBehaviour
             }
         var doors = root.GetComponentsInChildren<SourceMapDoor>(true);
         int linked = System.Array.FindAll(doors, d => d.visuals != null).Length;
+        var hullOnly = (GameObject[])movement.GetProgramVariable("hullOnly");
+        Check(hullOnly != null && System.Array.IndexOf(hullOnly, root) >= 0, $"{name}: in SourceMovement's Hull Only (only the CS:S hull collides with it)");
         Check((propRenderers == 0 || litProps > 0) && linked == doors.Length,
             $"{name}: Source lighting on {litProps}/{propRenderers} prop renderers; {linked}/{doors.Length} door blocks move their model");
         yield return Shot(name, spawn);
@@ -179,7 +181,7 @@ public class SampleWorldTestRunner : MonoBehaviour
     /// </summary>
     static bool InsideSolid(Vector3 p)
     {
-        const int SolidLayer = 1 << 0;
+        const int SolidLayer = (1 << 0) | (1 << 17); // Default, or Walkthrough (hull-only)
         bool before = Physics.queriesHitBackfaces;
         Physics.queriesHitBackfaces = true;
         bool any = Physics.Raycast(p, Vector3.up, out var first, 2000f, SolidLayer, QueryTriggerInteraction.Ignore);
@@ -209,7 +211,7 @@ public class SampleWorldTestRunner : MonoBehaviour
     /// <summary>Like MapPlayTestRunner: the spots over the trigger with headroom whose ground (hull cast) is lowest, best first.</summary>
     static List<Vector3> DropPoints(SourceMapTeleport t, int count)
     {
-        const int Solid = 1 << 0;
+        const int Solid = (1 << 0) | (1 << 17); // Default, or Walkthrough (hull-only)
         var found = new List<KeyValuePair<float, Vector3>>();
         foreach (var col in t.GetComponents<MeshCollider>())
         {
