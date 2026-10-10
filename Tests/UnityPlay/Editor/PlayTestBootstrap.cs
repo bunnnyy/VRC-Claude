@@ -160,6 +160,7 @@ public static class PlayTestBootstrap
         {
             if (args[i] == "-smFrameRate") runner.frameRate = int.Parse(args[i + 1]);
             if (args[i] == "-smRecord") runner.recordDir = args[i + 1];
+            if (args[i] == "-smRouteSection") runner.startSection = int.Parse(args[i + 1]);
         }
         EditorApplication.isPlaying = true;
     }

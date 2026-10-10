@@ -70,12 +70,23 @@ if [ "${1:-}" = "route" ]; then
   bsp=$(realpath "$2"); zones=$(realpath "$3"); record=()
   [ -n "${4:-}" ] && { rm -rf "$4"; record=(-smRecord "$(realpath -m "$4")"); }
   copy_assets
+  # The map's visible geometry and textures need DeadZoneLuna's uSource (no license stated: kept in the
+  # git-ignored cache, as Tests/Converters/compare.sh does), at the commit the converter comparison used.
+  if [ ! -d "$proj/Assets/uSource" ]; then
+    src=$here/.cache/uSource
+    [ -d "$src" ] || git clone -q https://github.com/DeadZoneLuna/uSource "$src"
+    git -C "$src" checkout -q 01ab6a2f080ce7341b87f2d867bfae079c0fa06e
+    cp -r "$src" "$proj/Assets/uSource"
+    rm -rf "$proj/Assets/uSource/.git"
+    sed -i 's|"references": \[\],|"references": [], "allowUnsafeCode": true,|' "$proj/Assets/uSource/uSource.asmdef"
+  fi
   rm -rf "$proj/ClientSimStorage"
   status=0
   rm -f "$proj/Assets/RouteTest.unity"
   if run build_route -quit -executeMethod PlayTestBootstrap.BuildRoute -bsp "$bsp" -zones "$zones" &&
      grep -q "route scene built" "$logs/build_route.log" &&
-     run route -executeMethod PlayTestBootstrap.RunRoute -smFrameRate 100 "${record[@]}"; then r="FINISHED"; else r="FAILED"; status=1; fi
+     ! grep -m3 "error CS" "$logs/build_route.log" &&
+     run route -executeMethod PlayTestBootstrap.RunRoute -smFrameRate 100 -smRouteSection "${ROUTE_SECTION:-0}" "${record[@]}"; then r="FINISHED"; else r="FAILED"; status=1; fi
   echo "== $(basename "$bsp" .bsp) route: $r"
   grep -ho "\[SMTEST\] .*" "$logs/route.log" 2>/dev/null | sed 's/^\[SMTEST\] /  /'
   exit $status

@@ -11,25 +11,32 @@ hud, ass, title = sys.argv[1], sys.argv[2], sys.argv[3]
 def ts(frame):  # 50 fps frame -> h:mm:ss.cc
     cs = frame * 2
     return f"{cs // 360000}:{cs // 6000 % 60:02d}:{cs // 100 % 60:02d}.{cs % 100:02d}"
-lines = [l.rstrip("\n").split("\t") for l in open(hud)]
+lines = [(l.rstrip("\n").split("\t") + ["", "", ""])[:3] for l in open(hud)]
 out = ["[Script Info]", "ScriptType: v4.00+", "PlayResX: 1280", "PlayResY: 720", "",
        "[V4+ Styles]",
-       "Format: Name, Fontname, Fontsize, PrimaryColour, OutlineColour, BackColour, Bold, BorderStyle, Outline, Shadow, Alignment, MarginV",
-       "Style: Speed,DejaVu Sans,34,&H00FFFFFF,&H00000000,&H80000000,1,1,2,0,2,40",
-       "Style: Timer,DejaVu Sans,30,&H00FFFFFF,&H00000000,&H80000000,1,1,2,0,8,24",
-       "Style: Title,DejaVu Sans,26,&H00FFFFFF,&H00000000,&H80000000,0,1,2,0,1,24", "",
+       "Format: Name, Fontname, Fontsize, PrimaryColour, OutlineColour, BackColour, Bold, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV",
+       "Style: Speed,DejaVu Sans,34,&H00FFFFFF,&H00000000,&H80000000,1,1,2,0,2,30,30,40",
+       "Style: Timer,DejaVu Sans,30,&H00FFFFFF,&H00000000,&H80000000,1,1,2,0,8,30,30,24",
+       "Style: Title,DejaVu Sans,26,&H00FFFFFF,&H00000000,&H80000000,0,1,2,0,1,30,30,24",
+       "Style: Keys,DejaVu Sans Mono,30,&H00FFFFFF,&H00000000,&H80000000,1,1,2,0,3,30,30,40", "",
        "[Events]", "Format: Layer, Start, End, Style, Text"]
 def runs(column):  # merge equal consecutive values into one event
     start = 0
     for i in range(1, len(lines) + 1):
         if i == len(lines) or lines[i][column] != lines[start][column]:
-            if lines[start][column]:
+            if lines[start][column] or column == 2:
                 yield start, i, lines[start][column]
             start = i
 for a, b, text in runs(0):
     out.append(f"Dialogue: 0,{ts(a)},{ts(b)},Speed,{text} u/s")
 for a, b, text in runs(1):
     out.append(f"Dialogue: 0,{ts(a)},{ts(b)},Timer,{text}")
+def keys(text):  # pressed keys bright, the others dim
+    down = set(text.split("+")) if text else set()
+    names = [("W", "W"), ("A", "A"), ("S", "S"), ("D", "D"), ("Space", "JUMP")]
+    return " ".join(("{\\c&HFFFFFF&}" if k in down else "{\\c&H505050&}") + label for k, label in names)
+for a, b, text in runs(2):
+    out.append(f"Dialogue: 0,{ts(a)},{ts(b)},Keys,{keys(text)}")
 if title:
     out.append(f"Dialogue: 0,{ts(0)},{ts(250)},Title,{title}")
 open(ass, "w").write("\n".join(out) + "\n")
