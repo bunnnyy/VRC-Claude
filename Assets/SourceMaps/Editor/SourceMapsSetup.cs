@@ -88,6 +88,7 @@ public static class SourceMapsSetup
             if (map.spawn != null) screens.Add(CreatePanel(map, manager));
         manager.screens = screens.ToArray();
         UdonSharpEditorUtility.CopyProxyToUdon(manager);
+        SetHullOnly(maps);
 
         // Practice bhop and surf courses with their own records, from SourceTimer if it's in the project
         // (looked up by name so SourceMaps doesn't need SourceTimer).
@@ -264,6 +265,31 @@ public static class SourceMapsSetup
     }
 
     // ------------------------------------------------------------------ helpers
+
+    /// <summary>
+    /// Puts every map in SourceMovement's Hull Only list (if SourceMovement is in the scene): while Source movement
+    /// is on, the maps' colliders move to VRChat's Walkthrough layer and only the CS:S hull collides with them, so
+    /// VRChat's taller capsule doesn't snag under low ceilings and in duck tunnels. Other entries are kept.
+    /// </summary>
+    static void SetHullOnly(SourceMapInfo[] maps)
+    {
+        var type = FindType("SourceMovement");
+        var field = type?.GetField("hullOnly");
+        if (field == null) return;
+        foreach (UdonSharp.UdonSharpBehaviour movement in Object.FindObjectsOfType(type, true))
+        {
+            var list = ((GameObject[])field.GetValue(movement) ?? new GameObject[0])
+                .Where(g => g != null && g.GetComponent<SourceMapInfo>() == null).ToList();
+            list.AddRange(maps.Select(m => m.gameObject));
+            field.SetValue(movement, list.ToArray());
+            UdonSharpEditorUtility.CopyProxyToUdon(movement);
+            // SourceMovement is usually a prefab instance: record the change as an override, or saving drops it.
+            PrefabUtility.RecordPrefabInstancePropertyModifications(movement);
+            var udon = UdonSharpEditorUtility.GetBackingUdonBehaviour(movement);
+            if (udon != null) PrefabUtility.RecordPrefabInstancePropertyModifications(udon);
+            EditorUtility.SetDirty(movement);
+        }
+    }
 
     static System.Type FindType(string name)
     {

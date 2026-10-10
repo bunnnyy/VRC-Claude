@@ -272,7 +272,7 @@ public class MapPlayTestRunner : MonoBehaviour
 
     // ------------------------------------------------------------------ bhop and surf runs
 
-    const int Solid = 1 << 0; // world collision is on Default
+    const int Solid = (1 << 0) | (1 << 17); // world collision: Default, or Walkthrough while SourceMovement has it as hull-only
     int stalls, wallHits;
     Vector3 lastPos; // the player's last position before a map teleport moved them
     readonly List<string> stallLog = new List<string>();
@@ -462,7 +462,7 @@ public class MapPlayTestRunner : MonoBehaviour
         var all = new List<Ramp>();
         foreach (var mc in FindObjectsOfType<MeshCollider>())
         {
-            if (mc.isTrigger || mc.sharedMesh == null || mc.gameObject.layer != 0) continue;
+            if (mc.isTrigger || mc.sharedMesh == null || (mc.gameObject.layer != 0 && mc.gameObject.layer != 17)) continue;
             var v = mc.sharedMesh.vertices;
             var tri = mc.sharedMesh.triangles;
             var m = mc.transform.localToWorldMatrix;
@@ -578,7 +578,7 @@ public class MapPlayTestRunner : MonoBehaviour
     /// </summary>
     static bool InsideSolid(Vector3 p)
     {
-        const int SolidLayer = 1 << 0;
+        const int SolidLayer = (1 << 0) | (1 << 17); // Default, or Walkthrough (hull-only)
         bool before = Physics.queriesHitBackfaces;
         Physics.queriesHitBackfaces = true;
         bool any = Physics.Raycast(p, Vector3.up, out var first, 2000f, SolidLayer, QueryTriggerInteraction.Ignore);

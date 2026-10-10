@@ -39,7 +39,7 @@ metres, so values from CS:S servers and maps can be copied straight over.
 |---|---|---|
 | Meters Per Unit | 0.01905 | Size of one Source unit. **Must match the scale the maps were imported with** (0.01905) |
 | Collision Layers | Default, Environment, Walkthrough | Layers the player collides with. Put solid level geometry on one of these |
-| Hull Only | the test map (prefab: empty) | Maps (root objects) whose solid colliders only the Source hull should hit. While Source movement is on, their colliders move to VRChat's **Walkthrough** layer (17): VRChat's own player capsule (about 84 units, it doesn't shrink when crouching) passes through, so it can't get stuck under low ceilings or in vents. Back on their own layers when Source movement is off. Objects that also have a trigger collider stay on their layer |
+| Hull Only | the test map (prefab: empty; Create Lobby adds every map) | Maps (root objects) whose solid colliders only the Source hull should hit. While Source movement is on, their colliders move to VRChat's **Walkthrough** layer (17): VRChat's own player capsule (about 84 units, it doesn't shrink when crouching) passes through, so it can't get stuck under low ceilings or in vents. Back on their own layers when Source movement is off. Objects that also have a trigger collider stay on their layer |
 | Ladder Layers | 22 | Layers of ladder volumes (trigger boxes against the climbable face). Name layer 22 "Ladder" if you like |
 | Water Layers | 4 (Water) | Layers of water volumes (trigger boxes filling the water) |
 
@@ -157,7 +157,7 @@ Seconds, Rtv Ratio, Time Limit Minutes, Extend Minutes). The rest is wiring the 
 
 **SourceMapNameTrigger** (`trigger_multiple`s that rename the player): Names / Delays (and Leave Names for
 OnEndTouch), **Wait** = seconds before it fires again while you touch it (Source's `wait`; negative = once).
-**SourceMapDoor** (`func_door` blocks that open on touch): **Move Local** (metres), **Speed** (m/s), **Wait** (seconds
+**SourceMapDoor** (`func_door` blocks that open on touch; on the door's "Touch" child, it moves the door): **Move Local** (metres), **Speed** (m/s), **Wait** (seconds
 open), **Drop Through** (lets you fall into the teleport below when fully open), **Visuals** (the model moved with it).
 **SourceEntity** (markers): read-only copies of the map entity's data (class name, name, keyvalues, outputs,
 volume); changing them does nothing.

@@ -1,6 +1,7 @@
 using UdonSharp;
 using UnityEngine;
 using VRC.SDKBase;
+using VRC.Udon;
 
 /// <summary>
 /// Bhop blocks of one map, like CS:S: the local player's "targetname", which the map's trigger_multiples set with
@@ -25,9 +26,12 @@ public class SourceMapBlocks : UdonSharpBehaviour
     public string[] gatedNames;
     public bool[] gatedNegate;
     public bool[] gatedClass;
-    [Tooltip("Half size of Source's player box (metres) and how far above the feet it starts (set by the importer)")]
-    public Vector3 hullHalf = new Vector3(0.3048f, 0.6858f, 0.3048f);
+    [Tooltip("Half size of Source's player box (metres) without SourceMovement, and how far above the feet it starts " +
+             "(set by the importer). With SourceMovement its current hull is used (standing or ducked).")]
+    public Vector3 hullHalf = new Vector3(0.3048f, 0.5906f, 0.3048f);
     public float hullBottom = 0.1143f;
+    [Tooltip("Metres per Source unit (set by the importer)")]
+    public float unitScale = 0.01905f;
 
     /// <summary>The local player's name and class, as the map's outputs set them ("" and "player" at the start).</summary>
     [System.NonSerialized] public string activator = "";
@@ -104,13 +108,36 @@ public class SourceMapBlocks : UdonSharpBehaviour
         }
     }
 
+    UdonBehaviour movement;
+    bool lookedUp;
+
+    /// <summary>
+    /// Half size of the player's box now: SourceMovement's hull (CS:S 32 x 62, ducked 32 x 45) if it's in the world,
+    /// read by name so SourceMaps works without it; else hullHalf.
+    /// </summary>
+    Vector3 CurrentHalf()
+    {
+        if (!lookedUp)
+        {
+            lookedUp = true;
+            var go = GameObject.Find("SourceMovement");
+            if (go != null) movement = (UdonBehaviour)go.GetComponent(typeof(UdonBehaviour));
+        }
+        if (movement == null) return hullHalf;
+        object width = movement.GetProgramVariable("hullWidth");
+        object height = movement.GetProgramVariable((bool)movement.GetProgramVariable("ducked") ? "duckHullHeight" : "hullHeight");
+        if (width == null || height == null) return hullHalf;
+        return new Vector3((float)width * 0.5f, (float)height * 0.5f, (float)width * 0.5f) * unitScale;
+    }
+
     /// <summary>The triggers Source's player box touches (null without a local player).</summary>
     Collider[] HullHits()
     {
         var player = Networking.LocalPlayer;
         if (player == null) return null;
-        Vector3 center = player.GetPosition() + Vector3.up * (hullBottom + hullHalf.y);
-        return Physics.OverlapBox(center, hullHalf, Quaternion.identity, -1, QueryTriggerInteraction.Collide);
+        Vector3 half = CurrentHalf();
+        Vector3 center = player.GetPosition() + Vector3.up * (hullBottom + half.y);
+        return Physics.OverlapBox(center, half, Quaternion.identity, -1, QueryTriggerInteraction.Collide);
     }
 
     /// <summary>Name triggers touched by Source's player box this frame (thin triggers on blocks, like Source).</summary>

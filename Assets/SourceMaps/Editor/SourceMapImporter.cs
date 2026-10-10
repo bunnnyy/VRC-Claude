@@ -242,13 +242,15 @@ public static class SourceMapImporter
             var go = markers[i];
             if (!BspMechanics.IsTouchDoor(e) || e.BrushModel <= 0 || go.GetComponent<MeshCollider>() == null) continue;
             var marker = go.GetComponent<SourceEntity>();
-            var door = go.AddUdonSharpComponent<SourceMapDoor>();
+            var touchObject = new GameObject("Touch"); // the trigger on its own object (see SourceMapDoor)
+            touchObject.transform.SetParent(go.transform, false);
+            var door = touchObject.AddUdonSharpComponent<SourceMapDoor>();
             door.blocks = Blocks();
             door.moveLocal = ToUnity(BspGeometry.ToUnity(BspMechanics.DoorMove(bsp, e), scale));
             door.speed = ParseFloat(e.Get("speed", "100")) * scale;
             door.wait = ParseFloat(e.Get("wait", "3"));
             door.solid = go.GetComponent<MeshCollider>();
-            var touch = go.AddComponent<BoxCollider>(); // touching it (standing on it or bumping it) opens it
+            var touch = touchObject.AddComponent<BoxCollider>(); // touching it (standing on it or bumping it) opens it
             touch.isTrigger = true;
             touch.center = marker.bounds.center + new Vector3(0, 6f * scale, 0); // 12 units over its top (as the
             touch.size = marker.bounds.size + new Vector3(2f, 12f, 2f) * scale;  // raised triggers: the capsule floats)
@@ -264,7 +266,8 @@ public static class SourceMapImporter
             blocks.nameTriggers = nameTriggerList.ToArray();
             // Source's player box, for checking filtered teleports like Source: its bottom lifted by how much the
             // triggers were raised, less the 2 units the player hovers, so it touches them exactly where Source's would.
-            blocks.hullHalf = new Vector3(16f, 36f, 16f) * scale;
+            blocks.hullHalf = new Vector3(16f, 31f, 16f) * scale; // CS:S standing (SourceMovement's own hull when present)
+            blocks.unitScale = scale;
             blocks.hullBottom = (TriggerRaiseTop - 2f) * scale;
             blocks.gated = gated.ToArray();
             blocks.gatedNames = gatedNames.ToArray();
