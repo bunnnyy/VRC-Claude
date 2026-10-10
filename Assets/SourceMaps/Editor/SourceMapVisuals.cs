@@ -11,7 +11,8 @@ using Num = System.Numerics;
 /// SourceMaps; called by name, so SourceMaps compiles without it). Runs uSource with the movement's scale and the
 /// creator's CS:S folder, then cleans up what uSource leaves:
 ///   - surfaces with tool textures Source never draws (trigger, clip, nodraw, skip, hint...) are removed,
-///   - solid static props get MeshColliders (uSource imports props without collision),
+///   - uSource's own colliders are removed (the importer's collision is the map's); solid static props get
+///     MeshColliders,
 ///   - meshes are saved as assets (uSource keeps them inside the scene),
 ///   - the map's own Source lightmaps (uSource reads them into Unity's lightmap list, which isn't saved with the scene)
 ///     are saved as textures and put on the surfaces' materials (SourceMaps/Lightmapped shader),
@@ -88,6 +89,12 @@ public static class SourceMapVisuals
         visuals.name = "Visuals";
         visuals.transform.SetParent(parent, false);
 
+        // uSource gives its brush and displacement meshes MeshColliders (and maybe props): drop them all. The map's
+        // collision is SourceMapImporter's (solid brushes and clips only, like Source); only solid props get colliders
+        // back below. Otherwise there'd be a second copy of the walls about a unit off, and non-solid brushes
+        // (func_illusionary...) would block.
+        int strayColliders = 0;
+        foreach (var c in visuals.GetComponentsInChildren<Collider>(true)) { Object.DestroyImmediate(c); strayColliders++; }
         int removed = RemoveHiddenSurfaces(visuals);
         int doors = LinkDoors(visuals);
         int lit = !UseLightmaps ? 0 : ApplyLightmaps(visuals, "Assets/SourceMapsImported/" + mapName + "/Lightmaps");
@@ -96,7 +103,7 @@ public static class SourceMapVisuals
         int propsLit = !UseLightmaps ? 0 : LightProps(visuals, bsp, scale, "Assets/SourceMapsImported/" + mapName + "/Props");
         int meshes = SaveMeshes(visuals, "Assets/SourceMapsImported/" + mapName + "/" + mapName + "_visuals.asset");
         Debug.Log($"[Source Maps] {mapName} visuals: {visuals.GetComponentsInChildren<MeshRenderer>(true).Length} renderers, " +
-                  $"{removed} tool surfaces removed, {lit} surfaces with Source lightmaps, {propsLit} props lit, {doors} door blocks linked, {propColliders} solid props given colliders, {meshes} meshes saved" +
+                  $"{removed} tool surfaces removed, {strayColliders} uSource colliders removed, {lit} surfaces with Source lightmaps, {propsLit} props lit, {doors} door blocks linked, {propColliders} solid props given colliders, {meshes} meshes saved" +
                   (css == "" ? " (no CS:S folder set: stock textures missing)" : ""));
         return visuals;
     }
