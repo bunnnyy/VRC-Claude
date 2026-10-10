@@ -57,14 +57,14 @@ public static class PlayTestBootstrap
 
     /// <summary>
     /// -executeMethod PlayTestBootstrap.BuildSample -bspDir dir -zonesDir dir: the sample world from every map in bspDir
-    /// (no CS:S folder here, so stock textures are missing), saved as Assets/SourceMapsSample.unity.
+    /// (stock textures only with a CS:S folder in env SM_CSS), saved as Assets/SourceMapsSample.unity.
     /// </summary>
     public static void BuildSample()
     {
         string[] args = System.Environment.GetCommandLineArgs();
         string bsps = args[System.Array.IndexOf(args, "-bspDir") + 1];
         string zones = args[System.Array.IndexOf(args, "-zonesDir") + 1];
-        SourceMapVisuals.CssFolder = "";
+        SourceMapVisuals.CssFolder = System.Environment.GetEnvironmentVariable("SM_CSS") ?? ""; // a CS:S folder (cstrike, hl2) for stock content
         SourceMapsSetup.BuildSampleWorld(bsps, zones);
         Debug.Log("[SMTEST] sample world built");
     }
@@ -128,7 +128,7 @@ public static class PlayTestBootstrap
         UdonSharp.Compiler.UdonSharpCompilerV1.CompileSync();
         var scene = EditorSceneManager.NewScene(NewSceneSetup.DefaultGameObjects, NewSceneMode.Single);
         var map = SourceMapImporter.Import(bsp, 0.01905f);
-        SourceMapVisuals.CssFolder = "";
+        SourceMapVisuals.CssFolder = System.Environment.GetEnvironmentVariable("SM_CSS") ?? ""; // a CS:S folder (cstrike, hl2) for stock content
         SourceMapVisuals.Import(bsp, map.transform, 0.01905f);
         string name = System.IO.Path.GetFileNameWithoutExtension(bsp);
         SourceMapZones.Import(map, name, z >= 0 ? System.IO.File.ReadAllText(args[z + 1]) : SourceMapZones.Download(name), 0.01905f);

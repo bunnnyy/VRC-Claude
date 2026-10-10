@@ -23,6 +23,13 @@ public static class LightingShots
         var root = SourceMapImporter.Import(bsp, 0.01905f);
         var visuals = SourceMapVisuals.Import(bsp, root.transform, 0.01905f);
         root.transform.Find("Collision")?.gameObject.SetActive(false); // only what players see
+        if (visuals != null) // materials drawn without a texture (white): missing from the map and the CS:S folder
+        {
+            var blank = visuals.GetComponentsInChildren<Renderer>(true).SelectMany(r => r.sharedMaterials)
+                .Where(m => m != null && (m.mainTexture == null || m.mainTexture.name == "UnityWhite" || m.mainTexture.name == ""))
+                .Select(m => m.name).Distinct().ToList();
+            Debug.Log($"[SMTEST] {map}: {blank.Count} materials without a texture: {string.Join(", ", blank.Take(40))}");
+        }
 
         var points = root.GetComponentsInChildren<SourceEntity>()
             .Where(e => e.className == "info_player_counterterrorist" || e.className == "info_teleport_destination").ToList();
@@ -65,6 +72,20 @@ public static class LightingShots
             File.WriteAllBytes($"{dir}/light_{mode}_{map}_prop{n}.png", tex.EncodeToPNG());
             Debug.Log($"[SMTEST] light {mode} {map} prop{n} {propShots[n].name}");
         }
+        // The sky alone, four 90 degree views round the horizon (one per cube face: the seams between them are its edges).
+        cam.cullingMask = 0;
+        cam.fieldOfView = 90;
+        cam.targetTexture = new RenderTexture(540, 540, 24);
+        for (int n = 0; n < 4; n++)
+        {
+            cam.transform.rotation = Quaternion.Euler(-20, n * 90, 0);
+            cam.Render();
+            RenderTexture.active = cam.targetTexture;
+            var tex = new Texture2D(540, 540, TextureFormat.RGB24, false);
+            tex.ReadPixels(new Rect(0, 0, 540, 540), 0, 0);
+            File.WriteAllBytes($"{dir}/sky_{map}_{n}.png", tex.EncodeToPNG());
+        }
+        Debug.Log($"[SMTEST] sky {map}: {(RenderSettings.skybox != null ? RenderSettings.skybox.name : "none")}");
         RenderTexture.active = null;
     }
 }

@@ -16,4 +16,6 @@ public class SourceMapInfo : UdonSharpBehaviour
     public Transform spawn;
     [Tooltip("Map time limit in minutes for this map, 0 = use the manager's")]
     public float timeLimitMinutes = 0f;
+    [Tooltip("The map's sky (its skyname), shown while you're in this map; empty = the world's")]
+    public Material skybox;
 }

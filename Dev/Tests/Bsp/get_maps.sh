@@ -14,6 +14,7 @@ maps=(
   "bhop_eazy_v2 304626 bhop_eazy_v2.rar"        # gamebanana.com/mods/124915, 31K4L
   "bhop_arcane_v1 319953 bhop_arcane_v1_3.7z"   # gamebanana.com/mods/124461, Panzerhandschuh
   "bhop_badges 318318 bhop_badges.rar"          # gamebanana.com/mods/124524, Badgeslol
+  "bhop_monster_jam 331915 bhop_monster_jam.rar" # gamebanana.com/mods/125558, Aoki
 )
 
 for entry in "${maps[@]}"; do

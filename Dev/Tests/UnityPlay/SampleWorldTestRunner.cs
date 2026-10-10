@@ -135,6 +135,32 @@ public class SampleWorldTestRunner : MonoBehaviour
                 $"{name}: {glassLinked}/{glass.Length} breakable glass linked to its model; beside one it breaks and its model goes ({broke}), still broken after the lobby and Rejoin map ({still})");
         }
 
+        // Sky and sounds: the map's own sky shows while you're in it; ambient_generics are AudioSources (area music plays
+        // from the start); walking into a trigger that plays a sound plays it.
+        var sky = (Material)infoUdon.GetProgramVariable("skybox");
+        Check(sky == null || RenderSettings.skybox == sky, $"{name}: its sky is shown while in the map ({(sky != null ? sky.name : "none: world sky")})");
+        var sounds = root.GetComponentsInChildren<AudioSource>(true);
+        if (sounds.Length > 0)
+        {
+            int atStart = System.Array.FindAll(sounds, a => a.playOnAwake).Length;
+            int playing = System.Array.FindAll(sounds, a => a.playOnAwake && a.isPlaying).Length;
+            var triggers = root.GetComponentsInChildren<SourceMapSoundTrigger>(true);
+            string triggered = "no sound triggers";
+            bool ok = playing == atStart;
+            if (triggers.Length > 0)
+            {
+                var t = triggers[0];
+                foreach (var a in t.play) a.Stop();
+                var box = t.GetComponent<Collider>().bounds;
+                Teleport(new Vector3(box.center.x, box.min.y + 4f * U, box.center.z));
+                yield return Seconds(0.5f);
+                int on = System.Array.FindAll(t.play, a => a.isPlaying).Length;
+                triggered = $"walking into {t.transform.parent.name} plays {on}/{t.play.Length}";
+                ok &= on == t.play.Length && t.play.Length > 0;
+            }
+            Check(ok, $"{name}: {sounds.Length} sounds, {playing}/{atStart} playing from the start; {triggered}");
+        }
+
         // Teleports: up to 15, spread over the map.
         var teleports = root.GetComponentsInChildren<SourceMapTeleport>(true);
         int tested = 0, arrived = 0;

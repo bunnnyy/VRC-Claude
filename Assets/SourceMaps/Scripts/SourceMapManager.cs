@@ -63,10 +63,12 @@ public class SourceMapManager : UdonSharpBehaviour
     [HideInInspector] public bool forceArmed;     // admin: the next map press forces that map
     private int appliedRound = -1;
     private VRCPlayerApi localPlayer;
+    private Material lobbySky;
 
     private void Start()
     {
         localPlayer = Networking.LocalPlayer;
+        lobbySky = RenderSettings.skybox;
         ShowMap(-1);
         if (Networking.IsOwner(gameObject) && round == 0) NewVote(false, false);
         _Tick();
@@ -373,12 +375,14 @@ public class SourceMapManager : UdonSharpBehaviour
         localPlayer.SetVelocity(Vector3.zero); // VRChat keeps the old velocity through a teleport
     }
 
-    /// <summary>Only the map the local player is in is switched on (renderers and collision).</summary>
+    /// <summary>Only the map the local player is in is switched on (renderers, collision, sounds), with its sky.</summary>
     private void ShowMap(int map)
     {
         if (maps == null) return;
         for (int i = 0; i < maps.Length; i++)
             if (maps[i] != null) maps[i].gameObject.SetActive(i == map);
+        Material sky = map >= 0 && map < maps.Length && maps[map] != null ? maps[map].skybox : null;
+        RenderSettings.skybox = sky != null ? sky : lobbySky;
     }
 
     private void RefreshScreens()

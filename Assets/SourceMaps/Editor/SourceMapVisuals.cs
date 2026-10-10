@@ -81,6 +81,7 @@ public static class SourceMapVisuals
         loader.GetMethod("Clear").Invoke(null, null);
         var provider = System.Activator.CreateInstance(dirProvider, temp + "/");
         resources.GetMethod("Init", new[] { typeof(int), FindType("uSource.IResourceProvider") }).Invoke(null, new[] { 0, provider });
+        var worldSky = RenderSettings.skybox; // uSource sets its own (white when the sky's textures are missing)
         resources.GetMethod("LoadMap").Invoke(null, new object[] { mapName });
 
         var visuals = (GameObject)vbsp.GetField("BSP_WorldSpawn").GetValue(null);
@@ -103,8 +104,34 @@ public static class SourceMapVisuals
         int propColliders = AddPropColliders(visuals, bsp, scale);
         int propsLit = !UseLightmaps ? 0 : LightProps(visuals, bsp, scale, "Assets/SourceMapsImported/" + mapName + "/Props");
         int meshes = SaveMeshes(visuals, "Assets/SourceMapsImported/" + mapName + "/" + mapName + "_visuals.asset");
+        // Sounds and the sky: uSource drops its file providers after loading a map, so open them again (the CS:S
+        // folder with its VPKs, and the map's pakfile first) while they're read.
+        var missing = new List<string>();
+        int sounds;
+        string skyName = bsp.Entities.Count > 0 ? bsp.Entities[0].Get("skyname") : "";
+        Material sky;
+        byte[] file = File.ReadAllBytes(bspPath);
+        int pakOffset = System.BitConverter.ToInt32(file, 8 + 40 * 16), pakLength = System.BitConverter.ToInt32(file, 12 + 40 * 16);
+        var init = resources.GetMethod("Init", new[] { typeof(int), FindType("uSource.IResourceProvider") });
+        try
+        {
+            init.Invoke(null, new object[] { 0, null });
+            if (pakLength > 0)
+                init.Invoke(null, new[] { 0, System.Activator.CreateInstance(FindType("uSource.PAKProvider"), new MemoryStream(file, pakOffset, pakLength)) });
+            sounds = SourceMapSounds.Add(parent.gameObject, "Assets/SourceMapsImported/" + mapName + "/Sounds", scale,
+                path => ReadGameFile(resources, path), missing);
+            sky = SaveSky(resources, skyName, "Assets/SourceMapsImported/" + mapName, mapName);
+        }
+        finally
+        {
+            resources.GetMethod("CloseStreams").Invoke(null, null);
+            resources.GetMethod("RemoveResourceProviders").Invoke(null, null);
+        }
+        RenderSettings.skybox = sky != null ? sky : worldSky;
         Debug.Log($"[Source Maps] {mapName} visuals: {visuals.GetComponentsInChildren<MeshRenderer>(true).Length} renderers, " +
-                  $"{removed} tool surfaces removed, {strayColliders} uSource colliders removed, {lit} surfaces with Source lightmaps, {propsLit} props lit, {doors} door blocks linked, {glass} breakable glass linked, {propColliders} solid props given colliders, {meshes} meshes saved" +
+                  $"{removed} tool surfaces removed, {strayColliders} uSource colliders removed, {lit} surfaces with Source lightmaps, {propsLit} props lit, {doors} door blocks linked, {glass} breakable glass linked, {propColliders} solid props given colliders, {meshes} meshes saved, " +
+                  $"{sounds} sounds" + (missing.Count > 0 ? $" ({missing.Count} sound files missing: {string.Join(", ", missing)})" : "") +
+                  $", sky {skyName}" + (sky == null ? " missing (HL2 skies need the CS:S folder's hl2)" : "") +
                   (css == "" ? " (no CS:S folder set: stock textures missing)" : ""));
         return visuals;
     }
@@ -424,6 +451,72 @@ public static class SourceMapVisuals
         }
         AssetDatabase.SaveAssets();
         return n;
+    }
+
+    /// <summary>A game file ("sound/x.wav") from the map's pakfile, the CS:S folder or its VPKs (uSource's providers).</summary>
+    static byte[] ReadGameFile(System.Type resources, string path)
+    {
+        var open = resources.GetMethod("OpenFile", new[] { typeof(string), typeof(bool) });
+        foreach (string p in new[] { path.ToLowerInvariant(), path })
+        {
+            Stream stream = null;
+            try { stream = (Stream)open.Invoke(null, new object[] { p, false }); }
+            catch (System.Exception) { }
+            if (stream == null) continue;
+            using (stream)
+            {
+                var copy = new MemoryStream();
+                stream.CopyTo(copy);
+                return copy.ToArray();
+            }
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// The map's sky (worldspawn skyname, its LDR version if there is one) as a Skybox/6 Sided material with its six
+    /// faces saved as textures; null if a face is missing. Faces as uSource maps them: rt front, lf back, ft left,
+    /// bk right.
+    /// </summary>
+    static Material SaveSky(System.Type resources, string skyName, string folder, string mapName)
+    {
+        if (skyName == "") return null;
+        string[] faces = { "rt", "lf", "ft", "bk", "up", "dn" };
+        string[] slots = { "_FrontTex", "_BackTex", "_LeftTex", "_RightTex", "_UpTex", "_DownTex" };
+        string name = null;
+        foreach (string candidate in new[] { skyName.Replace("_hdr", ""), skyName })
+            if (faces.All(f => ReadGameFile(resources, "materials/skybox/" + candidate + f + ".vtf") != null)) { name = candidate; break; }
+        if (name == null) return null;
+
+        var load = resources.GetMethod("LoadTexture");
+        var material = new Material(Shader.Find("Skybox/6 Sided"));
+        for (int i = 0; i < faces.Length; i++)
+        {
+            var tex = ((Texture2D[,])load.Invoke(null, new object[] { "skybox/" + name + faces[i], null, true, null }))[0, 0];
+            // VTF rows run top to bottom: flip, unless uSource gave us a texture already saved the right way up.
+            bool flip = !AssetDatabase.Contains(tex);
+            var rt = RenderTexture.GetTemporary(tex.width, tex.height, 0, RenderTextureFormat.ARGB32);
+            Graphics.Blit(tex, rt, new Vector2(1, flip ? -1 : 1), new Vector2(0, flip ? 1 : 0));
+            var copy = new Texture2D(tex.width, tex.height, TextureFormat.RGB24, false);
+            RenderTexture.active = rt;
+            copy.ReadPixels(new Rect(0, 0, tex.width, tex.height), 0, 0);
+            RenderTexture.active = null;
+            RenderTexture.ReleaseTemporary(rt);
+            string path = folder + "/Sky/" + name + faces[i] + ".png";
+            Directory.CreateDirectory(Path.GetDirectoryName(path));
+            File.WriteAllBytes(path, copy.EncodeToPNG());
+            Object.DestroyImmediate(copy);
+            AssetDatabase.ImportAsset(path);
+            var importer = (TextureImporter)AssetImporter.GetAtPath(path);
+            importer.wrapMode = TextureWrapMode.Clamp;
+            importer.mipmapEnabled = false;
+            importer.SaveAndReimport();
+            material.SetTexture(slots[i], AssetDatabase.LoadAssetAtPath<Texture2D>(path));
+        }
+        string matPath = folder + "/" + mapName + "_sky.mat";
+        AssetDatabase.DeleteAsset(matPath);
+        AssetDatabase.CreateAsset(material, matPath);
+        return material;
     }
 
     static void Set(System.Type type, string field, object value)

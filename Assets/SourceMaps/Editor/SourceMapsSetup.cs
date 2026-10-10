@@ -30,6 +30,8 @@ public static class SourceMapsSetup
         SourceMapImporter.EnsureProgramAssets();
         var info = root.GetComponent<SourceMapInfo>() ?? root.AddUdonSharpComponent<SourceMapInfo>();
         info.mapName = root.name;
+        if (info.skybox == null) // saved by SourceMapVisuals from the map's skyname
+            info.skybox = AssetDatabase.LoadAssetAtPath<Material>("Assets/SourceMapsImported/" + root.name + "/" + root.name + "_sky.mat");
         if (info.spawn == null)
         {
             var spawn = new GameObject("Spawn").transform;
@@ -220,6 +222,7 @@ public static class SourceMapsSetup
         var movement = AssetDatabase.LoadAssetAtPath<GameObject>("Assets/SourceMovement/SourceMovement.prefab");
         if (movement != null) PrefabUtility.InstantiatePrefab(movement);
 
+        var lobbySky = RenderSettings.skybox; // each map's import sets its own sky
         var files = System.IO.Directory.GetFiles(bspFolder, "*.bsp").OrderBy(f => f).ToArray();
         for (int i = 0; i < files.Length; i++)
         {
@@ -235,6 +238,7 @@ public static class SourceMapsSetup
             if (info.thumbnail == null) info.thumbnail = RenderThumbnail(root, info.spawn, map);
             UdonSharpEditorUtility.CopyProxyToUdon(info);
         }
+        RenderSettings.skybox = lobbySky;
         CreateLobby(Vector3.zero);
         EditorSceneManager.SaveScene(scene, "Assets/SourceMapsSample.unity");
     }
