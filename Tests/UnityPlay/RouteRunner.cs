@@ -535,50 +535,76 @@ public class RouteRunner : MonoBehaviour
                 for (float lat = -176f; lat <= 176f; lat += 8f)
                 {
                     Vector2 p = a + d * along + side * lat;
-                    if (Safe(new Vector3(p.x, 300f, p.y), out float top))
-                        list.Add(new Spot { p = new Vector3(p.x, top, p.y), s = s0 + along, lat = lat, deep = Deep(p, top), seg = i });
-                    else if (Overhang(p, out top))
-                        list.Add(new Spot { p = new Vector3(p.x, top, p.y), s = s0 + along, lat = lat, edge = true, seg = i });
+                    bool any = false;
+                    foreach (float top in Surfaces(p)) // every floor in the column: blocks can sit under arches
+                        if (SafeAt(p, top))
+                        {
+                            list.Add(new Spot { p = new Vector3(p.x, top, p.y), s = s0 + along, lat = lat, deep = Deep(p, top), seg = i });
+                            any = true;
+                        }
+                    if (!any && Overhang(p, out float edgeTop))
+                        list.Add(new Spot { p = new Vector3(p.x, edgeTop, p.y), s = s0 + along, lat = lat, edge = true, seg = i });
                 }
             s0 += len;
         }
         return list;
     }
 
-    /// <summary>Floor under `p` that the hull can stand on (12 units in from any edge) without touching a teleport.</summary>
-    bool Safe(Vector3 p, out float top)
+    readonly List<float> surfaces = new List<float>();
+
+    /// <summary>Heights of the walkable surfaces in the column at `p`, top first.</summary>
+    List<float> Surfaces(Vector2 p)
     {
-        top = 0f;
-        Vector3 from = new Vector3(p.x, p.y > 200f ? p.y : p.y + 8f, p.z) * U;
-        if (!Physics.Raycast(from, Vector3.down, out RaycastHit hit, 600f * U, layers, QueryTriggerInteraction.Ignore) || hit.normal.y < 0.7f) return false;
-        top = hit.point.y / U;
-        for (int k = 0; k < 4; k++)
+        surfaces.Clear();
+        var hits = Physics.RaycastAll(new Vector3(p.x, 600f, p.y) * U, Vector3.down, 1200f * U, layers, QueryTriggerInteraction.Ignore);
+        System.Array.Sort(hits, (x, y) => x.distance.CompareTo(y.distance));
+        foreach (var h in hits)
         {
-            Vector2 o = Dir(k * 90f) * 12f;
-            if (!Physics.Raycast(from + new Vector3(o.x, 0, o.y) * U, Vector3.down, out RaycastHit h2, 600f * U, layers, QueryTriggerInteraction.Ignore)
-                || Mathf.Abs(h2.point.y / U - top) > 1f) return false;
+            float top = h.point.y / U;
+            if (h.normal.y >= 0.7f && (surfaces.Count == 0 || surfaces[surfaces.Count - 1] - top > 1f)) surfaces.Add(top);
         }
-        var center = new Vector3(p.x, top + 37f, p.z) * U;
+        return surfaces;
+    }
+
+    /// <summary>The floor `top` at `p` holds the hull 12 units in from any edge, with headroom, away from teleports.</summary>
+    bool SafeAt(Vector2 p, float top)
+    {
+        for (int k = 0; k < 4; k++)
+            if (!FloorAt(p + Dir(k * 90f) * 12f, top)) return false;
+        var center = new Vector3(p.x, top + 37f, p.y) * U;
         return !Physics.CheckBox(center, new Vector3(15.5f, 35.5f, 15.5f) * U, Quaternion.identity, layers, QueryTriggerInteraction.Ignore)
             && !TouchesTeleport(center);
     }
 
+    /// <summary>A floor at height `top` (within a unit) at `p`.</summary>
+    bool FloorAt(Vector2 p, float top)
+    {
+        return Physics.Raycast(new Vector3(p.x, top + 8f, p.y) * U, Vector3.down, out RaycastHit hit, 9f * U, layers, QueryTriggerInteraction.Ignore)
+            && hit.normal.y >= 0.7f && Mathf.Abs(hit.point.y / U - top) <= 1f;
+    }
+
+    /// <summary>Standing floor right under the feet at `p` (run-up check): the floor at `feet` height there is safe.</summary>
+    bool Safe(Vector3 p, out float top)
+    {
+        top = p.y;
+        return FloorAt(new Vector2(p.x, p.z), p.y) && SafeAt(new Vector2(p.x, p.z), p.y);
+    }
+
     /// <summary>
     /// The hull hanging over the edge of a surface: floor 10 units to one side (the hull still stands on it), the
-    /// hull clear of walls and teleports. For squeezing past obstacles beside a block (bhop_eazy_v2's glass panels).
+    /// hull clear of walls and teleports. For squeezing past obstacles beside a block (bhop_eazy_v2's pillars).
     /// </summary>
     bool Overhang(Vector2 p, out float top)
     {
         top = 0f;
         for (int k = 0; k < 4; k++)
         {
-            Vector2 o = p + Dir(k * 90f) * 10f;
-            if (!Physics.Raycast(new Vector3(o.x, 300f, o.y) * U, Vector3.down, out RaycastHit hit, 600f * U, layers, QueryTriggerInteraction.Ignore)
-                || hit.normal.y < 0.7f) continue;
-            top = hit.point.y / U;
-            var center = new Vector3(p.x, top + 37f, p.y) * U;
-            if (!Physics.CheckBox(center, new Vector3(15.5f, 35.5f, 15.5f) * U, Quaternion.identity, layers, QueryTriggerInteraction.Ignore)
-                && !TouchesTeleport(center)) return true;
+            foreach (float h in Surfaces(p + Dir(k * 90f) * 10f))
+            {
+                var center = new Vector3(p.x, h + 37f, p.y) * U;
+                if (!Physics.CheckBox(center, new Vector3(15.5f, 35.5f, 15.5f) * U, Quaternion.identity, layers, QueryTriggerInteraction.Ignore)
+                    && !TouchesTeleport(center)) { top = h; return true; }
+            }
         }
         return false;
     }
@@ -587,11 +613,7 @@ public class RouteRunner : MonoBehaviour
     bool Deep(Vector2 p, float top)
     {
         for (int k = 0; k < 8; k++)
-        {
-            Vector2 o = p + Dir(k * 45f) * 28f;
-            if (!Physics.Raycast(new Vector3(o.x, 300f, o.y) * U, Vector3.down, out RaycastHit hit, 600f * U, layers, QueryTriggerInteraction.Ignore)
-                || Mathf.Abs(hit.point.y / U - top) > 1f) return false;
-        }
+            if (!FloorAt(p + Dir(k * 45f) * 28f, top)) return false;
         return true;
     }
 
