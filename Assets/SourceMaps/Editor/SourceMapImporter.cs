@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using SourceMaps.Bsp;
 using UdonSharp;
 using UdonSharpEditor;
@@ -67,13 +68,9 @@ public static class SourceMapImporter
 
         // World collision: solid world brushes and all displacements in one mesh.
         var worldMesh = new MeshData();
-        int worldBrushes = 0;
-        foreach (int b in bsp.ModelBrushes(0))
-        {
-            if ((bsp.Brushes[b].Contents & BspFile.MaskPlayerSolid) == 0) continue;
-            BspGeometry.AddBrush(worldMesh, bsp, b, scale);
-            worldBrushes++;
-        }
+        var worldSolid = bsp.ModelBrushes(0).Where(b => (bsp.Brushes[b].Contents & BspFile.MaskPlayerSolid) != 0).ToList();
+        int worldBrushes = worldSolid.Count;
+        int innerFaces = BspGeometry.AddSolidBrushes(worldMesh, bsp, worldSolid, scale);
         for (int d = 0; d < bsp.DispInfos.Length; d++) BspGeometry.AddDisplacement(worldMesh, bsp, d, scale);
         var collision = new GameObject("Collision");
         collision.transform.SetParent(root.transform, false);
@@ -110,8 +107,8 @@ public static class SourceMapImporter
                 if (e.ClassName.StartsWith("func_") && IsSolid(e))
                 {
                     var mesh = new MeshData();
-                    foreach (int brush in bsp.ModelBrushes(model))
-                        if ((bsp.Brushes[brush].Contents & BspFile.MaskPlayerSolid) != 0) BspGeometry.AddBrush(mesh, bsp, brush, scale);
+                    innerFaces += BspGeometry.AddSolidBrushes(mesh, bsp,
+                        bsp.ModelBrushes(model).Where(brush => (bsp.Brushes[brush].Contents & BspFile.MaskPlayerSolid) != 0), scale);
                     if (mesh.Triangles.Count > 0) go.AddComponent<MeshCollider>().sharedMesh = ToMesh(mesh, go.name, meshes);
                 }
             }
@@ -182,7 +179,7 @@ public static class SourceMapImporter
         AssetDatabase.SaveAssets();
 
         Debug.Log($"[Source Maps] {mapName}: {worldBrushes} solid brushes + {bsp.DispInfos.Length} displacements " +
-                  $"({worldMesh.Triangles.Count / 3} triangles), {bsp.Entities.Count} entity markers, {teleports} working teleports, " +
+                  $"({worldMesh.Triangles.Count / 3} triangles, {innerFaces} faces trimmed where brushes touch), {bsp.Entities.Count} entity markers, {teleports} working teleports, " +
                   $"{filtered} filtered teleports left as markers, {noTarget} teleports without a destination, " +
                   $"{pushes} pushes, {boosts} boosters, {filteredMechanics} filtered pushes/boosters left as markers, " +
                   $"{water} water volumes, {ladders} ladders");

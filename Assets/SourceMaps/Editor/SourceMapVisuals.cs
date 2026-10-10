@@ -12,7 +12,9 @@ using Num = System.Numerics;
 /// creator's CS:S folder, then cleans up what uSource leaves:
 ///   - surfaces with tool textures Source never draws (trigger, clip, nodraw, skip, hint...) are removed,
 ///   - solid static props get MeshColliders (uSource imports props without collision),
-///   - meshes are saved as assets (uSource keeps them inside the scene).
+///   - meshes are saved as assets (uSource keeps them inside the scene),
+///   - the map's own Source lightmaps (uSource reads them into Unity's lightmap list, which isn't saved with the scene)
+///     are saved as textures and put on the surfaces' materials (SourceMaps/Lightmapped shader).
 /// </summary>
 public static class SourceMapVisuals
 {
@@ -24,6 +26,9 @@ public static class SourceMapVisuals
         get { return EditorPrefs.GetString(PrefsCssFolder, ""); }
         set { EditorPrefs.SetString(PrefsCssFolder, value); }
     }
+
+    /// <summary>Light the surfaces with the map's own Source lightmaps (off: uSource's materials, lit by Unity lights).</summary>
+    public static bool UseLightmaps = true;
 
     public static bool USourceInstalled { get { return FindType("uSource.uLoader") != null; } }
 
@@ -62,6 +67,9 @@ public static class SourceMapVisuals
         Set(loader, "SaveAssetsToUnity", true);
         Set(loader, "OutputAssetsFolder", "SourceMapsImported/uSource");
         Set(loader, "ParseLights", false);
+        Set(loader, "ParseLightmaps", UseLightmaps);
+        Set(loader, "UseLightmapsAsTextureShader", false); // that mode puts one lightmap on a shared material
+        Set(loader, "UseGammaLighting", true);
         Set(loader, "DebugTime", new System.Diagnostics.Stopwatch());
         Set(loader, "DebugTimeOutput", new System.Text.StringBuilder());
         loader.GetMethod("Clear").Invoke(null, null);
@@ -76,10 +84,11 @@ public static class SourceMapVisuals
         visuals.transform.SetParent(parent, false);
 
         int removed = RemoveHiddenSurfaces(visuals);
+        int lit = !UseLightmaps ? 0 : ApplyLightmaps(visuals, "Assets/SourceMapsImported/" + mapName + "/Lightmaps");
         int propColliders = AddPropColliders(visuals, BspFile.Load(bspPath), scale);
         int meshes = SaveMeshes(visuals, "Assets/SourceMapsImported/" + mapName + "/" + mapName + "_visuals.asset");
         Debug.Log($"[Source Maps] {mapName} visuals: {visuals.GetComponentsInChildren<MeshRenderer>(true).Length} renderers, " +
-                  $"{removed} tool surfaces removed, {propColliders} solid props given colliders, {meshes} meshes saved" +
+                  $"{removed} tool surfaces removed, {lit} surfaces with Source lightmaps, {propColliders} solid props given colliders, {meshes} meshes saved" +
                   (css == "" ? " (no CS:S folder set: stock textures missing)" : ""));
         return visuals;
     }
@@ -121,6 +130,58 @@ public static class SourceMapVisuals
         string file = m.Substring(m.LastIndexOf('/') + 1);
         // uSource's saved materials are named without their folder ("toolstrigger"); every hidden name starts with "tools".
         return Hidden.Contains(file.Replace(" (instance)", "").Trim());
+    }
+
+    // uSource's shaders for surfaces Source draws with a lightmap (LightmappedGeneric, WorldVertexTransition, alpha tested).
+    static readonly string[] LightmappedShaders = { "Legacy Shaders/Diffuse", "USource/Lightmapped/Generic",
+        "USource/Lightmapped/WorldVertexTransition", "USource/CutoutGeneric" };
+
+    /// <summary>
+    /// Moves the lightmaps uSource read (LightmapSettings.lightmaps, one per surface group, index on the renderer) onto
+    /// the surfaces: each lightmap is saved as a texture, each lit surface gets a SourceMaps/Lightmapped material with
+    /// its texture and lightmap. Translucent, additive and unlit surfaces keep uSource's material. Returns surfaces lit.
+    /// </summary>
+    static int ApplyLightmaps(GameObject root, string folder)
+    {
+        var lightmaps = LightmapSettings.lightmaps;
+        var shader = Shader.Find("SourceMaps/Lightmapped");
+        if (lightmaps.Length == 0 || shader == null) return 0;
+        AssetDatabase.DeleteAsset(folder); // a re-import starts clean
+        Directory.CreateDirectory(folder);
+        var saved = new Dictionary<int, Texture2D>();
+        int lit = 0;
+        foreach (var r in root.GetComponentsInChildren<MeshRenderer>(true))
+        {
+            int index = r.lightmapIndex;
+            if (index < 0 || index >= lightmaps.Length) continue;
+            r.lightmapIndex = -1; // the lightmap moves into the material
+            var src = r.sharedMaterial;
+            if (src == null || src.name.ToLowerInvariant().StartsWith("tools") || !LightmappedShaders.Contains(src.shader.name)) continue;
+            if (!saved.TryGetValue(index, out var tex))
+            {
+                string path = $"{folder}/lightmap_{index}.png";
+                File.WriteAllBytes(path, lightmaps[index].lightmapColor.EncodeToPNG());
+                AssetDatabase.ImportAsset(path);
+                var importer = (TextureImporter)AssetImporter.GetAtPath(path);
+                importer.wrapMode = TextureWrapMode.Clamp;
+                importer.mipmapEnabled = false;
+                importer.SaveAndReimport();
+                tex = saved[index] = AssetDatabase.LoadAssetAtPath<Texture2D>(path);
+            }
+            var mat = new Material(shader) { name = src.name };
+            mat.SetTexture("_MainTex", src.mainTexture);
+            mat.mainTextureScale = src.mainTextureScale;
+            mat.mainTextureOffset = src.mainTextureOffset;
+            if (src.HasProperty("_Color")) mat.SetColor("_Color", src.GetColor("_Color"));
+            if (src.HasProperty("_SecondTex")) { mat.SetTexture("_SecondTex", src.GetTexture("_SecondTex")); mat.SetFloat("_Blend", 1); }
+            if (src.shader.name == "USource/CutoutGeneric") mat.SetFloat("_Cutoff", 0.5f);
+            mat.SetTexture("_LightMap", tex);
+            AssetDatabase.CreateAsset(mat, $"{folder}/{lit}_{Path.GetFileName(src.name)}.mat");
+            r.sharedMaterial = mat;
+            lit++;
+        }
+        LightmapSettings.lightmaps = new LightmapData[0];
+        return lit;
     }
 
     /// <summary>

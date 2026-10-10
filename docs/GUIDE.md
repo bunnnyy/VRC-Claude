@@ -77,8 +77,13 @@ saves the scene as `Assets/SourceMapsSample.unity`. Then continue at step 10. St
 
 ![bhop_eazy_v2 in the sample world, from its spawn (its textures are packed in the map)](images/sample_bhop_eazy_v2.png)
 
-**Lighting:** the import brings no lights, so indoor maps (e.g. bhop_arcane_v1's start) are dark until you bake
-lighting: add a Directional Light for outdoor maps and use **Window > Rendering > Lighting > Generate Lighting**.
+**Lighting:** nothing to bake. The importer uses each map's own Source lightmaps (the light the mapper compiled into
+the BSP): every map surface gets a material with the small `SourceMaps/Lightmapped` shader (texture x lightmap, like
+CS:S), and the lightmaps are saved as textures in `Assets/SourceMapsImported/<map>/Lightmaps`, so they are part of the
+uploaded world. Props are still lit by Unity's lights (Source lights them per vertex, not imported), and glass/glowing
+surfaces keep uSource's materials.
+
+![bhop_eazy_v2: left Unity's default light (before), right the map's own lightmaps (white walls: stock CS:S texture missing on the build machine)](images/lightmaps_bhop_eazy_v2.png)
 
 ## 6. Import a map (one by one)
 

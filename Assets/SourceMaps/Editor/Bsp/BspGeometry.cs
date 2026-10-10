@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Numerics;
 
 namespace SourceMaps.Bsp
@@ -82,13 +83,96 @@ namespace SourceMaps.Bsp
             }
         }
 
+        /// <summary>
+        /// Adds solid brushes to a mesh without the faces (or parts of faces) pressed against an opposite face of another
+        /// brush in the set: those lie inside the solid. Source collides with whole brushes and never meets them, but in
+        /// a triangle mesh their edges sit exactly in the surface where two brushes meet (a ramp built from several
+        /// brushes), and a player sliding along it catches on them. Returns how many faces lost a covered part.
+        /// </summary>
+        public static int AddSolidBrushes(MeshData mesh, BspFile bsp, IEnumerable<int> brushes, float scale)
+        {
+            var faces = new List<(Vector3[] poly, Vector3 n, float d)>();
+            var byPlane = new Dictionary<(int, int, int, int), List<int>>();
+            foreach (int b in brushes)
+                foreach (var poly in BrushPolygons(bsp, b))
+                {
+                    Vector3 n = PlaneOf(poly);
+                    float d = Vector3.Dot(n, poly[0]);
+                    var key = PlaneKey(n, d);
+                    if (!byPlane.TryGetValue(key, out var list)) byPlane[key] = list = new List<int>();
+                    list.Add(faces.Count);
+                    faces.Add((poly, n, d));
+                }
+            int trimmed = 0;
+            foreach (var f in faces)
+            {
+                var pieces = new List<List<Vector3>> { new List<Vector3>(f.poly) };
+                if (byPlane.TryGetValue(PlaneKey(-f.n, -f.d), out var opposite))
+                {
+                    foreach (int j in opposite) pieces = pieces.SelectMany(p => Subtract(p, faces[j].poly, f.n)).ToList();
+                    if (pieces.Count != 1 || Math.Abs(Area(pieces[0]) - Area(f.poly)) > 0.01f) trimmed++;
+                }
+                Vector3 outward = DirectionToUnity(f.n);
+                foreach (var piece in pieces)
+                {
+                    // Clipping repeats corners: drop repeats and zero-area triangles (their normal would be NaN).
+                    var poly = piece.Where((v, i) => (v - piece[(i + 1) % piece.Count]).Length() > 0.01f).ToList();
+                    for (int i = 1; i + 1 < poly.Count; i++)
+                        if (Vector3.Cross(poly[i] - poly[0], poly[i + 1] - poly[0]).Length() > 0.01f)
+                            mesh.AddTriangle(ToUnity(poly[0], scale), ToUnity(poly[i], scale), ToUnity(poly[i + 1], scale), outward);
+                }
+            }
+            return trimmed;
+        }
+
+        static (int, int, int, int) PlaneKey(Vector3 n, float d)
+        {
+            return ((int)Math.Round(n.X * 1000), (int)Math.Round(n.Y * 1000), (int)Math.Round(n.Z * 1000), (int)Math.Round(d * 10));
+        }
+
+        /// <summary>The parts of convex polygon p (on a plane with normal n) outside convex polygon c, as convex pieces.</summary>
+        static List<List<Vector3>> Subtract(List<Vector3> p, IList<Vector3> c, Vector3 n)
+        {
+            var result = new List<List<Vector3>>();
+            Vector3 pMin = p.Aggregate(Vector3.Min), pMax = p.Aggregate(Vector3.Max);
+            Vector3 cMin = c.Aggregate(Vector3.Min), cMax = c.Aggregate(Vector3.Max);
+            Vector3 overlap = Vector3.Min(pMax, cMax) - Vector3.Max(pMin, cMin);
+            if (Math.Min(overlap.X, Math.Min(overlap.Y, overlap.Z)) < -0.05f) { result.Add(p); return result; } // apart
+            Vector3 centre = Vector3.Zero;
+            foreach (var v in c) centre += v / c.Count;
+            for (int k = 0; k < c.Count && p.Count >= 3; k++)
+            {
+                Vector3 a = c[k], b = c[(k + 1) % c.Count];
+                if ((b - a).Length() < 0.01f) continue;
+                Vector3 e = Vector3.Normalize(Vector3.Cross(b - a, n));
+                if (Vector3.Dot(e, centre - a) > 0) e = -e; // e points out of c
+                float ed = Vector3.Dot(e, a);
+                var outside = Clip(p, -e, -ed - 0.02f); // strictly outside this edge (Clip keeps 0.01 extra)
+                if (Area(outside) > 0.01f) result.Add(outside);
+                p = Clip(p, e, ed);
+            }
+            return result; // what is left of p is covered by c
+        }
+
+        static float Area(IList<Vector3> poly)
+        {
+            if (poly.Count < 3) return 0f;
+            Vector3 n = Vector3.Zero;
+            for (int i = 0; i < poly.Count; i++)
+            {
+                Vector3 a = poly[i], b = poly[(i + 1) % poly.Count];
+                n += new Vector3((a.Y - b.Y) * (a.Z + b.Z), (a.Z - b.Z) * (a.X + b.X), (a.X - b.X) * (a.Y + b.Y));
+            }
+            return n.Length() * 0.5f;
+        }
+
         /// <summary>Newell normal of a polygon; Source polygons from Clip keep the plane's outward winding.</summary>
-        static Vector3 PlaneOf(Vector3[] poly)
+        static Vector3 PlaneOf(IList<Vector3> poly)
         {
             Vector3 n = Vector3.Zero;
-            for (int i = 0; i < poly.Length; i++)
+            for (int i = 0; i < poly.Count; i++)
             {
-                Vector3 a = poly[i], b = poly[(i + 1) % poly.Length];
+                Vector3 a = poly[i], b = poly[(i + 1) % poly.Count];
                 n += new Vector3((a.Y - b.Y) * (a.Z + b.Z), (a.Z - b.Z) * (a.X + b.X), (a.X - b.X) * (a.Y + b.Y));
             }
             return Vector3.Normalize(n);

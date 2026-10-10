@@ -105,14 +105,30 @@ static class Program
         watch.Restart();
         var world = bsp.ModelBrushes(0);
         var solid = world.Where(i => (bsp.Brushes[i].Contents & BspFile.MaskPlayerSolid) != 0).ToList();
-        var mesh = new MeshData();
+        var whole = new MeshData();
         int badBrushes = 0;
         foreach (int i in solid)
         {
             if (BspGeometry.BrushPolygons(bsp, i).Count < 4) badBrushes++;
-            BspGeometry.AddBrush(mesh, bsp, i, BspGeometry.DefaultScale);
+            BspGeometry.AddBrush(whole, bsp, i, BspGeometry.DefaultScale);
         }
+        var mesh = new MeshData();
+        int trimmed = BspGeometry.AddSolidBrushes(mesh, bsp, solid, BspGeometry.DefaultScale);
         int brushTris = mesh.Triangles.Count / 3;
+        Console.WriteLine($"  touching brushes: {trimmed} faces trimmed, {whole.Triangles.Count / 3} -> {brushTris} brush triangles");
+        if (name == "bhop_eazy_v2")
+        {
+            // A slope built from brushes side by side (Unity x -2256..-1664 u, falling from y 208 at z 5056 to y -160 at
+            // z 5376). Their side faces at x = -1728 reach up to the slope's surface, where a surfer caught on them.
+            float s = BspGeometry.DefaultScale;
+            Func<MeshData, int> seam = m => Enumerable.Range(0, m.Triangles.Count / 3).Count(t =>
+            {
+                var v = new[] { m.Vertices[m.Triangles[3 * t]], m.Vertices[m.Triangles[3 * t + 1]], m.Vertices[m.Triangles[3 * t + 2]] };
+                return v.All(p => Math.Abs(p.X / s + 1728) < 0.5f && p.Z / s > 5050 && p.Z / s < 5380) &&
+                       v.Any(p => Math.Abs(p.Y / s - (208 - 1.15f * (p.Z / s - 5056))) < 1f);
+            });
+            Check(seam(whole) > 0 && seam(mesh) == 0, $"inner side faces at the ramp seam removed ({seam(whole)} triangles before, {seam(mesh)} after)");
+        }
         for (int i = 0; i < bsp.DispInfos.Length; i++) BspGeometry.AddDisplacement(mesh, bsp, i, BspGeometry.DefaultScale);
         Console.WriteLine($"  collision built in {watch.ElapsedMilliseconds} ms: {solid.Count} solid world brushes ({brushTris} triangles), " +
                           $"{mesh.Triangles.Count / 3 - brushTris} displacement triangles");
@@ -136,7 +152,8 @@ static class Program
                                (bsp.Brushes[i].Contents & BspFile.ContentsPlayerClip) != 0 && HullInBrush(bsp, i, feet))) { jailed++; continue; }
             // A floor (front face up) below the feet, through the generated mesh. Spawns often float in a spawn
             // room (bhop_japan: 128 units above a floor that teleports you to the start), so allow 512 units.
-            var hit = Raycast(tris, BspGeometry.ToUnity(feet + new Vector3(0, 0, 1), BspGeometry.DefaultScale), new Vector3(0, -1, 0), 512 * BspGeometry.DefaultScale);
+            // (Off the grid by a fraction of a unit: a ray exactly along a triangle edge can slip between the triangles.)
+            var hit = Raycast(tris, BspGeometry.ToUnity(feet + new Vector3(0.37f, 0.21f, 1), BspGeometry.DefaultScale), new Vector3(0, -1, 0), 512 * BspGeometry.DefaultScale);
             string label = $"{e.ClassName} {e.TargetName} at {feet}";
             if (hit == null) { noFloor++; problems.Add("no floor: " + label); }
             else if (hit.Value.Y <= 0) { floorFacesDown++; problems.Add("floor faces down: " + label); }

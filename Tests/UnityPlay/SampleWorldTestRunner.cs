@@ -154,6 +154,22 @@ public class SampleWorldTestRunner : MonoBehaviour
             $"{name}: a run start -> end is timed ({last:F2} s), on the map's board and saved as {name}_legit");
     }
 
+    /// <summary>
+    /// Inside a solid block. Collision is a hollow mesh, so overlap tests only see its faces; from inside, every face
+    /// is seen from the back: the first face above is hit with back faces on but not without.
+    /// </summary>
+    static bool InsideSolid(Vector3 p)
+    {
+        const int SolidLayer = 1 << 0;
+        bool before = Physics.queriesHitBackfaces;
+        Physics.queriesHitBackfaces = true;
+        bool any = Physics.Raycast(p, Vector3.up, out var first, 2000f, SolidLayer, QueryTriggerInteraction.Ignore);
+        Physics.queriesHitBackfaces = false;
+        bool front = Physics.Raycast(p, Vector3.up, out var outside, 2000f, SolidLayer, QueryTriggerInteraction.Ignore);
+        Physics.queriesHitBackfaces = before;
+        return any && (!front || first.distance < outside.distance - 0.001f);
+    }
+
     bool OnGround() { return (bool)movement.GetProgramVariable("onGround"); }
 
     void Press(string action, int slot)
@@ -188,7 +204,8 @@ public class SampleWorldTestRunner : MonoBehaviour
                 var inside = new Vector3(x, b.center.y, z);
                 if ((col.ClosestPoint(inside) - inside).sqrMagnitude > 1e-6f) continue;
                 if (Physics.Raycast(above, Vector3.up, 1.5f, Solid, QueryTriggerInteraction.Ignore)) continue;
-                if (Physics.CheckBox(above + new Vector3(0, 37, 0) * U, new Vector3(17, 37, 17) * U, Quaternion.identity, Solid, QueryTriggerInteraction.Ignore)) continue;
+                if (Physics.CheckBox(above + new Vector3(0, 37, 0) * U, new Vector3(17, 37, 17) * U, Quaternion.identity, Solid, QueryTriggerInteraction.Ignore)) continue; // hull in a wall
+                if (InsideSolid(above)) continue; // in a solid block: no face to overlap, so CheckBox misses it
                 float depth = b.size.y + 0.3f;
                 if (Physics.BoxCast(above, new Vector3(16, 0.5f, 16) * U, Vector3.down, out var hit, Quaternion.identity, depth, Solid, QueryTriggerInteraction.Ignore))
                     depth = hit.distance;
