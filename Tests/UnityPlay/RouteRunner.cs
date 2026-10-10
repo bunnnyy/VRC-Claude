@@ -272,7 +272,7 @@ public class RouteRunner : MonoBehaviour
         // Send this frame's share: the key and the view of the decisions that should arrive together.
         int keyFrame = frame - (lag - keyLag), yawFrame = frame - (lag - yawLag);
         int key2 = keyFrame >= 0 ? keyQueue[keyFrame % 32] : 0;
-        float yaw2 = yawFrame >= 0 ? yawQueue[yawFrame % 32] : bestYaw;
+        float yaw2 = yawFrame >= 0 ? yawQueue[yawFrame % 32] : d.yaw;
         SetYaw(yaw2);
         if (key2 < 0) { if (jump) Keys(Key.Space, Key.A); else Keys(Key.A); }
         else if (key2 > 0) { if (jump) Keys(Key.Space, Key.D); else Keys(Key.D); }
