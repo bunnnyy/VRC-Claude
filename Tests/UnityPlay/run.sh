@@ -64,6 +64,21 @@ if [ "${1:-}" = "map" ]; then
   exit $status
 fi
 
+# Route mode: run.sh route map.bsp zones.json outdir imports the map with visuals and timer zones, lets RouteRunner
+# bhop it from start to finish and, given outdir, records frames (outdir/f*.jpg) plus outdir/hud.txt for make_video.sh.
+if [ "${1:-}" = "route" ]; then
+  bsp=$(realpath "$2"); zones=$(realpath "$3"); record=()
+  [ -n "${4:-}" ] && { rm -rf "$4"; record=(-smRecord "$(realpath -m "$4")"); }
+  copy_assets
+  rm -rf "$proj/ClientSimStorage"
+  status=0
+  if run build_route -quit -executeMethod PlayTestBootstrap.BuildRoute -bsp "$bsp" -zones "$zones" &&
+     run route -executeMethod PlayTestBootstrap.RunRoute -smFrameRate 100 "${record[@]}"; then r="FINISHED"; else r="FAILED"; status=1; fi
+  echo "== $(basename "$bsp" .bsp) route: $r"
+  grep -ho "\[SMTEST\] .*" "$logs/route.log" 2>/dev/null | sed 's/^\[SMTEST\] /  /'
+  exit $status
+fi
+
 # TextMeshPro's Essential Resources (default font). The editor imports them asynchronously, after a batch mode
 # run has already quit, so unpack the .unitypackage (a tar of <guid>/pathname, asset, asset.meta) directly.
 tmp_essentials() {
