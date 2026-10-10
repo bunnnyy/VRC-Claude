@@ -115,6 +115,52 @@ public static class PlayTestBootstrap
         EditorApplication.isPlaying = true;
     }
 
+    /// <summary>
+    /// -executeMethod PlayTestBootstrap.BuildRoute -bsp path [-zones file.json]: a map with visuals, timer zones and
+    /// SourceMovement for RouteRunner, saved as Assets/RouteTest.unity.
+    /// </summary>
+    public static void BuildRoute()
+    {
+        string[] args = System.Environment.GetCommandLineArgs();
+        string bsp = args[System.Array.IndexOf(args, "-bsp") + 1];
+        int z = System.Array.IndexOf(args, "-zones");
+        var scene = EditorSceneManager.NewScene(NewSceneSetup.DefaultGameObjects, NewSceneMode.Single);
+        var map = SourceMapImporter.Import(bsp, 0.01905f);
+        SourceMapVisuals.CssFolder = "";
+        SourceMapVisuals.Import(bsp, map.transform, 0.01905f);
+        string name = System.IO.Path.GetFileNameWithoutExtension(bsp);
+        SourceMapZones.Import(map, name, z >= 0 ? System.IO.File.ReadAllText(args[z + 1]) : SourceMapZones.Download(name), 0.01905f);
+        var world = (GameObject)PrefabUtility.InstantiatePrefab(AssetDatabase.LoadAssetAtPath<GameObject>(
+            "Packages/com.vrchat.worlds/Samples/UdonExampleScene/Prefabs/VRCWorld.prefab"));
+        var start = GameObject.Find("Start " + name);
+        if (start != null) world.transform.position = start.transform.Find("StartPoint").position;
+        world.GetComponent<VRC.SDKBase.VRC_SceneDescriptor>().RespawnHeightY = -1000f;
+        PrefabUtility.InstantiatePrefab(AssetDatabase.LoadAssetAtPath<GameObject>("Assets/SourceMovement/SourceMovement.prefab"));
+        EditorSceneManager.SaveScene(scene, "Assets/RouteTest.unity");
+        Debug.Log("[SMTEST] route scene built from " + bsp);
+    }
+
+    /// <summary>-executeMethod PlayTestBootstrap.RunRoute -smRecord dir [-smFrameRate 100]: RouteRunner on Assets/RouteTest.unity.</summary>
+    public static void RunRoute()
+    {
+        var settings = ClientSimSettings.Instance;
+        settings.enableClientSim = true;
+        settings.hideMenuOnLaunch = true;
+        settings.setTargetFrameRate = false;
+        settings.initializationDelay = 0f;
+        ClientSimSettings.SaveSettings(settings);
+        EditorSceneManager.OpenScene("Assets/RouteTest.unity");
+        UdonSharp.Compiler.UdonSharpCompilerV1.CompileSync();
+        var runner = new GameObject("RouteRunner").AddComponent<RouteRunner>();
+        string[] args = System.Environment.GetCommandLineArgs();
+        for (int i = 0; i < args.Length - 1; i++)
+        {
+            if (args[i] == "-smFrameRate") runner.frameRate = int.Parse(args[i + 1]);
+            if (args[i] == "-smRecord") runner.recordDir = args[i + 1];
+        }
+        EditorApplication.isPlaying = true;
+    }
+
     /// <summary>-executeMethod PlayTestBootstrap.ExportPackage -smPackage path: the folders a world needs.</summary>
     public static void ExportPackage()
     {
