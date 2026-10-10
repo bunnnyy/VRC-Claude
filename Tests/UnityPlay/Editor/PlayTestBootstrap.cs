@@ -124,6 +124,8 @@ public static class PlayTestBootstrap
         string[] args = System.Environment.GetCommandLineArgs();
         string bsp = args[System.Array.IndexOf(args, "-bsp") + 1];
         int z = System.Array.IndexOf(args, "-zones");
+        // The assets were just copied in: compile the U# programs before serializing timer zones.
+        UdonSharp.Compiler.UdonSharpCompilerV1.CompileSync();
         var scene = EditorSceneManager.NewScene(NewSceneSetup.DefaultGameObjects, NewSceneMode.Single);
         var map = SourceMapImporter.Import(bsp, 0.01905f);
         SourceMapVisuals.CssFolder = "";
@@ -149,6 +151,7 @@ public static class PlayTestBootstrap
         settings.setTargetFrameRate = false;
         settings.initializationDelay = 0f;
         ClientSimSettings.SaveSettings(settings);
+        if (!System.IO.File.Exists("Assets/RouteTest.unity")) { Debug.LogError("[SMTEST] FAIL no route scene"); EditorApplication.Exit(1); return; }
         EditorSceneManager.OpenScene("Assets/RouteTest.unity");
         UdonSharp.Compiler.UdonSharpCompilerV1.CompileSync();
         var runner = new GameObject("RouteRunner").AddComponent<RouteRunner>();

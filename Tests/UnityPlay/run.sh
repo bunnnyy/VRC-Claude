@@ -72,7 +72,9 @@ if [ "${1:-}" = "route" ]; then
   copy_assets
   rm -rf "$proj/ClientSimStorage"
   status=0
+  rm -f "$proj/Assets/RouteTest.unity"
   if run build_route -quit -executeMethod PlayTestBootstrap.BuildRoute -bsp "$bsp" -zones "$zones" &&
+     grep -q "route scene built" "$logs/build_route.log" &&
      run route -executeMethod PlayTestBootstrap.RunRoute -smFrameRate 100 "${record[@]}"; then r="FINISHED"; else r="FAILED"; status=1; fi
   echo "== $(basename "$bsp" .bsp) route: $r"
   grep -ho "\[SMTEST\] .*" "$logs/route.log" 2>/dev/null | sed 's/^\[SMTEST\] /  /'
