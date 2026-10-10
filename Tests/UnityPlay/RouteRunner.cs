@@ -95,49 +95,6 @@ public class RouteRunner : MonoBehaviour
         int total = 0;
         foreach (var line in Route) { var list = FindSpots(line); Plan(list); spots.Add(list); total += list.Count; }
         Log($"{total} landing spots in {Route.Length} sections ({Time.realtimeSinceStartup - t0:F1} s)");
-        if (startSection == 3)
-        {
-            foreach (var q in new[] { new Vector2(-2616, 2656), new Vector2(-2624, 2656), new Vector2(-2632, 2656) })
-                foreach (var h in Physics.RaycastAll(new Vector3(q.x, 300f, q.y) * U, Vector3.down, 600f * U, ~0, QueryTriggerInteraction.Collide))
-                    Log($"  ray at {q}: {h.collider.name} ({h.collider.GetType().Name}, layer {h.collider.gameObject.layer}, trigger {h.collider.isTrigger}) at y {h.point.y / U:F1} normal {h.normal:F2}");
-            string scan = "";
-            for (float sy = 2560f; sy <= 2880f; sy += 8f)
-            {
-                bool hit = Physics.Raycast(new Vector3(-sy, 120f, 2600f) * U, Vector3.forward, out RaycastHit h, 120f * U, layers, QueryTriggerInteraction.Ignore);
-                scan += hit ? $" {sy}:{h.point.z / U:F0}" : $" {sy}:-";
-            }
-            Log("  glass scan at height 120 (Source y: x of first solid from x 2600):" + scan);
-            var shotCam = new GameObject("ShotCam").AddComponent<Camera>();
-            shotCam.fieldOfView = 74f;
-            shotCam.nearClipPlane = 0.03f;
-            var srt = new RenderTexture(1280, 720, 24);
-            var stex = new Texture2D(1280, 720, TextureFormat.RGB24, false);
-            int n = 0;
-            foreach (var view in new[] { (new Vector3(-2720f, 112f, 2420f), 0f, 5f), (new Vector3(-2560f, 150f, 2560f), 30f, 20f), (new Vector3(-2720f, 260f, 2500f), 0f, 35f) })
-            {
-                shotCam.transform.SetPositionAndRotation(view.Item1 * U, Quaternion.Euler(view.Item3, view.Item2, 0f));
-                shotCam.targetTexture = srt;
-                shotCam.Render();
-                RenderTexture.active = srt;
-                stex.ReadPixels(new Rect(0, 0, 1280, 720), 0, 0);
-                stex.Apply();
-                RenderTexture.active = null;
-                System.IO.File.WriteAllBytes($"/tmp/claude-0/eazy/glass{n++}.png", stex.EncodeToPNG());
-            }
-            var from = new Vector3(-2615.6f, 48f, 2624.5f);
-            float jump = (float)movement.GetProgramVariable("jumpImpulse");
-            float flight = FallTime(0f, jump);
-            Vector2 to = new Vector2(-2616f, 2720f);
-            for (int i = 1; i <= 12; i++)
-            {
-                float t = flight * i / 12f;
-                Vector2 p = Vector2.Lerp(Flat(from), to, i / 12f);
-                float y = from.y + jump * t - 0.5f * Gravity * t * t;
-                var center = new Vector3(p.x, y + 37f, p.y) * U;
-                foreach (var c in Physics.OverlapBox(center, new Vector3(15.5f, 35.5f, 15.5f) * U, Quaternion.identity, ~0, QueryTriggerInteraction.Collide))
-                    Log($"  flight sample {i} at {p} y {y:F0}: overlaps {c.name} ({c.GetType().Name}, layer {c.gameObject.layer}, trigger {c.isTrigger}) bounds {c.bounds.min / U:F0}..{c.bounds.max / U:F0}");
-            }
-        }
 
         // Start in the start zone facing down the first lane.
         section = startSection;
@@ -148,6 +105,9 @@ public class RouteRunner : MonoBehaviour
         movement.SetProgramVariable("__0_keepVelocity__param", false);
         movement.SendCustomEvent("__0_TeleportPlayer");
         for (int i = 0; i < frameRate; i++) yield return null;
+        yield return Calibrate();
+        movement.SendCustomEvent("__0_TeleportPlayer"); // back to the start, standing still
+        for (int i = 0; i < frameRate / 2; i++) yield return null;
 
         if (recordDir != "") SetupCamera();
         Vector3 last = Origin();
@@ -225,7 +185,8 @@ public class RouteRunner : MonoBehaviour
         if (!hopping)
         {
             // From a standstill (start, a teleport): run until fast, or until the floor ahead ends.
-            viewYaw = lookYaw;
+            Record(0, lookYaw);
+            heldKey = 0;
             SetYaw(viewYaw);
             Vector2 ahead = here + Dir(viewYaw) * 40f;
             if (v.magnitude > 240f || !Safe(new Vector3(ahead.x, pos.y, ahead.y), out _)) { hopping = true; Keys(Key.W, Key.Space); }
@@ -237,48 +198,142 @@ public class RouteRunner : MonoBehaviour
         if (wasOnGround && !onGround)
         {
             hops++;
-            hasTarget = PickTarget(pos, vel, out target);
-            if (!hasTarget) Log($"no landing spot from {here} at {v.magnitude:F0} u/s (s {progress:F0}), heading for the section end");
+            hasTarget = PickTarget(pos, vel, out target, out flight);
+            takeoffTime = Time.time;
+            if (!hasTarget) Log($"no landing spot from {here} at {v.magnitude:F0} u/s (s {progress:F0}), following the route line");
         }
         wasOnGround = onGround;
-        if (onGround && runOnLanding) { runOnLanding = false; hopping = false; hasTarget = false; Keys(Key.W); return; }
-        if (onGround) { steerYaw = v.magnitude > 1f ? Yaw(v) : lookYaw; SetYaw(steerYaw); Keys(Key.Space, Key.W); return; }
+        if (onGround && runOnLanding)
+        {
+            runOnLanding = false; hopping = false; hasTarget = false;
+            Record(0, lookYaw);
+            Keys(Key.W);
+            return;
+        }
 
-        // Velocity wanted now: straight onto the target, arriving when we come down to its height.
-        // No spot to aim for (the end of a section): follow the route line, to go through doorways straight.
+        // Velocity wanted now: onto the target, arriving when we come down to its height (along the curve first, for a
+        // flight around an obstacle). No spot to aim for (the end of a section): follow the route line, to go through
+        // doorways straight.
         Vector2 aim = hasTarget ? new Vector2(target.p.x, target.p.z) : PointAt(line, progress + 96f);
         float h = hasTarget ? target.p.y : pos.y;
         float tLeft = FallTime(pos.y - h, vel.y);
         if (hasTarget && (aim - here).magnitude > 1f) aim += (aim - here).normalized * 6f; // land a little long, never short
         Vector2 want = hasTarget ? (aim - here) / Mathf.Max(tLeft, 0.02f) : (aim - here).normalized * Mathf.Max(v.magnitude, 250f);
+        float f = hasTarget ? (Time.time - takeoffTime) / flight.time : 1f;
+        if (hasTarget && flight.curved && f < 0.65f)
+            want = (Curve(flight, Mathf.Min(f + 0.1f, 1f)) - here) / (0.1f * flight.time);
         // Close to landing, or already over the spot (spots are 28+ units inside their surface): stop steering, or
         // "distance left / time left" swings around and brakes hard.
-        if (hasTarget && (float.IsNaN(tLeft) || tLeft < 0.12f || (aim - here).magnitude < 24f)) want = v;
+        else if (hasTarget && (float.IsNaN(tLeft) || tLeft < 0.12f || (aim - here).magnitude < 24f)) want = v;
 
-        // Air acceleration (sv_airaccelerate 1000): each tick the velocity along the wish direction goes up to 30 u/s.
-        // Steer with the view only, holding W: the wish direction is the view direction. The view set now acts a
-        // frame later, so plan from the velocity after last frame's push. Look two ticks ahead: slowing down a
-        // little, or speeding up, takes two pushes to either side.
-        Vector2 vp = PushAt(v, steerYaw);
-        float bestErr = Best2(vp, want), bestYaw = Yaw(vp);
-        if ((want - vp).magnitude > 4f)
-            for (int i = 0; i < Directions; i++)
-            {
-                Vector2 v1 = Push(vp, i);
-                if (v1 == vp) continue;
-                float err = Best2(v1, want);
-                if (err < bestErr - 0.5f) { bestErr = err; bestYaw = i * 360f / Directions; }
-            }
-        steerYaw = bestYaw; // looking along the velocity adds nothing
-        viewYaw = bestYaw;
-        SetYaw(bestYaw);
         // Too slow to strafe up to speed: land without jumping and run up again (to 240, or to the edge).
-        if (vp.magnitude < 120f && vel.y < 0f) runOnLanding = true;
-        if (runOnLanding) Keys(Key.W); else Keys(Key.Space, Key.W);
+        if (!onGround && v.magnitude < 120f && vel.y < 0f) runOnLanding = true;
+        Strafe(v, want, aim - here, !runOnLanding);
     }
 
-    float steerYaw;
+    // ------------------------------------------------------------------ strafing
+
+    // Air strafing like a player: A or D held (A pushes to the left of the view, D to the right), the view turning
+    // the same way, roughly along the direction of travel. Sv_airaccelerate 1000: each tick the velocity along the
+    // wish direction goes up to 30 u/s. Keys and view changes reach the movement a few frames later (measured by
+    // Calibrate): decisions are queued so both arrive together, and planned from the velocity they will act on.
+    const int MinHold = 10;            // frames a strafe key stays down once pressed (no flicker)
+    int keyLag = 1, yawLag = 1;        // frames from a key press / view change to the velocity changing
+    int heldKey, heldFrames;           // the current decision: -1 A, 0 none, 1 D
+    readonly int[] keyQueue = new int[32];
+    readonly float[] yawQueue = new float[32];
+    float appliedYaw;
+
+    void Strafe(Vector2 v, Vector2 want, Vector2 toAim, bool jump)
+    {
+        int lag = Mathf.Max(keyLag, yawLag);
+        Vector2 vp = v;
+        for (int k = lag - 1; k >= 1; k--) // decided, not yet in the velocity
+        {
+            int f = frame - k;
+            if (f >= 0 && keyQueue[f % 32] != 0) vp = PushAt(vp, yawQueue[f % 32] + 90f * keyQueue[f % 32]);
+        }
+        float look = vp.magnitude > 50f ? Yaw(vp) : toAim.magnitude > 1f ? Yaw(toAim) : viewYaw;
+        bool mayChange = heldFrames >= MinHold || heldKey == 0;
+        int bestKey = heldKey;
+        float bestYaw = look, bestScore = float.MaxValue;
+        if (mayChange && (want - vp).magnitude <= 4f) { bestKey = 0; bestScore = 0f; }
+        else
+        {
+            if (mayChange) { bestKey = 0; bestScore = Best2(vp, want); }
+            for (int key = -1; key <= 1; key += 2)
+            {
+                if (!mayChange && key != heldKey) continue;
+                for (int i = 0; i < Directions; i++)
+                {
+                    float yaw = i * 360f / Directions;
+                    float dev = Mathf.Abs(Mathf.DeltaAngle(yaw, look));
+                    if (dev > 100f) continue; // never look backwards
+                    float score = Best2(PushAt(vp, yaw + 90f * key), want) + 0.02f * dev + (key != heldKey ? 0.5f : 0f);
+                    if (score < bestScore) { bestScore = score; bestKey = key; bestYaw = yaw; }
+                }
+            }
+        }
+        if (bestKey != heldKey) { heldKey = bestKey; heldFrames = 0; } else heldFrames++;
+        if (bestKey == 0) bestYaw = Mathf.MoveTowardsAngle(viewYaw, look, 360f * Time.deltaTime);
+        Record(bestKey, bestYaw);
+
+        // Send this frame's share: the key and the view of the decisions that should arrive together.
+        int keyFrame = frame - (lag - keyLag), yawFrame = frame - (lag - yawLag);
+        int key2 = keyFrame >= 0 ? keyQueue[keyFrame % 32] : 0;
+        float yaw2 = yawFrame >= 0 ? yawQueue[yawFrame % 32] : bestYaw;
+        SetYaw(yaw2);
+        if (key2 < 0) { if (jump) Keys(Key.Space, Key.A); else Keys(Key.A); }
+        else if (key2 > 0) { if (jump) Keys(Key.Space, Key.D); else Keys(Key.D); }
+        else if (jump) Keys(Key.Space); else Keys();
+    }
+
+    /// <summary>This frame's decision (key -1 A, 0 none, 1 D, and the view), for the queues.</summary>
+    void Record(int key, float yaw)
+    {
+        keyQueue[frame % 32] = key;
+        yawQueue[frame % 32] = yaw;
+        viewYaw = yaw;
+    }
+
+    /// <summary>
+    /// Measures input lag: jump in place, press D in the air (view fixed) and count frames until the velocity moves;
+    /// then turn the view 90 degrees with D held and count frames until the push turns.
+    /// </summary>
+    IEnumerator Calibrate()
+    {
+        float yaw0 = viewYaw;
+        SetYaw(yaw0);
+        Keys(Key.Space);
+        for (int i = 0; i < 50 && ((Vector3)movement.GetProgramVariable("velocity")).y < 100f; i++) yield return null;
+        Keys();
+        for (int i = 0; i < 3; i++) yield return null;
+        Keys(Key.D);
+        keyLag = 0;
+        for (int i = 1; i <= 8 && keyLag == 0; i++)
+        {
+            yield return null;
+            if (Flat((Vector3)movement.GetProgramVariable("velocity")).magnitude > 5f) keyLag = i;
+        }
+        for (int i = 0; i < 3; i++) yield return null;
+        Vector2 before = Flat((Vector3)movement.GetProgramVariable("velocity"));
+        SetYaw(yaw0 + 90f);
+        yawLag = 0;
+        for (int i = 1; i <= 8 && yawLag == 0; i++)
+        {
+            yield return null;
+            if ((Flat((Vector3)movement.GetProgramVariable("velocity")) - before).magnitude > 5f) yawLag = i;
+        }
+        Keys();
+        for (int i = 0; i < 100 && !(bool)movement.GetProgramVariable("onGround"); i++) yield return null;
+        SetYaw(yaw0);
+        Log($"input lag: keys {keyLag} frames, view {yawLag} frames");
+        if (keyLag == 0 || yawLag == 0) { Log("lag calibration incomplete, assuming 1 frame"); keyLag = Mathf.Max(keyLag, 1); yawLag = Mathf.Max(yawLag, 1); }
+    }
+
     bool runOnLanding;
+    float takeoffTime;
+    Flight flight;
 
     static Vector2 PushAt(Vector2 v, float yaw)
     {
@@ -309,9 +364,10 @@ public class RouteRunner : MonoBehaviour
     /// The landing spot to aim for from a takeoff: furthest along the section, reachable at about the current speed
     /// (strafing can add a little), not much slower than now, with a flight path that hits nothing.
     /// </summary>
-    bool PickTarget(Vector3 pos, Vector3 vel, out Spot best)
+    bool PickTarget(Vector3 pos, Vector3 vel, out Spot best, out Flight path)
     {
         best = default;
+        path = default;
         var list = spots[section];
         Vector2 here = Flat(pos);
         float speed = new Vector2(vel.x, vel.z).magnitude;
@@ -332,11 +388,13 @@ public class RouteRunner : MonoBehaviour
             options.Add((score, s, need, time));
         }
         options.Sort((x, y) => y.score.CompareTo(x.score));
+        int tried = 0;
         foreach (var o in options)
-            if (ClearFlight(pos, vel.y, new Vector2(o.spot.p.x, o.spot.p.z), o.time))
+            if (FindFlight(pos, vel.y, o.spot.p, o.time, tried++ < 12, out Flight f) && f.length / o.time <= Reach(speed, o.time))
             {
                 best = o.spot;
-                Log($"hop {hops} s {progress:F0} -> {o.spot.s:F0} speed {speed:F0} need {o.need:F0} deep {o.spot.deep} of {options.Count}");
+                path = f;
+                Log($"hop {hops} s {progress:F0} -> {o.spot.s:F0} speed {speed:F0} need {f.length / o.time:F0} deep {o.spot.deep}{(f.curved ? " curved" : "")} of {options.Count}");
                 return true;
             }
         // Nothing: say why, for the nearest spots ahead.
@@ -347,35 +405,10 @@ public class RouteRunner : MonoBehaviour
             float time = FallTime(pos.y - sp.p.y, vel.y);
             if (float.IsNaN(time)) continue;
             float need = (new Vector2(sp.p.x, sp.p.z) - here).magnitude / time;
-            Log($"  rejected {sp.p:F0} s {sp.s:F0} edge {sp.edge}: need {need:F0} reach {Reach(speed, time):F0} plan {sp.need:F0} time {time:F2} clear {ClearFlight(pos, vel.y, new Vector2(sp.p.x, sp.p.z), time)}");
+            Log($"  rejected {sp.p:F0} s {sp.s:F0} edge {sp.edge}: need {need:F0} reach {Reach(speed, time):F0} plan {sp.need:F0} time {time:F2} clear {FindFlight(pos, vel.y, sp.p, time, true, out _)}");
             shown++;
         }
         return false;
-    }
-
-    /// <summary>
-    /// Whether the run can go on from `a`, leaving at `speed`: hop to the furthest spot in reach (landing at the
-    /// speed that hop needs), `depth` times, or until near the end of the section.
-    /// </summary>
-    bool CanContinue(List<Spot> list, Spot a, float speed, int depth, float lastS)
-    {
-        if (a.s >= lastS - 64f || depth == 0) return true;
-        float jump = (float)movement.GetProgramVariable("jumpImpulse");
-        int lo = 0, hi = list.Count;
-        while (lo < hi) { int mid = (lo + hi) / 2; if (list[mid].s < a.s + 24f) lo = mid + 1; else hi = mid; }
-        Spot best = default;
-        float bestNeed = 0f;
-        bool any = false;
-        for (int i = lo; i < list.Count && list[i].s <= a.s + 700f; i++)
-        {
-            var b = list[i];
-            float time = FallTime(a.p.y - b.p.y, jump);
-            if (float.IsNaN(time) || time < 0.2f) continue;
-            float need = (new Vector2(b.p.x - a.p.x, b.p.z - a.p.z)).magnitude / time;
-            if (need > Reach(speed, time)) continue;
-            if (!any || b.s > best.s) { best = b; bestNeed = need; any = true; }
-        }
-        return any && CanContinue(list, best, bestNeed, depth - 1, lastS);
     }
 
     /// <summary>Average speed reachable over a hop of `time` s from `speed`: strafing adds 30 u/s sideways per tick,
@@ -385,17 +418,44 @@ public class RouteRunner : MonoBehaviour
         return 0.5f * (speed + Mathf.Sqrt(speed * speed + 900f * 100f * time)) * 0.9f;
     }
 
-    /// <summary>The hull along a straight flight to `to`: no solid in the way (before landing), no teleport touched.</summary>
-    bool ClearFlight(Vector3 from, float vy, Vector2 to, float time)
+    struct Flight { public Vector2 a, c, b; public float time, length; public bool curved; }
+
+    /// <summary>Where a flight is at `u` (0..1 of its time): a quadratic curve from a to b with control point c.</summary>
+    static Vector2 Curve(Flight f, float u) { return (1f - u) * (1f - u) * f.a + 2f * u * (1f - u) * f.c + u * u * f.b; }
+
+    /// <summary>
+    /// A flight the hull can make from `from` (moving up at vy) to `to` in `time`: straight, or (if `curves`)
+    /// bending out up to 64 units to either side around an obstacle, like strafing around bhop_eazy_v2's pillars.
+    /// </summary>
+    bool FindFlight(Vector3 from, float vy, Vector3 to, float time, bool curves, out Flight flight)
     {
-        Vector2 start = Flat(from);
+        Vector2 a = Flat(from), b = Flat(to), mid = (a + b) * 0.5f, side = new Vector2((b - a).y, -(b - a).x).normalized;
+        flight = new Flight { a = a, b = b, c = mid, time = time };
+        for (int k = 0; k <= (curves ? 8 : 0); k++)
+        {
+            float off = 16f * ((k + 1) / 2) * (k % 2 == 0 ? -1f : 1f); // 0, 16, -16, 32, -32 ... 64, -64
+            flight.c = mid + side * (2f * off); // the curve passes `off` to the side at its middle
+            flight.curved = k != 0;
+            if (!ClearFlight(from.y, vy, flight)) continue;
+            flight.length = 0f;
+            for (int i = 1; i <= 12; i++) flight.length += (Curve(flight, i / 12f) - Curve(flight, (i - 1) / 12f)).magnitude;
+            return true;
+        }
+        return false;
+    }
+
+    /// <summary>The hull along a flight: no solid in the way (before landing), no teleport touched. Curved flights keep
+    /// 2 units more clearance, since strafing won't follow the curve exactly.</summary>
+    bool ClearFlight(float y0, float vy, Flight f)
+    {
+        float half = f.curved ? 17.5f : 15.5f;
         for (int i = 1; i <= 12; i++)
         {
-            float t = time * i / 12f;
-            Vector2 p = Vector2.Lerp(start, to, (float)i / 12f);
-            float y = from.y + vy * t - 0.5f * Gravity * t * t;
+            float t = f.time * i / 12f;
+            Vector2 p = Curve(f, i / 12f);
+            float y = y0 + vy * t - 0.5f * Gravity * t * t;
             var center = new Vector3(p.x, y + 37f, p.y) * U;
-            if (i < 12 && Physics.CheckBox(center, new Vector3(15.5f, 35.5f, 15.5f) * U, Quaternion.identity, layers, QueryTriggerInteraction.Ignore)) return false;
+            if (i < 12 && Physics.CheckBox(center, new Vector3(half, 35.5f, half) * U, Quaternion.identity, layers, QueryTriggerInteraction.Ignore)) return false;
             if (TouchesTeleport(center)) return false;
         }
         return true;
@@ -432,7 +492,8 @@ public class RouteRunner : MonoBehaviour
             for (int h = 0; h < hopsFrom.Count && h < 40; h++)
             {
                 var B = list[hopsFrom[h].b];
-                if (ClearFlight(A.p, jump, new Vector2(B.p.x, B.p.z), hopsFrom[h].time)) { A.need = hopsFrom[h].v; break; }
+                float time = hopsFrom[h].time;
+                if (FindFlight(A.p, jump, B.p, time, h < 6, out Flight f)) { A.need = MinSpeed(f.length / time, time); break; }
             }
             list[a] = A;
         }
@@ -619,9 +680,9 @@ public class RouteRunner : MonoBehaviour
         Vector3 pos = Origin();
         Vector3 vel = (Vector3)movement.GetProgramVariable("velocity");
         Vector2 v = new Vector2(vel.x, vel.z);
-        float want = v.magnitude > 100f ? Yaw(v) : viewYaw;
-        camYaw = Mathf.SmoothDampAngle(camYaw, want, ref camYawVel, 0.25f, Mathf.Infinity, 2f / frameRate);
-        cam.transform.SetPositionAndRotation((pos + Vector3.up * 64f) * U, Quaternion.Euler(12f, camYaw, 0f));
+        // The player's view, lightly smoothed (decisions change it every frame; a mouse doesn't).
+        camYaw = Mathf.SmoothDampAngle(camYaw, appliedYaw, ref camYawVel, 0.08f, Mathf.Infinity, 2f / frameRate);
+        cam.transform.SetPositionAndRotation((pos + Vector3.up * 64f) * U, Quaternion.Euler(10f, camYaw, 0f));
         cam.targetTexture = rt;
         cam.Render();
         RenderTexture.active = rt;
@@ -629,7 +690,7 @@ public class RouteRunner : MonoBehaviour
         shot.Apply();
         RenderTexture.active = null;
         System.IO.File.WriteAllBytes(System.IO.Path.Combine(recordDir, $"f{shotNumber++:D5}.jpg"), shot.EncodeToJPG(88));
-        hud.Append(Mathf.RoundToInt(v.magnitude)).Append('\t').Append(timer != null ? Label() : "").Append('\n');
+        hud.Append(Mathf.RoundToInt(v.magnitude)).Append('\t').Append(timer != null ? Label() : "").Append('\t').Append(lastKeys).Append('\n');
     }
 
     string Label()
@@ -644,7 +705,7 @@ public class RouteRunner : MonoBehaviour
     static Vector2 Flat(Vector3 p) { return new Vector2(p.x, p.z); }
     static Vector2 Dir(float yaw) { return new Vector2(Mathf.Sin(yaw * Mathf.Deg2Rad), Mathf.Cos(yaw * Mathf.Deg2Rad)); }
     static float Yaw(Vector2 d) { return Mathf.Atan2(d.x, d.y) * Mathf.Rad2Deg; }
-    void SetYaw(float yaw) { playerBody.rotation = Quaternion.Euler(0, yaw, 0); }
+    void SetYaw(float yaw) { appliedYaw = yaw; playerBody.rotation = Quaternion.Euler(0, yaw, 0); }
     void Keys(params Key[] keys)
     {
         InputSystem.QueueStateEvent(keyboard, new KeyboardState(keys));
