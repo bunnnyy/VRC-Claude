@@ -159,7 +159,9 @@ public static class SourceMovementSetup
 
         // Surf ramp: two 60 degree faces meeting at a ridge, running along Z below the end of the lane.
         Vector3 ridge = new Vector3(400, -256, 0);
-        SurfRamp(map, "SurfRamp", ridge, 60, 1024, 4300, 10300);
+        // One mesh with seams across the direction of travel every 1500 units, like coplanar brush faces in
+        // converted maps (mesh colliders can report a fake edge normal at seams).
+        SurfRamp(map, "SurfRamp", ridge, 60, 1024, 4300, 5800, 7300, 8800, 10300);
 
         // End platform past the ramp.
         Solid(map, "EndPlatform", new Vector3(400, -988, 10900), new Vector3(2048, 64, 1000));
@@ -174,25 +176,38 @@ public static class SourceMovementSetup
 
     /// <summary>
     /// A surf ramp as one solid triangular prism (mesh collider, like a converted Source map): two faces at
-    /// the given angle meeting at the ridge, each slopeLength long, running along Z from z0 to z1.
+    /// the given angle meeting at the ridge, each slopeLength long, running along Z through the cuts. Each
+    /// slice between cuts gets its own triangles, so the faces have seams across the direction of travel, like
+    /// coplanar brush faces in a converted map.
     /// </summary>
-    static void SurfRamp(Transform parent, string name, Vector3 ridge, float angle, float slopeLength, float z0, float z1)
+    static void SurfRamp(Transform parent, string name, Vector3 ridge, float angle, float slopeLength, params float[] cuts)
     {
         float rad = angle * Mathf.Deg2Rad;
         Vector3 down = new Vector3(Mathf.Cos(rad), -Mathf.Sin(rad), 0) * slopeLength;
         Vector3 top = ridge, left = ridge + new Vector3(-down.x, down.y, 0), right = ridge + down;
-        Vector3 a = new Vector3(0, 0, z0), b = new Vector3(0, 0, z1);
-        var vertices = new[]
+        var vertices = new System.Collections.Generic.List<Vector3>();
+        var triangles = new System.Collections.Generic.List<int>();
+        void Quad(Vector3 p0, Vector3 p1, Vector3 p2, Vector3 p3) // clockwise seen from outside
         {
-            left + a, top + a, top + b, left + b,      // left face
-            top + a, right + a, right + b, top + b,    // right face
-            right + a, left + a, left + b, right + b,  // bottom
-            left + a, right + a, top + a,              // front cap
-            left + b, top + b, right + b,              // back cap
-        };
-        for (int i = 0; i < vertices.Length; i++) vertices[i] *= U;
-        var mesh = new Mesh { name = name, vertices = vertices };
-        mesh.triangles = new[] { 0, 2, 1, 0, 3, 2, 4, 6, 5, 4, 7, 6, 8, 10, 9, 8, 11, 10, 12, 14, 13, 15, 17, 16 };
+            int i = vertices.Count;
+            vertices.AddRange(new[] { p0, p1, p2, p3 });
+            triangles.AddRange(new[] { i, i + 2, i + 1, i, i + 3, i + 2 });
+        }
+        for (int c = 0; c + 1 < cuts.Length; c++)
+        {
+            Vector3 a = new Vector3(0, 0, cuts[c]), b = new Vector3(0, 0, cuts[c + 1]);
+            Quad(left + a, top + a, top + b, left + b);    // left face
+            Quad(top + a, right + a, right + b, top + b);  // right face
+            Quad(right + a, left + a, left + b, right + b); // bottom
+        }
+        Vector3 first = new Vector3(0, 0, cuts[0]), last = new Vector3(0, 0, cuts[cuts.Length - 1]);
+        int n = vertices.Count;
+        vertices.AddRange(new[] { left + first, right + first, top + first, left + last, top + last, right + last });
+        triangles.AddRange(new[] { n, n + 2, n + 1, n + 3, n + 5, n + 4 }); // end caps
+        for (int i = 0; i < vertices.Count; i++) vertices[i] *= U;
+        var mesh = new Mesh { name = name };
+        mesh.SetVertices(vertices);
+        mesh.SetTriangles(triangles, 0);
         mesh.RecalculateNormals();
         mesh.RecalculateBounds();
 

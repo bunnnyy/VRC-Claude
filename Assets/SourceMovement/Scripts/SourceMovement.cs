@@ -70,6 +70,7 @@ public class SourceMovement : UdonSharpBehaviour
     private const float SwimUpSpeed = 100f;       // jump in water
     private const float SinkSpeed = 60f;          // no keys in water
     private const float WaterJumpUp = 256f;       // climbing out of water onto a ledge
+    private const float SeamLift = 1f;            // how far off a face to re-sweep past a mesh seam
     private const int MaxBumps = 4;
     private const int MaxClipPlanes = 5;
     private const int MaxTicksPerFrame = 8;
@@ -831,29 +832,51 @@ public class SourceMovement : UdonSharpBehaviour
         if (dist < 0.0001f) return;
         Vector3 dir = delta / dist;
 
-        RaycastHit hit;
-        if (!Physics.BoxCast((start + hullCenter) * metersPerUnit, hullHalf * metersPerUnit, dir, out hit,
-            Quaternion.identity, (dist + Skin) * metersPerUnit, collisionLayers, QueryTriggerInteraction.Ignore)) return;
+        Vector3 lift = Vector3.zero;
+        for (int attempt = 0; attempt < 2; attempt++)
+        {
+            RaycastHit hit;
+            if (!Physics.BoxCast((start + lift + hullCenter) * metersPerUnit, hullHalf * metersPerUnit, dir, out hit,
+                Quaternion.identity, (dist + Skin) * metersPerUnit, collisionLayers, QueryTriggerInteraction.Ignore)) break;
 
-        // Started inside something: ignore it so we can move out instead of getting stuck.
-        if (hit.distance <= 0f && hit.point == Vector3.zero) return;
+            // Started inside something: ignore it so we can move out instead of getting stuck.
+            if (hit.distance <= 0f && hit.point == Vector3.zero) break;
 
-        // Mesh colliders report an edge normal where two triangles meet, even inside a flat face, which acts
-        // like a wall that isn't there (surfers stop dead mid-ramp). Use the face normal under the hit point.
-        Vector3 normal = hit.normal;
+            Vector3 normal = FaceNormal(hit);
+            float cos = -Vector3.Dot(dir, normal);
+            if (cos < 0.01f && attempt == 0)
+            {
+                // The face we touched doesn't block this move: a seam between coplanar triangles that the mesh
+                // collider reported as an edge. Sweep again from just off that face so real obstacles still hit.
+                lift = normal * SeamLift;
+                continue;
+            }
+            if (cos < 0.0001f) cos = 0.0001f;
+            float fraction = (hit.distance / metersPerUnit - Skin / cos) / dist;
+            if (fraction >= 1f) break;
+            if (fraction < 0f) fraction = 0f;
+
+            trFraction = fraction;
+            trEnd = start + lift + delta * fraction;
+            trNormal = normal;
+            return;
+        }
+        trEnd = end + lift;
+    }
+
+    /// <summary>
+    /// Mesh colliders report an edge normal where two triangles meet, even inside a flat face, which acts like
+    /// a wall that isn't there. Read the real face normal with a short ray along the reported normal, or straight
+    /// down from just above the hit when that ray runs along the face (seams across the direction of travel).
+    /// </summary>
+    private Vector3 FaceNormal(RaycastHit hit)
+    {
         RaycastHit face;
         float back = Skin * metersPerUnit;
-        if (Physics.Raycast(hit.point + normal * back, -normal, out face, back * 2f, collisionLayers, QueryTriggerInteraction.Ignore)
-            && Vector3.Dot(dir, face.normal) < 0f) normal = face.normal;
-
-        float cos = -Vector3.Dot(dir, normal);
-        if (cos < 0.0001f) cos = 0.0001f;
-        float fraction = (hit.distance / metersPerUnit - Skin / cos) / dist;
-        if (fraction >= 1f) return;
-        if (fraction < 0f) fraction = 0f;
-
-        trFraction = fraction;
-        trEnd = start + delta * fraction;
-        trNormal = normal;
+        if (Physics.Raycast(hit.point + hit.normal * back, -hit.normal, out face, back * 2f, collisionLayers, QueryTriggerInteraction.Ignore))
+            return face.normal;
+        if (Physics.Raycast(hit.point + Vector3.up * back, Vector3.down, out face, back * 2f, collisionLayers, QueryTriggerInteraction.Ignore))
+            return face.normal;
+        return hit.normal;
     }
 }
