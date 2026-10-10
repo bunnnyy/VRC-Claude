@@ -838,7 +838,15 @@ public class SourceMovement : UdonSharpBehaviour
         // Started inside something: ignore it so we can move out instead of getting stuck.
         if (hit.distance <= 0f && hit.point == Vector3.zero) return;
 
-        float cos = -Vector3.Dot(dir, hit.normal);
+        // Mesh colliders report an edge normal where two triangles meet, even inside a flat face, which acts
+        // like a wall that isn't there (surfers stop dead mid-ramp). Use the face normal under the hit point.
+        Vector3 normal = hit.normal;
+        RaycastHit face;
+        float back = Skin * metersPerUnit;
+        if (Physics.Raycast(hit.point + normal * back, -normal, out face, back * 2f, collisionLayers, QueryTriggerInteraction.Ignore)
+            && Vector3.Dot(dir, face.normal) < 0f) normal = face.normal;
+
+        float cos = -Vector3.Dot(dir, normal);
         if (cos < 0.0001f) cos = 0.0001f;
         float fraction = (hit.distance / metersPerUnit - Skin / cos) / dist;
         if (fraction >= 1f) return;
@@ -846,6 +854,6 @@ public class SourceMovement : UdonSharpBehaviour
 
         trFraction = fraction;
         trEnd = start + delta * fraction;
-        trNormal = hit.normal;
+        trNormal = normal;
     }
 }

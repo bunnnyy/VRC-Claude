@@ -253,6 +253,22 @@ public class Rig
                     heap.SetHeapVariable(a[3], (RaycastHit)boxed);
                     heap.SetHeapVariable(a[8], hit);
                 };
+            overrides["UnityEnginePhysics.__Raycast__UnityEngineVector3_UnityEngineVector3_UnityEngineRaycastHitRef_SystemSingle_SystemInt32_UnityEngineQueryTriggerInteraction__SystemBoolean"] =
+                (heap, a) =>
+                {
+                    Vector3 origin = heap.GetHeapVariable<Vector3>(a[0]);
+                    Vector3 dir = heap.GetHeapVariable<Vector3>(a[1]);
+                    bool hit = CollisionWorld.Raycast(origin, dir, heap.GetHeapVariable<float>(a[3]), out float distance, out Vector3 normal, heap.GetHeapVariable<int>(a[4]));
+                    object boxed = new RaycastHit();
+                    if (hit)
+                    {
+                        hitPoint.SetValue(boxed, origin + dir * distance);
+                        hitNormal.SetValue(boxed, normal);
+                        hitDistance.SetValue(boxed, distance);
+                    }
+                    heap.SetHeapVariable(a[2], (RaycastHit)boxed);
+                    heap.SetHeapVariable(a[6], hit);
+                };
             overrides["UnityEnginePhysics.__CheckBox__UnityEngineVector3_UnityEngineVector3_UnityEngineQuaternion_SystemInt32_UnityEngineQueryTriggerInteraction__SystemBoolean"] =
                 (heap, a) => heap.SetHeapVariable(a[5], CollisionWorld.CheckBox(heap.GetHeapVariable<Vector3>(a[0]),
                     heap.GetHeapVariable<Vector3>(a[1]), heap.GetHeapVariable<int>(a[3])));

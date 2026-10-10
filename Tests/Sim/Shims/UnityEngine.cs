@@ -189,6 +189,16 @@ namespace UnityEngine
             return true;
         }
 
+        public static bool Raycast(Vector3 origin, Vector3 direction, out RaycastHit hitInfo, float maxDistance, int layerMask, QueryTriggerInteraction q)
+        {
+            hitInfo = default;
+            if (!CollisionWorld.Raycast(origin, direction, maxDistance, out float distance, out Vector3 normal, layerMask)) return false;
+            hitInfo.distance = distance;
+            hitInfo.normal = normal;
+            hitInfo.point = origin + direction * distance;
+            return true;
+        }
+
         public static bool CheckBox(Vector3 center, Vector3 halfExtents, Quaternion orientation, int layerMask, QueryTriggerInteraction q) =>
             CollisionWorld.CheckBox(center, halfExtents, layerMask);
     }

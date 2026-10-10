@@ -77,6 +77,36 @@ public static class CollisionWorld
         return distance != float.MaxValue;
     }
 
+    /// <summary>Physics.Raycast against the boxes (slab test), giving the face normal.</summary>
+    public static bool Raycast(Vector3 origin, Vector3 dir, float maxDistance, out float distance, out Vector3 normal, int layerMask = ~0)
+    {
+        castCount++;
+        distance = float.MaxValue;
+        normal = Vector3.zero;
+        foreach (Box box in boxes)
+        {
+            if ((layerMask & (1 << box.layer)) == 0) continue;
+            Vector3[] axes = { Rotate(box.rotation, new Vector3(1, 0, 0)), Rotate(box.rotation, new Vector3(0, 1, 0)), Rotate(box.rotation, new Vector3(0, 0, 1)) };
+            float[] half = { box.half.x, box.half.y, box.half.z };
+            float tEnter = float.MinValue, tExit = float.MaxValue;
+            Vector3 enterNormal = Vector3.zero;
+            bool miss = false;
+            for (int i = 0; i < 3 && !miss; i++)
+            {
+                float o = Vector3.Dot(axes[i], origin - box.center), d = Vector3.Dot(axes[i], dir);
+                if (Math.Abs(d) < 1e-9f) { miss = Math.Abs(o) > half[i]; continue; }
+                float t1 = (-half[i] - o) / d, t2 = (half[i] - o) / d;
+                Vector3 n1 = -axes[i];
+                if (t1 > t2) { (t1, t2) = (t2, t1); n1 = axes[i]; }
+                if (t1 > tEnter) { tEnter = t1; enterNormal = n1; }
+                if (t2 < tExit) tExit = t2;
+            }
+            if (miss || tEnter > tExit || tEnter < 0 || tEnter > maxDistance) continue;
+            if (tEnter < distance) { distance = tEnter; normal = enterNormal; }
+        }
+        return distance != float.MaxValue;
+    }
+
     /// <summary>Physics.CheckBox: does the axis-aligned box overlap any box on these layers?</summary>
     public static bool CheckBox(Vector3 center, Vector3 half, int layerMask)
     {

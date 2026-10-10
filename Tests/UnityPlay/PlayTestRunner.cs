@@ -87,6 +87,7 @@ public class PlayTestRunner : MonoBehaviour
         yield return Run("bhop", Bhop());
         yield return Run("strafe", AirStrafe());
         yield return Run("surf", Surf());
+        yield return Run("surf", SurfFullRamp());
         yield return Run("teleport", Teleports());
         yield return Run("ladder", Ladder());
         yield return Run("water", Water());
@@ -233,6 +234,21 @@ public class PlayTestRunner : MonoBehaviour
             if (hold == 1) Check("surf", Mathf.Abs(drop) < 60f, "holding into the ramp keeps height");
             else Check("surf", drop < -200f, "no input slides down");
         }
+    }
+
+    IEnumerator SurfFullRamp()
+    {
+        // The whole 6000 unit ramp at 1000 u/s holding D. The ramp is a mesh collider whose faces are two
+        // triangles each; crossing their shared edge used to stop surfers dead (edge normal = fake wall).
+        yield return Teleport(new Vector3(200, -560, 4400), 0f, false);
+        movement.SetProgramVariable("velocity", new Vector3(0, 0, 1000));
+        Keys(Key.D);
+        float minSpeed = 1e9f;
+        yield return Frames(5.5f, () => minSpeed = Mathf.Min(minSpeed, Speed()));
+        Keys();
+        Log($"full ramp: reached z {Real().z:F0} (ramp ends at 10300), lowest speed {minSpeed:F0} u/s");
+        Check("surf", Real().z > 9500f && minSpeed > 950f, "surfs the whole mesh ramp across its triangle seam");
+        yield return Teleport(new Vector3(0, 0, 100), 0f, false); // out of the air before the next test
     }
 
     IEnumerator Teleports()
@@ -508,26 +524,28 @@ public class PlayTestRunner : MonoBehaviour
         for (int i = 0; i < 12; i++)
         {
             bool left = i % 2 == 0;
-            float rate = (left ? -120f : 120f) * (i == 0 ? 0.5f : 1f);
+            float rate = (left ? -150f : 150f) * (i == 0 ? 0.5f : 1f);
             Keys(Key.Space, left ? Key.A : Key.D);
-            yield return Frames(0.6f, () => { yaw += rate * Time.deltaTime; SetYaw(yaw); });
+            yield return Frames(0.5f, () => { yaw += rate * Time.deltaTime; SetYaw(yaw); });
         }
-        Keys();
-        yield return Frames(0.6f, () => { yaw = Mathf.MoveTowards(yaw, 0f, 60f * Time.deltaTime); SetYaw(yaw); });
+        Keys(Key.Space);
+        yield return Frames(0.5f, () => { yaw = Mathf.MoveTowards(yaw, 0f, 90f * Time.deltaTime); SetYaw(yaw); });
         Log($"demo bhop: {Speed():F0} u/s at z {Real().z:F0}");
 
-        // Surf: onto the 60 degree ramp at 900 u/s, holding D into it, small look-arounds.
+        // Surf: onto the 60 degree ramp at 1000 u/s looking along it, holding D into it, off the end onto the
+        // end platform.
+        Keys();
         yield return Teleport(new Vector3(200, -560, 4400), 0f, false);
-        movement.SetProgramVariable("velocity", new Vector3(0, 0, 900));
+        movement.SetProgramVariable("velocity", new Vector3(0, 0, 1000));
         Keys(Key.D);
         float t = 0f;
-        yield return Frames(6.5f, () =>
+        yield return Frames(6.2f, () =>
         {
             t += Time.deltaTime;
-            SetYaw(Mathf.Sin(t * 1.3f) * 12f);
+            if (Mathf.Repeat(t, 1f) < Time.deltaTime) Log($"demo surf t {t:F1}: real {Real():F0}, speed {Speed():F0}");
         });
         Keys();
-        yield return Frames(1.5f, null);
+        yield return Frames(2f, null);
         Log($"demo surf end: {Speed():F0} u/s at {Real():F0}, {recordFrameNumber} frames");
     }
 
