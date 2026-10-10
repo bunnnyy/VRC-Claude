@@ -368,6 +368,8 @@ the render meshes (needs a test). I did not dig into why USource's geometry does
   400 u/s and 39-69 u at 1500 u/s, flown through without losing speed, 4/4 still broken after the map is switched off
   and on, the 2 others stay solid; the rest of eazy's map test still passes (stand 46/46, teleports 44/44, blocks,
   runs). Route build with uSource: 4/4 glass models linked (each model centred on its collider, glass textures).
+  `run.sh sample` (uSource visuals, the real lobby): eazy's 4/4 glass linked, beside one it breaks and its model
+  goes, still broken after Back to lobby and Rejoin map; 44/46 (the 2 known drop-probe teleport misses). Vote 44/44.
   A multi-lens review (12 findings, each checked by a skeptic) led to the hull-based check, the surf, damage filter
   and prop data rules, and upright panes only.
 - Still open: the route bot's plan treats the glass as a wall, so it doesn't get through red lanes 3 and 4 yet.

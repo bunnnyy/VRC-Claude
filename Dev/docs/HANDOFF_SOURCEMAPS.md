@@ -57,7 +57,7 @@ mkdir -p $c/css && ln -sfn ../css_content $c/css/cstrike    # SM_CSS=$PWD/$c/css
 | `Dev/Tests/UdonCompile/compile.sh` | real UdonSharp compile + editor scripts | OK |
 | `Dev/Tests/UnityPlay/run.sh vote` | rotation, owner changes, practice courses (ClientSim) | 44/44 |
 | `Dev/Tests/UnityPlay/run.sh map <bsp>` | one map: breakable glass, stand, reachable teleports, bhop/surf runs (SM_ONLY=runs or glass: only that) | japan/eazy/badges all passed |
-| `Dev/Tests/UnityPlay/run.sh sample` | whole sample world, per map (needs uSource, zones downloaded) | 38/40 (2 drop-probe teleports) |
+| `Dev/Tests/UnityPlay/run.sh sample` | whole sample world, per map (needs uSource, zones downloaded) | 44/46 (2 drop-probe teleports) |
 | `SM_CSS=... Unity -executeMethod LadderDemoBootstrap.Run -smRecord dir`, then `make_video.sh dir out.mp4` | first-person ladder clip on the test map (CS:S ladder model with SM_CSS) | recorded |
 | `SM_CSS=... Unity -executeMethod LightingShots.Run -bsp map -smLightmaps on` | screenshots of an imported map (stock textures with SM_CSS) | eazy textured |
 | `Dev/Tests/UnityPlay/run.sh 90` | movement suite (movement session's) | all passed |
