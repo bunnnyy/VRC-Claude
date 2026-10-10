@@ -74,7 +74,11 @@ public class SampleWorldTestRunner : MonoBehaviour
             {
                 renderers++;
                 foreach (var mat in r.sharedMaterials)
-                    if (mat != null && mat.name.ToLower().Contains("tools/tools") && !mat.name.ToLower().Contains("toolsblack") && !mat.name.ToLower().Contains("toolsskybox")) tools++;
+                {
+                    string n = mat != null ? mat.name.ToLower() : "";
+                    n = n.Substring(n.LastIndexOf('/') + 1);
+                    if (n.StartsWith("tools") && n != "toolsblack" && !n.StartsWith("toolsskybox")) tools++;
+                }
             }
             var props = visuals.Find("[StaticProps]");
             if (props != null) propColliders = props.GetComponentsInChildren<MeshCollider>(true).Length;

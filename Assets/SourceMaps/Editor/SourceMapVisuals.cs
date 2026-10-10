@@ -118,7 +118,8 @@ public static class SourceMapVisuals
     {
         string m = material.ToLowerInvariant().Replace('\\', '/');
         string file = m.Substring(m.LastIndexOf('/') + 1);
-        return m.Contains("tools/") && Hidden.Contains(file.Replace(" (instance)", "").Trim());
+        // uSource's saved materials are named without their folder ("toolstrigger"); every hidden name starts with "tools".
+        return Hidden.Contains(file.Replace(" (instance)", "").Trim());
     }
 
     /// <summary>
