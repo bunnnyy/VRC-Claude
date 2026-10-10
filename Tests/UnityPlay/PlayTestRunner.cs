@@ -257,8 +257,10 @@ public class PlayTestRunner : MonoBehaviour
         // Bhop along the test map's seamed wall (face at x 1856 facing -x, vertical mesh seams every 200 u)
         // holding D into it. A seam's edge normal lies along the wall and used to stop the player there.
         yield return Spawn(new Vector3(1830, 0, 450), 0f);
-        movement.SetProgramVariable("velocity", new Vector3(0, 0, 800));
         Keys(Key.Space, Key.D);
+        yield return WaitAir(); // set the speed in the air, so ground friction before the first jump doesn't count
+        Vector3 v0 = (Vector3)movement.GetProgramVariable("velocity");
+        movement.SetProgramVariable("velocity", new Vector3(0, v0.y, 800));
         float minSpeed = 1e9f, maxX = 0f;
         yield return Frames(1.2f, () =>
         {
