@@ -19,6 +19,13 @@ test, kitsune's 2 u diagonal lip stop (movement session, step-up), lightmap atla
 Scratch tool used for geometry questions (not in the repo): a console project compiling `Assets/SourceMaps/Editor/Bsp/*.cs`
 that prints brush faces/entities near a point (remember brush entities are stored relative to their origin).
 
+## Step 6 done (bhop blocks, prop lighting; see the plan)
+New Udon scripts need their program assets committed (`.asset` + `.meta`, made by `SourceMapImporter.EnsureProgramAssets`
+in the test project): run.sh copies `Assets/SourceMaps` fresh, so assets made only in the test project vanish and the
+scene's behaviours lose their program. In batch mode the importer now recompiles U# itself.
+VRChat's capsule floats ~6 units above the floor: thin triggers need the 8-unit raise; anything timing-sensitive
+(bhop blocks) tests touches with Source's box (`Physics.OverlapBox`, null entries = VRChat-hidden colliders).
+
 ## Setting up a fresh container
 ```
 # .NET 8 (dotnet-install.sh --channel 8.0 --install-dir /opt/dotnet; ln -s /opt/dotnet/dotnet /usr/local/bin/)
@@ -34,12 +41,12 @@ Tests/Converters/compare.sh Tests/Bsp/.cache/maps/bhop_japan.bsp   # downloads u
 ## Tests
 | Command | What | Last result |
 |---|---|---|
-| `dotnet run --project Tests/Bsp` | BSP reader/collision on all 5 maps + booster parsing | 57/57 |
+| `dotnet run --project Tests/Bsp` | BSP reader/collision on all 5 maps + booster parsing | 74/74 |
 | `dotnet run --project Tests/Sim` | movement + timer simulation (incl. course boards, saved bests) | all passed |
 | `Tests/UdonCompile/compile.sh` | real UdonSharp compile + editor scripts | OK |
 | `Tests/UnityPlay/run.sh vote` | rotation, owner changes, practice courses (ClientSim) | 44/44 |
 | `Tests/UnityPlay/run.sh map <bsp>` | one map: stand, reachable teleports, bhop/surf runs (SM_ONLY=runs: runs only) | japan/eazy/badges all passed |
-| `Tests/UnityPlay/run.sh sample` | whole sample world, per map (needs uSource, zones downloaded) | all passed |
+| `Tests/UnityPlay/run.sh sample` | whole sample world, per map (needs uSource, zones downloaded) | 38/40 (2 drop-probe teleports) |
 | `Tests/UnityPlay/run.sh 90` | movement suite (movement session's) | all passed |
 
 ## Lessons

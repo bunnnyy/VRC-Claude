@@ -320,3 +320,27 @@ the render meshes (needs a test). I did not dig into why USource's geometry does
   trigger (0.6 m) the falling player slides off; one grounded stop at a 2 u diagonal lip near `restartred`, reported to
   the movement session (step-up). Faint lines can show where two lightmapped faces meet (lightmap atlas edges).
 
+
+### Step 6: bhop blocks and prop lighting (2026-10-10, asked by the user after step 5)
+- **Bhop blocks, as on CS:S servers** (`SourceMapBlocks`, one "Bhop Blocks" object per map with an **On** switch):
+  - Name blocks (japan, arcane, badges): a `trigger_multiple` on the block renames the player ("!activator AddOutput
+    targetname activator" at 0.09 s, "default" at 0.1 s, refiring every `wait`), and a teleport filtered on that name
+    (`filter_activator_name`) covers the block. `SourceMapNameTrigger` + filtered `SourceMapTeleport`; also
+    `filter_activator_class` (japan's beginner mode) and name-gated pushes/boosters (badges: 58 brushes).
+  - Door blocks (eazy_v2, 259): `func_door` with "touch opens" sinks 9 units at 20 u/s and returns after 0.5 s
+    (`SourceMapDoor`, collider and visuals move; local per player). Over a teleport it stops being solid when fully
+    open, so the player drops into it (in CS:S they sink into it).
+  - Touches of name triggers and filtered teleports are tested with Source's player box (32 x 32 x 72), not with
+    VRChat's capsule: the capsule floats about 6 units above the floor (2 hover + skin), which is why all triggers are
+    raised 8 units, and with capsule events the timing went wrong (a player who jumped off was still "inside").
+- **Prop lighting like CS:S lights models**: the ambient cube VRAD stored in the prop's leaf (LUMP_LEAF_AMBIENT_*), plus
+  the 4 strongest world lights that reach the prop (ray against the collision; the sun only if the ray ends in a sky
+  brush), N.L per vertex, baked into vertex colours (`SourceMaps/Prop`); alpha-tested foliage lit from both sides.
+  Ambient values are c * 2^exp (not / 255 as lightmaps are). japan: 148 of 168 prop renderers (the rest are unlit).
+- **Results (real Unity + ClientSim + SourceMovement, `run.sh map`)**, bhop blocks (stand 1 s / bounce with jump held /
+  blocks off): japan 6/6, 5/5, 6/6; badges 6/6, 6/6, 6/6; arcane 4/4, 3/3, 4/4; eazy doors 6/6, -, 6/6. Bounce is only
+  tested on blocks whose teleport reaches at most 20 units above them (arcane has 65-unit ones that catch bouncers
+  in CS:S too). badges and eazy_v2 all passed; `Tests/Bsp` 74/74.
+- Still open: arcane's 3 out-of-bounds teleports and one japan/kitsune teleport per run in the drop-in test (the probe,
+  not the triggers); 2 mid-air speed losses on arcane walls (a diagonal triangle edge on a wall face, reported to the
+  movement session).

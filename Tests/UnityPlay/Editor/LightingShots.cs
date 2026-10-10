@@ -68,3 +68,22 @@ public static class LightingShots
         RenderTexture.active = null;
     }
 }
+
+/// <summary>Lists the prop renderers of a map in Assets/SourceMapsSample.unity: shader and vertex colours (debugging).</summary>
+public static class PropDump
+{
+    public static void Run()
+    {
+        UnityEditor.SceneManagement.EditorSceneManager.OpenScene("Assets/SourceMapsSample.unity");
+        var map = GameObject.Find("bhop_japan");
+        var props = map.transform.Find("Visuals/[StaticProps]");
+        var groups = new System.Collections.Generic.Dictionary<string, int>();
+        foreach (var r in props.GetComponentsInChildren<Renderer>(true))
+        {
+            var mesh = r is SkinnedMeshRenderer smr ? smr.sharedMesh : r.GetComponent<MeshFilter>()?.sharedMesh;
+            string key = $"{r.GetType().Name} shaders [{string.Join(",", System.Array.ConvertAll(r.sharedMaterials, m => m != null ? m.shader.name : "-"))}] colours {(mesh != null ? mesh.colors.Length > 0 : false)} readable {(mesh != null && mesh.isReadable)}";
+            groups[key] = groups.TryGetValue(key, out var n) ? n + 1 : 1;
+        }
+        foreach (var g in groups) Debug.Log($"[SMTEST] {g.Value}x {g.Key}");
+    }
+}

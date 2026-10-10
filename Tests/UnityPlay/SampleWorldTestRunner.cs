@@ -91,15 +91,15 @@ public class SampleWorldTestRunner : MonoBehaviour
         }
         Check(renderers > 0 && tools == 0 && (staticProps == 0 || propColliders > 0),
             $"{name}: visuals imported ({renderers} renderers, {tools} tool surfaces drawn, {staticProps} static props with a model, {propColliders} prop colliders)");
-        // Source lighting: props drawn with SourceMaps/Prop carry vertex light; door blocks move their visible model.
+        // Source lighting: props drawn with SourceMaps/Prop (vertex light); door blocks move their visible model.
         int litProps = 0, propRenderers = 0;
         var propGroup = visuals != null ? visuals.Find("[StaticProps]") : null;
         if (propGroup != null)
             foreach (var r in propGroup.GetComponentsInChildren<Renderer>(true))
             {
                 propRenderers++;
-                var mesh = r is SkinnedMeshRenderer smr ? smr.sharedMesh : r.GetComponent<MeshFilter>()?.sharedMesh;
-                if (System.Array.Exists(r.sharedMaterials, m => m != null && m.shader.name == "SourceMaps/Prop") && mesh != null && mesh.colors.Length > 0) litProps++;
+                // (Material only: in play mode static batching merges the meshes, so their vertex colours aren't per prop.)
+                if (System.Array.Exists(r.sharedMaterials, m => m != null && m.shader.name == "SourceMaps/Prop")) litProps++;
             }
         var doors = root.GetComponentsInChildren<SourceMapDoor>(true);
         int linked = System.Array.FindAll(doors, d => d.visuals != null).Length;
