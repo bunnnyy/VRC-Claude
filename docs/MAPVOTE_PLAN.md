@@ -341,6 +341,8 @@ the render meshes (needs a test). I did not dig into why USource's geometry does
   blocks off): japan 6/6, 5/5, 6/6; badges 6/6, 6/6, 6/6; arcane 4/4, 3/3, 4/4; eazy doors 6/6, -, 6/6. Bounce is only
   tested on blocks whose teleport reaches at most 20 units above them (arcane has 65-unit ones that catch bouncers
   in CS:S too). badges and eazy_v2 all passed; `Tests/Bsp` 74/74.
+- Collision trim fix: touching faces are now matched by the BSP's exact plane (the clipped corners can be ~0.1 unit off,
+  e.g. 6847.913 vs 6848, which kept some wall joins' hidden end faces). With the movement session's e069413 the arcane
+  wall-slide stalls are gone; the runs ignore speed changes inside pushes/boosters (arcane's launch pads).
 - Still open: arcane's 3 out-of-bounds teleports and one japan/kitsune teleport per run in the drop-in test (the probe,
-  not the triggers); 2 mid-air speed losses on arcane walls (a diagonal triangle edge on a wall face, reported to the
-  movement session).
+  not the triggers); kitsune's 2-unit diagonal lip (movement session).

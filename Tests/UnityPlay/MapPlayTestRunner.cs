@@ -385,7 +385,7 @@ public class MapPlayTestRunner : MonoBehaviour
 
     /// <summary>
     /// Runs `each` every frame until it returns false, counting stalls: the horizontal speed falls by more than
-    /// 100 u/s in one frame although no vertical wall is right ahead. Stops when a map teleport moves the player.
+    /// 100 u/s in one frame although nothing facing against the motion is right ahead. Stops when a map teleport moves the player.
     /// </summary>
     IEnumerator Watch(string what, System.Func<bool> each)
     {
@@ -399,7 +399,8 @@ public class MapPlayTestRunner : MonoBehaviour
             if ((player.GetPosition() - prevPos).magnitude > (prevVel.magnitude * Time.deltaTime + 64f) * U) yield break; // teleported
             lastPos = player.GetPosition();
             float before = Flat(prevVel).magnitude, now = Flat(vel).magnitude;
-            if (before - now > 100f && WallAhead(prevPos, Flat(prevVel).normalized, before)) wallHits++;
+            if (before - now > 100f && InMechanics(prevPos)) { } // pushes and boosters change speed on purpose
+            else if (before - now > 100f && WallAhead(prevPos, Flat(prevVel).normalized, before)) wallHits++;
             else if (before - now > 100f)
             {
                 stalls++;
@@ -421,13 +422,13 @@ public class MapPlayTestRunner : MonoBehaviour
         return sb.Length == 0 ? " nothing" : sb.ToString();
     }
 
-    /// <summary>A vertical wall within two frames of travel (+ 16 u) in front of the 32 x 72 hull.</summary>
+    /// <summary>A surface facing against the motion within two frames of travel (+ 16 u) in front of the 32 x 72 hull.</summary>
     bool WallAhead(Vector3 feet, Vector3 dir, float speed)
     {
         if (dir == Vector3.zero) return true;
         float reach = (speed * Time.deltaTime * 2f + 16f) * U;
         foreach (var hit in Physics.BoxCastAll(feet + Vector3.up * 37f * U, new Vector3(15f, 34f, 15f) * U, dir, Quaternion.identity, reach, Solid, QueryTriggerInteraction.Ignore))
-            if (Mathf.Abs(hit.normal.y) < 0.3f) return true;
+            if (Vector3.Dot(hit.normal, dir) < -0.2f) return true; // a wall or slope facing against the motion
         return false;
     }
 
@@ -546,6 +547,19 @@ public class MapPlayTestRunner : MonoBehaviour
             dest = next.destination.position;
         }
         return dest;
+    }
+
+    /// <summary>Inside a push or booster trigger (trigger_push, basevelocity / gravity boosters), at body height.</summary>
+    static bool InMechanics(Vector3 feet)
+    {
+        foreach (var e in FindObjectsOfType<SourceEntity>())
+        {
+            if (e.className != "trigger_push" && e.GetComponent("SourceBoostTrigger") == null) continue;
+            foreach (var c in e.GetComponents<Collider>())
+                for (float h = 0.1f; h < 1.4f; h += 0.4f)
+                    if (c.enabled && (c.ClosestPoint(feet + Vector3.up * h) - (feet + Vector3.up * h)).sqrMagnitude < 1e-6f) return true;
+        }
+        return false;
     }
 
     /// <summary>Inside a trigger_push volume: the push (e.g. an updraft) decides where the player goes, not the fall.</summary>

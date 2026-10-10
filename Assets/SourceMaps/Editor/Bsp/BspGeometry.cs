@@ -42,8 +42,14 @@ namespace SourceMaps.Bsp
         /// </summary>
         public static List<Vector3[]> BrushPolygons(BspFile bsp, int brushIndex, float raiseTop = 0f)
         {
+            return BrushFaces(bsp, brushIndex, raiseTop).Select(f => f.Key).ToList();
+        }
+
+        /// <summary>BrushPolygons with each face's plane, exact from the BSP (the clipped corners carry float error).</summary>
+        public static List<KeyValuePair<Vector3[], BspFile.Plane>> BrushFaces(BspFile bsp, int brushIndex, float raiseTop = 0f)
+        {
             var brush = bsp.Brushes[brushIndex];
-            var result = new List<Vector3[]>();
+            var result = new List<KeyValuePair<Vector3[], BspFile.Plane>>();
             for (int s = 0; s < brush.NumSides; s++)
             {
                 var side = bsp.BrushSides[brush.FirstSide + s];
@@ -57,7 +63,7 @@ namespace SourceMaps.Bsp
                     if (bsp.BrushSides[brush.FirstSide + o].Plane == side.Plane) continue;
                     poly = Clip(poly, other.Normal, Dist(other, raiseTop));
                 }
-                if (poly.Count >= 3) result.Add(poly.ToArray());
+                if (poly.Count >= 3) result.Add(new KeyValuePair<Vector3[], BspFile.Plane>(poly.ToArray(), new BspFile.Plane { Normal = plane.Normal, Dist = Dist(plane, raiseTop) }));
             }
             return result;
         }
@@ -94,10 +100,11 @@ namespace SourceMaps.Bsp
             var faces = new List<(Vector3[] poly, Vector3 n, float d)>();
             var byPlane = new Dictionary<(int, int, int, int), List<int>>();
             foreach (int b in brushes)
-                foreach (var poly in BrushPolygons(bsp, b))
+                foreach (var face in BrushFaces(bsp, b))
                 {
-                    Vector3 n = PlaneOf(poly);
-                    float d = Vector3.Dot(n, poly[0]);
+                    var poly = face.Key;
+                    Vector3 n = face.Value.Normal;
+                    float d = face.Value.Dist; // exact: corners can be ~0.1 unit off, which split touching faces apart
                     var key = PlaneKey(n, d);
                     if (!byPlane.TryGetValue(key, out var list)) byPlane[key] = list = new List<int>();
                     list.Add(faces.Count);
