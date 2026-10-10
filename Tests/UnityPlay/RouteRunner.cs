@@ -44,7 +44,7 @@ public class RouteRunner : MonoBehaviour
     /// <summary>Source x, y to flat Unity-axis coordinates (x = -y, z = x), Source units.</summary>
     static Vector2 V(float x, float y) { return new Vector2(-y, x); }
 
-    struct Spot { public Vector3 p; public float s, lat; public bool deep, edge; public int seg; public float need; }
+    struct Spot { public Vector3 p; public float s, lat, ceil; public bool deep, edge; public int seg; public float need; }
 
     readonly List<List<Spot>> spots = new List<List<Spot>>();
     readonly List<float[]> lengths = new List<float[]>();
@@ -232,7 +232,7 @@ public class RouteRunner : MonoBehaviour
         coast = false;
         if (!has) return (noTarget - here).normalized * Mathf.Max(v.magnitude, 250f);
         Vector2 aim = new Vector2(tgt.p.x, tgt.p.z);
-        float tLeft = FallTime(y - tgt.p.y, vy);
+        float tLeft = FlightTime(y, vy, tgt.p.y, path.ceil);
         if (float.IsNaN(tLeft) || tLeft < 0.12f || (!path.curved && (aim - here).magnitude < 24f)) { coast = true; return v; }
         if (path.curved) return (Curve(path, Mathf.Min(t / path.time + 0.1f, 1f)) - here) / (0.1f * path.time);
         aim += (aim - here).normalized * 6f; // land a little long, never short
@@ -387,13 +387,14 @@ public class RouteRunner : MonoBehaviour
         Vector2 here = Flat(pos);
         float speed = new Vector2(vel.x, vel.z).magnitude;
         float fallbackMiss = float.MaxValue;
+        float roof = Headroom(here, pos.y);
         for (int pass = 0; pass < 2; pass++)
         {
             var options = new List<(float score, Spot spot, float need, float time)>();
             foreach (var s in list)
             {
                 if (s.s < progress + 24f || s.s > progress + 700f) continue;
-                float time = FallTime(pos.y - s.p.y, vel.y);
+                float time = FlightTime(pos.y, vel.y, s.p.y, Mathf.Min(roof, s.ceil));
                 if (float.IsNaN(time) || time < 0.2f) continue;
                 float need = (new Vector2(s.p.x, s.p.z) - here).magnitude / time;
                 // Can't get there, or (first pass) would land too slow to go on from there.
@@ -413,7 +414,7 @@ public class RouteRunner : MonoBehaviour
                 if (simulated >= 10) break;
                 for (int k = 0, tries = 0; k <= 8 && tries < 3; k++)
                 {
-                    if (!FlightWithBend(pos, vel.y, o.spot.p, o.time, k, out Flight f)) continue;
+                    if (!FlightWithBend(pos, vel.y, o.spot.p, o.time, Mathf.Min(roof, o.spot.ceil), k, out Flight f)) continue;
                     tries++;
                     simulated++;
                     bool ok = SimulateHop(pos, vel, o.spot, f, out float miss);
@@ -439,7 +440,7 @@ public class RouteRunner : MonoBehaviour
         foreach (var sp in list)
         {
             if (sp.s < progress + 24f || shown >= 12) continue;
-            float time = FallTime(pos.y - sp.p.y, vel.y);
+            float time = FlightTime(pos.y, vel.y, sp.p.y, Mathf.Min(roof, sp.ceil));
             if (float.IsNaN(time)) continue;
             float need = (new Vector2(sp.p.x, sp.p.z) - here).magnitude / time;
             Log($"  rejected {sp.p:F0} s {sp.s:F0} edge {sp.edge}: need {need:F0} reach {Reach(speed, time):F0} plan {sp.need:F0} time {time:F2}");
@@ -466,7 +467,7 @@ public class RouteRunner : MonoBehaviour
         return 0.5f * (speed + Mathf.Sqrt(speed * speed + 900f * 100f * time)) * 0.9f;
     }
 
-    struct Flight { public Vector2 a, c, b; public float time, length; public bool curved; }
+    struct Flight { public Vector2 a, c, b; public float time, length, ceil; public bool curved; }
 
     /// <summary>Where a flight is at `u` (0..1 of its time): a quadratic curve from a to b with control point c.</summary>
     static Vector2 Curve(Flight f, float u) { return (1f - u) * (1f - u) * f.a + 2f * u * (1f - u) * f.c + u * u * f.b; }
@@ -476,22 +477,22 @@ public class RouteRunner : MonoBehaviour
     /// 48, 64 units to one side then the other (1..8), like strafing around bhop_eazy_v2's pillars; if the hull
     /// would make it without touching anything.
     /// </summary>
-    bool FlightWithBend(Vector3 from, float vy, Vector3 to, float time, int k, out Flight flight)
+    bool FlightWithBend(Vector3 from, float vy, Vector3 to, float time, float ceil, int k, out Flight flight)
     {
         Vector2 a = Flat(from), b = Flat(to), mid = (a + b) * 0.5f, side = new Vector2((b - a).y, -(b - a).x).normalized;
         float off = 16f * ((k + 1) / 2) * (k % 2 == 0 ? -1f : 1f); // 0, 16, -16, 32, -32 ... 64, -64
-        flight = new Flight { a = a, b = b, c = mid + side * (2f * off), time = time, curved = k != 0 }; // passes `off` aside at its middle
+        flight = new Flight { a = a, b = b, c = mid + side * (2f * off), time = time, ceil = ceil, curved = k != 0 }; // passes `off` aside at its middle
         flight.length = 0f;
         for (int i = 1; i <= 12; i++) flight.length += (Curve(flight, i / 12f) - Curve(flight, (i - 1) / 12f)).magnitude;
         return ClearFlight(from.y, vy, flight);
     }
 
     /// <summary>The first flight with any bend (straight first; bends only if `curves`).</summary>
-    bool FindFlight(Vector3 from, float vy, Vector3 to, float time, bool curves, out Flight flight)
+    bool FindFlight(Vector3 from, float vy, Vector3 to, float time, float ceil, bool curves, out Flight flight)
     {
         flight = default;
         for (int k = 0; k <= (curves ? 8 : 0); k++)
-            if (FlightWithBend(from, vy, to, time, k, out flight)) return true;
+            if (FlightWithBend(from, vy, to, time, ceil, k, out flight)) return true;
         return false;
     }
 
@@ -523,15 +524,18 @@ public class RouteRunner : MonoBehaviour
             var now = pending.Dequeue();
             if (now.key != 0) v = PushAt(v, now.yaw + 90f * now.key);
             p += v * Dt;
+            float y0 = y;
             y += (vy - 0.5f * Gravity * Dt) * Dt;
             vy -= Gravity * Dt;
             if (vy < 0f && y <= tgt.p.y) { miss = (p - new Vector2(tgt.p.x, tgt.p.z)).magnitude; return true; }
-            if (tick % 2 == 0 && y > tgt.p.y + 2f)
+            if (y > tgt.p.y + 2f && HullHits(p, y))
             {
-                var center = new Vector3(p.x, y + 37f, p.y) * U;
-                if (Physics.CheckBox(center, new Vector3(15.75f, 35.75f, 15.75f) * U, Quaternion.identity, layers, QueryTriggerInteraction.Ignore)
-                    || TouchesTeleport(center)) return false;
+                // Rising into something overhead: Source stops the head there (vertical speed to zero). Anything
+                // else in the way (a wall, a beam's side) ends the hop.
+                if (y > y0 && !HullHits(p, y0)) { y = y0; vy = 0f; }
+                else return false;
             }
+            if (tick % 3 == 0 && TouchesTeleport(new Vector3(p.x, y + 37f, p.y) * U)) return false;
         }
         return false;
     }
@@ -546,7 +550,7 @@ public class RouteRunner : MonoBehaviour
         {
             float t = f.time * i / n;
             Vector2 p = Curve(f, (float)i / n);
-            float y = y0 + vy * t - 0.5f * Gravity * t * t;
+            float y = HeightAt(y0, vy, t, f.ceil);
             var center = new Vector3(p.x, y + 37f, p.y) * U;
             if (i < n && Physics.CheckBox(center, new Vector3(half, 35.5f, half) * U, Quaternion.identity, layers, QueryTriggerInteraction.Ignore)) return false;
             if (TouchesTeleport(center)) return false;
@@ -573,7 +577,7 @@ public class RouteRunner : MonoBehaviour
             {
                 var B = list[b];
                 if (B.s < A.s + 24f || B.seg > A.seg + 1 || float.IsInfinity(B.need)) continue;
-                float time = FallTime(A.p.y - B.p.y, jump);
+                float time = FlightTime(A.p.y, jump, B.p.y, Mathf.Min(A.ceil, B.ceil));
                 if (float.IsNaN(time) || time < 0.2f) continue;
                 float need = new Vector2(B.p.x - A.p.x, B.p.z - A.p.z).magnitude / time;
                 if (need < B.need) continue; // we'd land there too slow to go on
@@ -586,7 +590,7 @@ public class RouteRunner : MonoBehaviour
             {
                 var B = list[hopsFrom[h].b];
                 float time = hopsFrom[h].time;
-                if (FindFlight(A.p, jump, B.p, time, h < 6, out Flight f)) { A.need = MinSpeed(f.length / time, time); break; }
+                if (FindFlight(A.p, jump, B.p, time, Mathf.Min(A.ceil, B.ceil), h < 6, out Flight f)) { A.need = MinSpeed(f.length / time, time); break; }
             }
             list[a] = A;
         }
@@ -618,11 +622,11 @@ public class RouteRunner : MonoBehaviour
                     foreach (float top in Surfaces(p)) // every floor in the column: blocks can sit under arches
                         if (SafeAt(p, top))
                         {
-                            list.Add(new Spot { p = new Vector3(p.x, top, p.y), s = s0 + along, lat = lat, deep = Deep(p, top), seg = i });
+                            list.Add(new Spot { p = new Vector3(p.x, top, p.y), s = s0 + along, lat = lat, deep = Deep(p, top), seg = i, ceil = Headroom(p, top) });
                             any = true;
                         }
                     if (!any && Overhang(p, out float edgeTop))
-                        list.Add(new Spot { p = new Vector3(p.x, edgeTop, p.y), s = s0 + along, lat = lat, edge = true, seg = i });
+                        list.Add(new Spot { p = new Vector3(p.x, edgeTop, p.y), s = s0 + along, lat = lat, edge = true, seg = i, ceil = Headroom(p, edgeTop) });
                 }
             s0 += len;
         }
@@ -744,6 +748,42 @@ public class RouteRunner : MonoBehaviour
         foreach (var c in Physics.OverlapBox(center, new Vector3(16f, 36f, 16f) * U, Quaternion.identity, ~0, QueryTriggerInteraction.Collide))
             if (c.isTrigger && c.GetComponent<SourceMapTeleport>() != null) return true;
         return false;
+    }
+
+    /// <summary>Whether the hull (with feet at y) overlaps the map at `p`.</summary>
+    bool HullHits(Vector2 p, float y)
+    {
+        return Physics.CheckBox(new Vector3(p.x, y + 37f, p.y) * U, new Vector3(15.75f, 35.75f, 15.75f) * U, Quaternion.identity, layers, QueryTriggerInteraction.Ignore);
+    }
+
+    /// <summary>
+    /// The highest the feet can go above `top` at `p` before the head hits something (a beam over a block): the hull
+    /// (72 units) plus Source's skin below whatever is overhead.
+    /// </summary>
+    float Headroom(Vector2 p, float top)
+    {
+        var start = new Vector3(p.x, top + 73f, p.y) * U;
+        if (Physics.BoxCast(start, new Vector3(15.5f, 0.5f, 15.5f) * U, Vector3.up, out RaycastHit hit, Quaternion.identity, 300f * U, layers, QueryTriggerInteraction.Ignore))
+            return top + 1f + hit.distance / U - 0.25f;
+        return float.PositiveInfinity;
+    }
+
+    /// <summary>Time until the feet come down to `target` from `y` moving up at vy, the head stopping at `ceil` (feet
+    /// height) like Source: vertical speed cut to zero, then the fall from there. NaN if never.</summary>
+    static float FlightTime(float y, float vy, float target, float ceil)
+    {
+        if (vy <= 0f || y + vy * vy / (2f * Gravity) <= ceil) return FallTime(y - target, vy);
+        float up = (vy - Mathf.Sqrt(Mathf.Max(0f, vy * vy - 2f * Gravity * (ceil - y)))) / Gravity;
+        return ceil < target ? float.NaN : up + Mathf.Sqrt(2f * (ceil - target) / Gravity);
+    }
+
+    /// <summary>Feet height `t` s after leaving `y0` at vy, with the head stopping at `ceil`.</summary>
+    static float HeightAt(float y0, float vy, float t, float ceil)
+    {
+        float free = y0 + vy * t - 0.5f * Gravity * t * t;
+        if (vy <= 0f || y0 + vy * vy / (2f * Gravity) <= ceil) return free;
+        float up = (vy - Mathf.Sqrt(Mathf.Max(0f, vy * vy - 2f * Gravity * (ceil - y0)))) / Gravity;
+        return t <= up ? free : ceil - 0.5f * Gravity * (t - up) * (t - up);
     }
 
     /// <summary>Time until the feet come down to `above` units lower than now, moving up at vy. NaN if never.</summary>
