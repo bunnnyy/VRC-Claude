@@ -44,7 +44,7 @@ public class RouteRunner : MonoBehaviour
     /// <summary>Source x, y to flat Unity-axis coordinates (x = -y, z = x), Source units.</summary>
     static Vector2 V(float x, float y) { return new Vector2(-y, x); }
 
-    struct Spot { public Vector3 p; public float s, lat, ceil; public bool deep, edge; public int seg; public float need; }
+    struct Spot { public Vector3 p; public float s, lat, ceil; public bool deep, edge, duck; public int seg; public float need; }
 
     readonly List<List<Spot>> spots = new List<List<Spot>>();
     readonly List<float[]> lengths = new List<float[]>();
@@ -53,6 +53,7 @@ public class RouteRunner : MonoBehaviour
     Transform playerBody;
     Keyboard keyboard;
     int layers;
+    float hull = 62f, duckHull = 45f; // the movement's hull heights
     bool finished;
 
     int section;
@@ -82,6 +83,8 @@ public class RouteRunner : MonoBehaviour
             if (u.GetProgramVariable("categoryVariable") as string == "autoBhop") timer = u;
         if (player == null || movement == null || playerBody == null) { Log("setup failed"); Finish(1); yield break; }
         layers = ((LayerMask)movement.GetProgramVariable("collisionLayers")).value;
+        hull = (float)movement.GetProgramVariable("hullHeight");
+        duckHull = (float)movement.GetProgramVariable("duckHullHeight");
 
         InputSystem.settings.backgroundBehavior = InputSettings.BackgroundBehavior.IgnoreFocus;
         InputSystem.settings.editorInputBehaviorInPlayMode = InputSettings.EditorInputBehaviorInPlayMode.AllDeviceInputAlwaysGoesToGameView;
@@ -187,6 +190,7 @@ public class RouteRunner : MonoBehaviour
             // From a standstill (start, a teleport): run until fast, or until the floor ahead ends.
             Record(0, lookYaw);
             heldKey = 0;
+            Crouch(false);
             SetYaw(viewYaw);
             Vector2 ahead = here + Dir(viewYaw) * 40f;
             if (v.magnitude > 240f || !Safe(new Vector3(ahead.x, pos.y, ahead.y), out _)) { hopping = true; Keys(Key.W, Key.Space); }
@@ -199,6 +203,7 @@ public class RouteRunner : MonoBehaviour
         {
             hops++;
             hasTarget = PickTarget(pos, vel, out target, out flight);
+            if (hasTarget) Crouch(flight.duck);
             takeoffTime = Time.time;
             if (!hasTarget) Log($"no landing spot from {here} at {v.magnitude:F0} u/s (s {progress:F0}), following the route line");
         }
@@ -386,14 +391,17 @@ public class RouteRunner : MonoBehaviour
         var list = spots[section];
         Vector2 here = Flat(pos);
         float speed = new Vector2(vel.x, vel.z).magnitude;
-        float fallbackMiss = float.MaxValue;
-        float roof = Headroom(here, pos.y);
+        float fallbackMiss = float.MaxValue, endS = list.Count > 0 ? list[list.Count - 1].s : 0f;
+        // Under a low ceiling now, or going under one: duck (in the air the feet pull up, see SimulateHop).
+        float standRoof = Headroom(here, pos.y, hull), duckRoof = Headroom(here, pos.y, duckHull);
+        bool lowHere = standRoof - pos.y < LowRoof;
         for (int pass = 0; pass < 2; pass++)
         {
             var options = new List<(float score, Spot spot, float need, float time)>();
             foreach (var s in list)
             {
                 if (s.s < progress + 24f || s.s > progress + 700f) continue;
+                float roof = s.duck || lowHere ? duckRoof : standRoof;
                 float time = FlightTime(pos.y, vel.y, s.p.y, Mathf.Min(roof, s.ceil));
                 if (float.IsNaN(time) || time < 0.2f) continue;
                 float need = (new Vector2(s.p.x, s.p.z) - here).magnitude / time;
@@ -401,7 +409,8 @@ public class RouteRunner : MonoBehaviour
                 if (need > Reach(speed, time) || (pass == 0 && need < s.need)) continue;
                 // Furthest along, near the middle of the lane, well inside a surface, and without braking (speed lost
                 // braking has to be strafed back).
-                float score = s.s - 0.5f * Mathf.Abs(s.lat) - (s.deep ? 0f : s.edge ? 400f : 250f) - 3f * Mathf.Max(0f, 0.9f * speed - need)
+                // Near the end of the section, the middle of the lane: lined up with the doorway to the next one.
+                float score = s.s - (s.s > endS - 300f ? 2f : 0.5f) * Mathf.Abs(s.lat) - (s.deep ? 0f : s.edge ? 400f : 250f) - 3f * Mathf.Max(0f, 0.9f * speed - need)
                     + 1.5f * Mathf.Clamp(need - speed, 0f, 60f); // and building speed for the long gaps
                 options.Add((score, s, need, time));
             }
@@ -412,9 +421,11 @@ public class RouteRunner : MonoBehaviour
             foreach (var o in options)
             {
                 if (simulated >= 10) break;
+                bool duck = o.spot.duck || lowHere;
+                float roof = duck ? duckRoof : standRoof;
                 for (int k = 0, tries = 0; k <= 8 && tries < 3; k++)
                 {
-                    if (!FlightWithBend(pos, vel.y, o.spot.p, o.time, Mathf.Min(roof, o.spot.ceil), k, out Flight f)) continue;
+                    if (!FlightWithBend(pos, vel.y, o.spot.p, o.time, Mathf.Min(roof, o.spot.ceil), duck, k, out Flight f)) continue;
                     tries++;
                     simulated++;
                     bool ok = SimulateHop(pos, vel, o.spot, f, out float miss);
@@ -423,7 +434,7 @@ public class RouteRunner : MonoBehaviour
                     {
                         best = o.spot;
                         path = f;
-                        Log($"hop {hops} s {progress:F0} -> {o.spot.s:F0} speed {speed:F0} need {f.length / o.time:F0} deep {o.spot.deep}{(f.curved ? " curved" : "")} miss {miss:F1} of {options.Count}");
+                        Log($"hop {hops} s {progress:F0} -> {o.spot.s:F0} speed {speed:F0} need {f.length / o.time:F0} deep {o.spot.deep}{(f.curved ? " curved" : "")}{(f.duck ? " ducked" : "")} miss {miss:F1} of {options.Count}");
                         return true;
                     }
                     if (ok && miss - margin < fallbackMiss) { fallbackMiss = miss - margin; best = o.spot; path = f; }
@@ -440,7 +451,7 @@ public class RouteRunner : MonoBehaviour
         foreach (var sp in list)
         {
             if (sp.s < progress + 24f || shown >= 12) continue;
-            float time = FlightTime(pos.y, vel.y, sp.p.y, Mathf.Min(roof, sp.ceil));
+            float time = FlightTime(pos.y, vel.y, sp.p.y, Mathf.Min(sp.duck || lowHere ? duckRoof : standRoof, sp.ceil));
             if (float.IsNaN(time)) continue;
             float need = (new Vector2(sp.p.x, sp.p.z) - here).magnitude / time;
             Log($"  rejected {sp.p:F0} s {sp.s:F0} edge {sp.edge}: need {need:F0} reach {Reach(speed, time):F0} plan {sp.need:F0} time {time:F2}");
@@ -467,7 +478,7 @@ public class RouteRunner : MonoBehaviour
         return 0.5f * (speed + Mathf.Sqrt(speed * speed + 900f * 100f * time)) * 0.9f;
     }
 
-    struct Flight { public Vector2 a, c, b; public float time, length, ceil; public bool curved; }
+    struct Flight { public Vector2 a, c, b; public float time, length, ceil; public bool curved, duck; }
 
     /// <summary>Where a flight is at `u` (0..1 of its time): a quadratic curve from a to b with control point c.</summary>
     static Vector2 Curve(Flight f, float u) { return (1f - u) * (1f - u) * f.a + 2f * u * (1f - u) * f.c + u * u * f.b; }
@@ -477,22 +488,22 @@ public class RouteRunner : MonoBehaviour
     /// 48, 64 units to one side then the other (1..8), like strafing around bhop_eazy_v2's pillars; if the hull
     /// would make it without touching anything.
     /// </summary>
-    bool FlightWithBend(Vector3 from, float vy, Vector3 to, float time, float ceil, int k, out Flight flight)
+    bool FlightWithBend(Vector3 from, float vy, Vector3 to, float time, float ceil, bool duck, int k, out Flight flight)
     {
         Vector2 a = Flat(from), b = Flat(to), mid = (a + b) * 0.5f, side = new Vector2((b - a).y, -(b - a).x).normalized;
         float off = 16f * ((k + 1) / 2) * (k % 2 == 0 ? -1f : 1f); // 0, 16, -16, 32, -32 ... 64, -64
-        flight = new Flight { a = a, b = b, c = mid + side * (2f * off), time = time, ceil = ceil, curved = k != 0 }; // passes `off` aside at its middle
+        flight = new Flight { a = a, b = b, c = mid + side * (2f * off), time = time, ceil = ceil, curved = k != 0, duck = duck }; // passes `off` aside at its middle
         flight.length = 0f;
         for (int i = 1; i <= 12; i++) flight.length += (Curve(flight, i / 12f) - Curve(flight, (i - 1) / 12f)).magnitude;
         return ClearFlight(from.y, vy, flight);
     }
 
     /// <summary>The first flight with any bend (straight first; bends only if `curves`).</summary>
-    bool FindFlight(Vector3 from, float vy, Vector3 to, float time, float ceil, bool curves, out Flight flight)
+    bool FindFlight(Vector3 from, float vy, Vector3 to, float time, float ceil, bool duck, bool curves, out Flight flight)
     {
         flight = default;
         for (int k = 0; k <= (curves ? 8 : 0); k++)
-            if (FlightWithBend(from, vy, to, time, ceil, k, out flight)) return true;
+            if (FlightWithBend(from, vy, to, time, ceil, duck, k, out flight)) return true;
         return false;
     }
 
@@ -500,13 +511,17 @@ public class RouteRunner : MonoBehaviour
     /// Flies a hop in a model of the movement: our own steering each tick (decisions acting after the measured
     /// input lag), air acceleration and gravity, the hull checked against the map. `miss`: how far from the spot it
     /// comes down to the spot's height. False if the hull hits something or touches a teleport on the way.
+    /// Ducking or standing up (C pressed at takeoff, acting after the key lag) is CS:S's in the air: the hull
+    /// shrinks around its middle, the feet going up half the difference; standing up moves them back down once
+    /// there's room below.
     /// </summary>
     bool SimulateHop(Vector3 pos, Vector3 vel, Spot tgt, Flight path, out float miss)
     {
         const float Dt = 0.01f;
         miss = float.MaxValue;
         Vector2 p = Flat(pos), v = new Vector2(vel.x, vel.z);
-        float y = pos.y, vy = vel.y, yaw = viewYaw;
+        float y = pos.y, vy = vel.y, yaw = viewYaw, shift = (hull - duckHull) * 0.5f;
+        bool ducked = (bool)movement.GetProgramVariable("ducked");
         int held = heldKey, heldFor = heldFrames, lag = Mathf.Max(keyLag, yawLag);
         var pending = new Queue<Decision>();
         for (int i = 0; i < lag - 1; i++) pending.Enqueue(new Decision { key = 0, yaw = yaw });
@@ -523,19 +538,25 @@ public class RouteRunner : MonoBehaviour
             pending.Enqueue(d);
             var now = pending.Dequeue();
             if (now.key != 0) v = PushAt(v, now.yaw + 90f * now.key);
+            if (tick >= keyLag && path.duck != ducked)
+            {
+                if (path.duck) { y += shift; ducked = true; }
+                else if (!HullHits(p, y - shift, hull)) { y -= shift; ducked = false; }
+            }
+            float h = ducked ? duckHull : hull;
             p += v * Dt;
             float y0 = y;
             y += (vy - 0.5f * Gravity * Dt) * Dt;
             vy -= Gravity * Dt;
             if (vy < 0f && y <= tgt.p.y) { miss = (p - new Vector2(tgt.p.x, tgt.p.z)).magnitude; return true; }
-            if (y > tgt.p.y + 2f && HullHits(p, y))
+            if (y > tgt.p.y + 2f && HullHits(p, y, h))
             {
                 // Rising into something overhead: Source stops the head there (vertical speed to zero). Anything
                 // else in the way (a wall, a beam's side) ends the hop.
-                if (y > y0 && !HullHits(p, y0)) { y = y0; vy = 0f; }
+                if (y > y0 && !HullHits(p, y0, h)) { y = y0; vy = 0f; }
                 else return false;
             }
-            if (tick % 3 == 0 && TouchesTeleport(new Vector3(p.x, y + 37f, p.y) * U)) return false;
+            if (tick % 3 == 0 && TouchesTeleport(p, y, h)) return false;
         }
         return false;
     }
@@ -544,16 +565,15 @@ public class RouteRunner : MonoBehaviour
     /// 2 units more clearance, since strafing won't follow the curve exactly.</summary>
     bool ClearFlight(float y0, float vy, Flight f)
     {
-        float half = f.curved ? 17.5f : 15.5f;
+        float half = f.curved ? 17.5f : 15.5f, h = f.duck ? duckHull : hull;
         int n = Mathf.Max(12, Mathf.CeilToInt(f.length / 8f)); // samples at most 8 units apart: thin walls and glass
         for (int i = 1; i <= n; i++)
         {
             float t = f.time * i / n;
             Vector2 p = Curve(f, (float)i / n);
             float y = HeightAt(y0, vy, t, f.ceil);
-            var center = new Vector3(p.x, y + 37f, p.y) * U;
-            if (i < n && Physics.CheckBox(center, new Vector3(half, 35.5f, half) * U, Quaternion.identity, layers, QueryTriggerInteraction.Ignore)) return false;
-            if (TouchesTeleport(center)) return false;
+            if (i < n && Physics.CheckBox(HullCenter(p, y, h), new Vector3(half, h * 0.5f - 0.5f, half) * U, Quaternion.identity, layers, QueryTriggerInteraction.Ignore)) return false;
+            if (TouchesTeleport(p, y, h)) return false;
         }
         return true;
     }
@@ -590,7 +610,7 @@ public class RouteRunner : MonoBehaviour
             {
                 var B = list[hopsFrom[h].b];
                 float time = hopsFrom[h].time;
-                if (FindFlight(A.p, jump, B.p, time, Mathf.Min(A.ceil, B.ceil), h < 6, out Flight f)) { A.need = MinSpeed(f.length / time, time); break; }
+                if (FindFlight(A.p, jump, B.p, time, Mathf.Min(A.ceil, B.ceil), A.duck || B.duck, h < 6, out Flight f)) { A.need = MinSpeed(f.length / time, time); break; }
             }
             list[a] = A;
         }
@@ -622,16 +642,29 @@ public class RouteRunner : MonoBehaviour
                     foreach (float top in Surfaces(p)) // every floor in the column: blocks can sit under arches
                         if (SafeAt(p, top))
                         {
-                            list.Add(new Spot { p = new Vector3(p.x, top, p.y), s = s0 + along, lat = lat, deep = Deep(p, top), seg = i, ceil = Headroom(p, top) });
+                            list.Add(Roofed(new Spot { p = new Vector3(p.x, top, p.y), s = s0 + along, lat = lat, deep = Deep(p, top), seg = i }));
                             any = true;
                         }
                     if (!any && Overhang(p, out float edgeTop))
-                        list.Add(new Spot { p = new Vector3(p.x, edgeTop, p.y), s = s0 + along, lat = lat, edge = true, seg = i, ceil = Headroom(p, edgeTop) });
+                        list.Add(Roofed(new Spot { p = new Vector3(p.x, edgeTop, p.y), s = s0 + along, lat = lat, edge = true, seg = i }));
                 }
             s0 += len;
         }
         return list;
     }
+
+    /// <summary>The spot's headroom; under a low ceiling (a standing jump bumps its head within LowRoof units) it's a
+    /// duck spot: hops to and from it are flown ducked, like a player crouching through a tunnel.</summary>
+    Spot Roofed(Spot s)
+    {
+        Vector2 p = Flat(s.p);
+        s.ceil = Headroom(p, s.p.y, hull);
+        s.duck = s.ceil - s.p.y < LowRoof;
+        if (s.duck) s.ceil = Headroom(p, s.p.y, duckHull);
+        return s;
+    }
+
+    const float LowRoof = 40f;
 
     readonly List<float> surfaces = new List<float>();
 
@@ -654,9 +687,8 @@ public class RouteRunner : MonoBehaviour
     {
         for (int k = 0; k < 4; k++)
             if (!FloorAt(p + Dir(k * 90f) * 12f, top)) return false;
-        var center = new Vector3(p.x, top + 37f, p.y) * U;
-        return !Physics.CheckBox(center, new Vector3(15.5f, 35.5f, 15.5f) * U, Quaternion.identity, layers, QueryTriggerInteraction.Ignore)
-            && !TouchesTeleport(center);
+        return !Physics.CheckBox(HullCenter(p, top, hull), HullHalf(0.5f, hull), Quaternion.identity, layers, QueryTriggerInteraction.Ignore)
+            && !TouchesTeleport(p, top, hull);
     }
 
     /// <summary>A floor at height `top` (within a unit) at `p`.</summary>
@@ -684,9 +716,8 @@ public class RouteRunner : MonoBehaviour
         {
             foreach (float h in Surfaces(p + Dir(k * 90f) * 10f))
             {
-                var center = new Vector3(p.x, h + 37f, p.y) * U;
-                if (!Physics.CheckBox(center, new Vector3(15.5f, 35.5f, 15.5f) * U, Quaternion.identity, layers, QueryTriggerInteraction.Ignore)
-                    && !TouchesTeleport(center)) { top = h; return true; }
+                if (!Physics.CheckBox(HullCenter(p, h, hull), HullHalf(0.5f, hull), Quaternion.identity, layers, QueryTriggerInteraction.Ignore)
+                    && !TouchesTeleport(p, h, hull)) { top = h; return true; }
             }
         }
         return false;
@@ -703,8 +734,8 @@ public class RouteRunner : MonoBehaviour
     /// <summary>What the movement's ground trace sees under the hull at `pos` (debugging a stuck player).</summary>
     void Probe(Vector3 pos)
     {
-        var half = new Vector3(16f, 36f, 16f) * U;
-        var center = (pos + new Vector3(0, 36f + 2f, 0)) * U;
+        var half = HullHalf(0f, hull);
+        var center = (pos + new Vector3(0, hull * 0.5f + 2f, 0)) * U;
         if (Physics.BoxCast(center, half, Vector3.down, out RaycastHit hit, Quaternion.identity, 4f * U, layers, QueryTriggerInteraction.Ignore))
         {
             Log($"probe: box cast down hits {hit.collider.name} ({hit.collider.GetType().Name}) at {hit.point / U:F2} normal {hit.normal:F3} distance {hit.distance / U:F2}");
@@ -743,26 +774,38 @@ public class RouteRunner : MonoBehaviour
             && hit.collider.GetComponentInParent<SourceMapDoor>() != null;
     }
 
-    static bool TouchesTeleport(Vector3 center)
+    /// <summary>Whether a teleport is touched with the feet at `feet`: by the hull (`h` tall), or by VRChat's player
+    /// capsule following it, which is what fires the map's triggers (taller, narrower).</summary>
+    static bool TouchesTeleport(Vector2 p, float feet, float h)
     {
-        foreach (var c in Physics.OverlapBox(center, new Vector3(16f, 36f, 16f) * U, Quaternion.identity, ~0, QueryTriggerInteraction.Collide))
+        foreach (var c in Physics.OverlapBox(HullCenter(p, feet, h), HullHalf(0f, h), Quaternion.identity, ~0, QueryTriggerInteraction.Collide))
+            if (c.isTrigger && c.GetComponent<SourceMapTeleport>() != null) return true;
+        Vector3 bottom = new Vector3(p.x, feet + CapsuleRadius, p.y) * U, top = new Vector3(p.x, feet + CapsuleHeight - CapsuleRadius, p.y) * U;
+        foreach (var c in Physics.OverlapCapsule(bottom, top, CapsuleRadius * U, ~0, QueryTriggerInteraction.Collide))
             if (c.isTrigger && c.GetComponent<SourceMapTeleport>() != null) return true;
         return false;
     }
 
+    const float CapsuleHeight = 84f, CapsuleRadius = 10.5f; // ClientSim's player: 1.6 m by 0.2 m
+
     /// <summary>Whether the hull (with feet at y) overlaps the map at `p`.</summary>
-    bool HullHits(Vector2 p, float y)
+    bool HullHits(Vector2 p, float y, float h)
     {
-        return Physics.CheckBox(new Vector3(p.x, y + 37f, p.y) * U, new Vector3(15.75f, 35.75f, 15.75f) * U, Quaternion.identity, layers, QueryTriggerInteraction.Ignore);
+        return Physics.CheckBox(HullCenter(p, y, h), HullHalf(0.25f, h), Quaternion.identity, layers, QueryTriggerInteraction.Ignore);
     }
 
+    /// <summary>The centre of a hull `h` tall with the feet at `feet` (1 unit up: Source's hull floats on the ground),
+    /// and its half size made `shrink` smaller (a margin for the casts).</summary>
+    static Vector3 HullCenter(Vector2 p, float feet, float h) { return new Vector3(p.x, feet + h * 0.5f + 1f, p.y) * U; }
+    static Vector3 HullHalf(float shrink, float h) { return new Vector3(16f - shrink, h * 0.5f - shrink, 16f - shrink) * U; }
+
     /// <summary>
-    /// The highest the feet can go above `top` at `p` before the head hits something (a beam over a block): the hull
-    /// (72 units) plus Source's skin below whatever is overhead.
+    /// The highest the feet can go above `top` at `p` before the head hits something (a beam over a block): a hull
+    /// `h` tall plus Source's skin below whatever is overhead.
     /// </summary>
-    float Headroom(Vector2 p, float top)
+    float Headroom(Vector2 p, float top, float h)
     {
-        var start = new Vector3(p.x, top + 73f, p.y) * U;
+        var start = new Vector3(p.x, top + h + 1f, p.y) * U;
         if (Physics.BoxCast(start, new Vector3(15.5f, 0.5f, 15.5f) * U, Vector3.up, out RaycastHit hit, Quaternion.identity, 300f * U, layers, QueryTriggerInteraction.Ignore))
             return top + 1f + hit.distance / U - 0.25f;
         return float.PositiveInfinity;
@@ -844,7 +887,8 @@ public class RouteRunner : MonoBehaviour
         Vector2 v = new Vector2(vel.x, vel.z);
         // The view and keys the movement is acting on now (sent yawLag / keyLag frames ago), so the overlay matches.
         camYaw = sentYaw[(frame - yawLag + 32) % 32];
-        cam.transform.SetPositionAndRotation((pos + Vector3.up * 64f) * U, Quaternion.Euler(10f, camYaw, 0f));
+        float eye = (bool)movement.GetProgramVariable("ducked") ? 47f : 64f; // CS:S eye heights
+        cam.transform.SetPositionAndRotation((pos + Vector3.up * eye) * U, Quaternion.Euler(10f, camYaw, 0f));
         cam.targetTexture = rt;
         cam.Render();
         RenderTexture.active = rt;
@@ -852,7 +896,9 @@ public class RouteRunner : MonoBehaviour
         shot.Apply();
         RenderTexture.active = null;
         System.IO.File.WriteAllBytes(System.IO.Path.Combine(recordDir, $"f{shotNumber++:D5}.jpg"), shot.EncodeToJPG(88));
-        hud.Append(Mathf.RoundToInt(v.magnitude)).Append('\t').Append(timer != null ? Label() : "").Append('\t').Append(sentKeys[(frame - keyLag + 32) % 32] ?? "").Append('\n');
+        string keys = sentKeys[(frame - keyLag + 32) % 32] ?? "";
+        if ((bool)movement.GetProgramVariable("ducked")) keys += "+Duck";
+        hud.Append(Mathf.RoundToInt(v.magnitude)).Append('\t').Append(timer != null ? Label() : "").Append('\t').Append(keys).Append('\n');
     }
 
     string Label()
@@ -876,8 +922,19 @@ public class RouteRunner : MonoBehaviour
 
     readonly float[] sentYaw = new float[32];
     readonly string[] sentKeys = new string[32];
+    bool crouching, toggleCrouch; // VRChat's crouch (C toggles it on desktop), and a press of C due with the next keys
+
+    void Crouch(bool on) { toggleCrouch = on != crouching; }
+
     void Keys(params Key[] keys)
     {
+        if (toggleCrouch)
+        {
+            System.Array.Resize(ref keys, keys.Length + 1);
+            keys[keys.Length - 1] = Key.C; // down for one frame: ClientSim toggles on the press
+            crouching = !crouching;
+            toggleCrouch = false;
+        }
         InputSystem.QueueStateEvent(keyboard, new KeyboardState(keys));
         lastKeys = string.Join("+", keys);
         sentKeys[frame % 32] = lastKeys;

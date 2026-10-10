@@ -29,15 +29,17 @@ metres, so values from CS:S servers and maps can be copied straight over.
 
 | Setting | Default | What it does |
 |---|---|---|
-| Hull Width | 32 | Width and depth of the player's collision box (CS:S standing hull) |
-| Hull Height | 72 | Its height. Crouching isn't built yet ([CROUCH.md](../Dev/docs/CROUCH.md)) |
+| Hull Width | 32 | Width and depth of the player's collision box |
+| Hull Height | 62 | Standing height (CS:S 62; Half-Life 2 and GMod use 72) |
+| Duck Hull Height | 45 | Ducked height (CS:S 45; Half-Life 2 uses 36). Ducked, you fit under 46+ unit gaps and a crouch jump lands on ledges up to 65 units |
 
 **World**:
 
 | Setting | Default | What it does |
 |---|---|---|
 | Meters Per Unit | 0.01905 | Size of one Source unit. **Must match the scale the maps were imported with** (0.01905) |
-| Collision Layers | Default, Environment | Layers the player collides with. Put solid level geometry on one of these |
+| Collision Layers | Default, Environment, Walkthrough | Layers the player collides with. Put solid level geometry on one of these |
+| Hull Only | the test map (prefab: empty) | Maps (root objects) whose solid colliders only the Source hull should hit. While Source movement is on, their colliders move to VRChat's **Walkthrough** layer (17): VRChat's own player capsule (about 84 units, it doesn't shrink when crouching) passes through, so it can't get stuck under low ceilings or in vents. Back on their own layers when Source movement is off. Objects that also have a trigger collider stay on their layer |
 | Ladder Layers | 22 | Layers of ladder volumes (trigger boxes against the climbable face). Name layer 22 "Ladder" if you like |
 | Water Layers | 4 (Water) | Layers of water volumes (trigger boxes filling the water) |
 
@@ -48,10 +50,13 @@ metres, so values from CS:S servers and maps can be copied straight over.
 | Active On Start | on | Source movement from the start. Off: only inside the optional MovementZone (below) |
 | Auto Bhop | on | On: hold jump to keep hopping. Off: every hop needs a new press (scroll wheel works). Runs with it on count as "auto" on the boards |
 | Auto Bhop Toggle Key | B | Desktop key that switches auto bhop at runtime |
+| Duck Key | Left Ctrl | Desktop key that ducks while held, as in CS:S |
+| Duck Head Fraction | 0.75 | Also duck when the head is lower than this share of the avatar's eye height: VRChat's own crouch (C on desktop) or crouching in VR. 0 = duck key only |
 
 Fixed in code, the same as CS:S (not in the Inspector): forward/side speed 450, walkable slope 0.7 (steeper
 than ~45.6° is a surf ramp), ladder climb 200 u/s and jump-off 270 u/s, swim up 100 u/s, sink 60 (48 after the
-80% swim factor), water jump 256 u/s, eye height 64.
+80% swim factor), water jump 256 u/s, eye height 64 (ducked 47), ducking takes 0.4 s on the ground (standing up 0.2 s, in the
+air both are instant), ducked ground speed 34%.
 
 **Presets**:
 
@@ -163,4 +168,4 @@ volume); changing them does nothing.
 |---|---|---|
 | VRC World (VRC Scene Descriptor) | Respawn Height Y | Falling below this respawns you. Maps sit at different heights: keep it below the lowest map |
 | Project Settings > Player | Active Input Handling | **Both** (the VRChat template's default). The B/G keys and scroll jump use the old input system |
-| Project Settings > Tags and Layers | Layers 4, 11, 22 | Water, Environment (solid), Ladder: keep the colliders on the layers SourceMovement expects |
+| Project Settings > Tags and Layers | Layers 4, 11, 17, 22 | Water, Environment (solid), Walkthrough (Hull Only maps), Ladder: keep the colliders on the layers SourceMovement expects |

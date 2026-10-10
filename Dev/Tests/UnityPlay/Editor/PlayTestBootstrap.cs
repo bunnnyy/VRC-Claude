@@ -137,7 +137,10 @@ public static class PlayTestBootstrap
         var start = GameObject.Find("Start " + name);
         if (start != null) world.transform.position = start.transform.Find("StartPoint").position;
         world.GetComponent<VRC.SDKBase.VRC_SceneDescriptor>().RespawnHeightY = -1000f;
-        PrefabUtility.InstantiatePrefab(AssetDatabase.LoadAssetAtPath<GameObject>("Assets/SourceMovement/SourceMovement.prefab"));
+        var movement = (GameObject)PrefabUtility.InstantiatePrefab(AssetDatabase.LoadAssetAtPath<GameObject>("Assets/SourceMovement/SourceMovement.prefab"));
+        var movementScript = movement.GetComponent<SourceMovement>();
+        movementScript.hullOnly = new[] { map }; // VRChat's capsule is taller than the CS:S hull: only the hull hits the map
+        UdonSharpEditor.UdonSharpEditorUtility.CopyProxyToUdon(movementScript);
         EditorSceneManager.SaveScene(scene, "Assets/RouteTest.unity");
         Debug.Log("[SMTEST] route scene built from " + bsp);
     }

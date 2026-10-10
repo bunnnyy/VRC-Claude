@@ -258,6 +258,8 @@ public class PlayTestRunner : MonoBehaviour
     {
         // VRChat's crouch (C on desktop, ClientSim toggles it) ducks: CS:S crouch walking 85 u/s (250 x 0.34).
         yield return Spawn(new Vector3(1520, 0, 900), 0f);
+        // VRChat's grounded state drives the avatar's falling pose; the hull-only map leaves the capsule nothing to stand on.
+        Log($"standing on the hull-only map: IsPlayerGrounded {player.IsPlayerGrounded()}");
         Keys(Key.C);
         yield return Frames(0.1f, null);
         Keys();
@@ -277,6 +279,7 @@ public class PlayTestRunner : MonoBehaviour
             yield return null;
             if (Real().z > 1220f && Real().z < 1380f) lowest = Mathf.Min(lowest, Real().y);
             maxErr = Mathf.Max(maxErr, TrackError());
+            prevTarget = SimTarget();
         }
         Keys();
         Log($"ducked under a 50 unit gap: real z {Real().z:F0}, lowest real y under it {lowest:F2}, max tracking error {maxErr:F2} u");

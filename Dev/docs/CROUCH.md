@@ -1,47 +1,40 @@
-# Crouching (planned, not built yet)
+# Ducking (built)
 
-How Source does it, and how it would slot into `SourceMovement.cs` later.
+How CS:S ducks and how `SourceMovement.cs` does it. Numbers are CS:S (`cs_gamerules.cpp` view vectors,
+`cs_gamemovement.cpp`, `gamemovement.cpp`).
 
-## What Source does
-
-| | CS:S | HL2 / GMod |
+| | CS:S | In SourceMovement |
 |---|---|---|
-| Standing hull | 32 x 32 x 72 | 32 x 32 x 72 |
-| Crouched hull | 32 x 32 x 54 | 32 x 32 x 36 |
-| Crouched speed | 0.34 x | 0.33 x |
-| Time to crouch | ~0.2 s (view lowers smoothly) | 0.4 s |
+| Standing hull | 32 x 32 x 62, eyes at 64 | `hullHeight` 62 |
+| Ducked hull | 32 x 32 x 45, eyes at 47 | `duckHullHeight` 45 |
+| Ducked ground speed | 0.34 x | `DuckSpeedModifier` |
+| Time to duck / stand up on the ground | 0.4 s / 0.2 s | `TimeToDuck`, `TimeToUnduck` |
+| In the air | instant, origin up by half the height difference (8.5) | same |
 
-- **On the ground** the hull shrinks from the top. The feet stay put and the view lowers.
-- **In the air** the hull shrinks from the bottom: Source lifts the origin by the height difference, so
-  your legs pull up. That's why crouch-jumping clears higher ledges (about 57 + 18 units), and it's the
-  standard way to land on things in bhop and surf maps.
-- **Standing back up** needs room. Source traces the standing hull first and stays crouched if
-  something is overhead. In the air it un-crouches downward, so it needs room below.
-- **Jumping while crouched** sets the vertical velocity instead of adding to it (`CheckJumpButton`).
-- Crouched movement scales the wish speed (forward and side move), not friction or air acceleration,
-  so air strafing works the same crouched.
+- **`Duck(dt)`** runs first in `PlayerMove`. On the ground the hull shrinks from the top after 0.4 s. In the air
+  it shrinks at once and the origin moves up 8.5 units (the legs pull up), so a crouch jump reaches 57 + 8.5.
+- **Standing up needs room**: the standing hull is checked first (in the air downwards). Under a ceiling you
+  stay ducked until there is room.
+- **Wish speed** is scaled by 0.34 while ducked on the ground; friction and air acceleration are unchanged.
+- **Input**: `duckKey` (Left Ctrl) held, or the head lower than `duckHeadFraction` (0.75) of the avatar's eye
+  height: VRChat's own crouch (C on desktop) or a real crouch in VR. Udon can't read VRChat's crouch key, but
+  it lowers the head.
 
-## How it would fit in
+## VRChat's player capsule
 
-1. **Input.** Udon has no crouch input event.
-   - Desktop: a key field (default `LeftControl`) read with `Input.GetKey`.
-   - VR: a controller button, or detect a real-life crouch from head height against the standing eye height.
-2. **State.** Add `ducked` (bool) and a current hull height. `TraceHull` already uses `hullHalf` and
-   `hullCenter`, so those are recomputed from the current height and nothing else needs to change.
-3. **A `Duck(dt)` step** at the start of `PlayerMove`:
-   - Pressed: shrink. In the air, also move `origin` up by the difference.
-   - Released: trace the standing hull (downward when in the air). Grow only if clear.
-4. **`GetWishVelocity`**: multiply by 0.34 while crouched and on the ground.
-5. **`CheckJumpButton`**: `velocity.y = jumpImpulse` instead of `+=` while crouched.
-6. **Step-up and surf need no changes.** `StepMove` and `TryPlayerMove` just use the current hull.
+The VRChat capsule is about 84 units tall and doesn't shrink when crouching (ClientSim only lowers the head to
+1.0 m). Under a ceiling lower than that it would stop the player even where the Source hull fits.
+`SourceMovement.hullOnly` lists map roots whose solid colliders move to the **Walkthrough** layer (17) while
+Source movement is on: VRChat's players pass through that layer, `Physics.BoxCast` still hits it (it's in
+`collisionLayers`). Objects that also have a trigger collider keep their layer, because a layer is per object
+and the player has to keep touching triggers (teleports, zones, a bhop block's touch box).
 
-## VRChat limitations
+The resync check allows the capsule to lag up to 40 units below the simulation (`CapsuleSlack`), for
+colliders that are not in `hullOnly`.
 
-- Udon can't force the avatar into a crouch pose. Desktop players can still crouch with VRChat's own
-  key (C), which only changes the avatar pose, so the crouch key above should be a different key.
-- The VRChat player capsule doesn't shrink. A crouched Source hull could fit under something the
-  real capsule can't, and then the player gets blocked. The movement script already re-syncs when
-  that happens, but low tunnels would feel sticky. Keeping crouch-only gaps out of maps avoids it.
+## Tests
 
-Expected size: about 40 lines in `SourceMovement.cs`, plus tests for crouch-jump height, the speed
-scale and the "can't stand up under a ceiling" case.
+`Dev/Tests/Shared/MovementTests.cs` (sim and Udon VM): duck timing and 85 u/s crouch walk, crouching in VRChat
+(head low) ducks, the standing hull fits a 64 gap but not 60, ducked fits a 50 gap and stays ducked until
+there is room, a crouch jump lands on a 62 ledge where a plain jump doesn't. The Unity play test does the
+same with ClientSim's crouch on the test map's `DuckGap` and `Ledge62`.

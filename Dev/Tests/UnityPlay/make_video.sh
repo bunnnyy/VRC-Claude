@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Turns a RouteRunner recording (run.sh route ... outdir) into an mp4: 50 fps frames, with the speed (bottom) and
-# the map timer's text (top) burnt in from outdir/hud.txt, plus an optional title line for the first seconds.
+# Turns a RouteRunner recording (run.sh route ... outdir) into an mp4: 50 fps frames, with the speed (bottom), the
+# map timer's text (top) and the keys held (W A S D JUMP, DUCK while ducked) burnt in from outdir/hud.txt, plus an
+# optional title line for the first seconds.
 #   make_video.sh outdir out.mp4 ["title"]
 set -euo pipefail
 dir=$1; out=$2; title=${3:-}
@@ -33,7 +34,7 @@ for a, b, text in runs(1):
     out.append(f"Dialogue: 0,{ts(a)},{ts(b)},Timer,{text}")
 def keys(text):  # pressed keys bright, the others dim
     down = set(text.split("+")) if text else set()
-    names = [("W", "W"), ("A", "A"), ("S", "S"), ("D", "D"), ("Space", "JUMP")]
+    names = [("W", "W"), ("A", "A"), ("S", "S"), ("D", "D"), ("Space", "JUMP"), ("Duck", "DUCK")]
     return " ".join(("{\\c&HFFFFFF&}" if k in down else "{\\c&H505050&}") + label for k, label in names)
 for a, b, text in runs(2):
     out.append(f"Dialogue: 0,{ts(a)},{ts(b)},Keys,{keys(text)}")

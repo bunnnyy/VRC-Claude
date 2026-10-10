@@ -90,14 +90,19 @@ Step-by-step setup: **[docs/GUIDE.md](docs/GUIDE.md)**; design and test history:
   limit with extend, saved records per map. **Build Sample World** makes all of it from a folder of `.bsp` files.
 Same axes and scale as uSource (1 unit = 0.01905 m).
 
-### Crouching
-Not built yet. The design is in [Dev/docs/CROUCH.md](Dev/docs/CROUCH.md).
+### Ducking
+As in CS:S: hold **Left Ctrl**, or crouch with VRChat's own crouch (**C** on desktop, or crouch in VR). The hull
+shrinks from 62 to 45 units, ground speed drops to 34%, and ducking in the air pulls your legs up, so a crouch
+jump lands on ledges up to about 65 units. Standing up waits until there is room above.
+VRChat's own player capsule doesn't shrink, so put maps with low ceilings or vents in **Hull Only** on
+SourceMovement: their colliders move to VRChat's Walkthrough layer while Source movement is on, and only the
+Source hull collides with them ([settings](docs/SETTINGS.md)).
 
 ## How it works
 
 - VRChat's own walk/run/jump/gravity are set to 0 while active.
 - Every frame the script runs fixed 100 tick Source ticks on its own axis-aligned box hull
-  (32 x 72 Source units, like CS:S), swept with `Physics.BoxCast`.
+  (32 x 62 Source units, 45 ducked, like CS:S), swept with `Physics.BoxCast`.
 - The real player is moved with `SetVelocity` so they land where the simulation says.
 - Everything is in Source units (1 unit = 0.01905 m), so imported Source maps feel the same.
 
