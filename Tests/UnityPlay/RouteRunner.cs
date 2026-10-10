@@ -227,7 +227,8 @@ public class RouteRunner : MonoBehaviour
         else if (hasTarget && (float.IsNaN(tLeft) || tLeft < 0.12f || (aim - here).magnitude < 24f)) want = v;
 
         // Too slow to strafe up to speed: land without jumping and run up again (to 240, or to the edge).
-        if (!onGround && v.magnitude < 120f && vel.y < 0f) runOnLanding = true;
+        // Never on a bhop block: it sinks under whoever stays (SourceMapDoor).
+        if (!onGround && v.magnitude < 120f && vel.y < 0f && !OnBlock(hasTarget ? target.p : new Vector3(here.x, pos.y, here.y))) runOnLanding = true;
         Strafe(v, want, aim - here, !runOnLanding);
     }
 
@@ -651,6 +652,13 @@ public class RouteRunner : MonoBehaviour
                 Log($"probe: sideways {d} hits {side.collider.name} at {side.point / U:F2} normal {side.normal:F3} distance {side.distance / U:F2}");
         Log($"probe: pushVelocity {(Vector3)movement.GetProgramVariable("pushVelocity"):F1} onLadder {movement.GetProgramVariable("onLadder")} waterLevel {movement.GetProgramVariable("waterLevel")}");
         Log($"probe: movement onGround {movement.GetProgramVariable("onGround")} origin {Origin():F3} velocity {(Vector3)movement.GetProgramVariable("velocity"):F2}");
+    }
+
+    /// <summary>Whether the floor at `p` (feet height) is a bhop block that sinks when stood on.</summary>
+    bool OnBlock(Vector3 p)
+    {
+        return Physics.Raycast(new Vector3(p.x, p.y + 8f, p.z) * U, Vector3.down, out RaycastHit hit, 40f * U, layers, QueryTriggerInteraction.Ignore)
+            && hit.collider.GetComponentInParent<SourceMapDoor>() != null;
     }
 
     static bool TouchesTeleport(Vector3 center)

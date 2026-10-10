@@ -866,8 +866,8 @@ public class SourceMovement : UdonSharpBehaviour
 
     /// <summary>
     /// Mesh colliders report an edge normal where two triangles meet, even inside a flat face, which acts like
-    /// a wall that isn't there. Keep the reported normal if a short ray straight at it (at the contact, or half a
-    /// unit to either side, in case the contact is on the edge of a face) finds a face with that normal. Otherwise
+    /// a wall that isn't there. Keep the reported normal if a short ray straight at it (at the contact, or for a
+    /// floor half a unit to either side, in case the contact is on the edge of a block) finds a face with that normal. Otherwise
     /// use the face that ray found, or the face a ray from the hull centre at impact to the contact point finds
     /// (seams that run along the reported normal, like seams across a surf ramp or in a wall built from brushes).
     /// </summary>
@@ -882,13 +882,17 @@ public class SourceMovement : UdonSharpBehaviour
             if (Vector3.Dot(face.normal, n) > 0.999f) return n;
             found = face.normal;
         }
-        Vector3 side = Vector3.Cross(n, Mathf.Abs(n.y) < 0.9f ? Vector3.up : Vector3.right).normalized * (back * 2f);
-        Vector3 side2 = Vector3.Cross(n, side);
-        for (int i = 0; i < 4; i++)
+        // Floors only: a wall's joins can hide end faces of the next brush, which these rays would take as proof.
+        if (n.y >= WalkableNormal)
         {
-            Vector3 offset = i == 0 ? side : i == 1 ? -side : i == 2 ? side2 : -side2;
-            if (Physics.Raycast(hit.point + offset + n * back, -n, out face, back * 2f, collisionLayers, QueryTriggerInteraction.Ignore)
-                && Vector3.Dot(face.normal, n) > 0.999f) return n;
+            Vector3 side = Vector3.Cross(n, Vector3.right).normalized * (back * 2f);
+            Vector3 side2 = Vector3.Cross(n, side);
+            for (int i = 0; i < 4; i++)
+            {
+                Vector3 offset = i == 0 ? side : i == 1 ? -side : i == 2 ? side2 : -side2;
+                if (Physics.Raycast(hit.point + offset + n * back, -n, out face, back * 2f, collisionLayers, QueryTriggerInteraction.Ignore)
+                    && Vector3.Dot(face.normal, n) > 0.999f) return n;
+            }
         }
         if (found != Vector3.zero) return found;
         Vector3 toPoint = hit.point - center;
