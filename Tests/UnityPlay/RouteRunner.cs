@@ -269,7 +269,10 @@ public class RouteRunner : MonoBehaviour
                     float yaw = i * 360f / Directions;
                     float dev = Mathf.Abs(Mathf.DeltaAngle(yaw, look));
                     if (dev > 100f) continue; // never look backwards
-                    float score = Best2(PushAt(vp, yaw + 90f * key), want) + 0.02f * dev + (key != heldKey ? 0.5f : 0f);
+                    Vector2 v1 = PushAt(vp, yaw + 90f * key);
+                    // Turn by strafing rather than braking: no push that loses speed unless we're too fast.
+                    if (v1.magnitude < vp.magnitude - 0.5f && vp.magnitude < want.magnitude + 10f) continue;
+                    float score = Best2(v1, want) + 0.02f * dev + (key != heldKey ? 0.5f : 0f);
                     if (score < bestScore) { bestScore = score; bestKey = key; bestYaw = yaw; }
                 }
             }
@@ -390,7 +393,7 @@ public class RouteRunner : MonoBehaviour
         options.Sort((x, y) => y.score.CompareTo(x.score));
         int tried = 0;
         foreach (var o in options)
-            if (FindFlight(pos, vel.y, o.spot.p, o.time, tried++ < 12, out Flight f) && f.length / o.time <= Reach(speed, o.time))
+            if (FindFlight(pos, vel.y, o.spot.p, o.time, tried++ < 12, out Flight f) && f.length / (o.time - TurnTime(new Vector2(vel.x, vel.z), Curve(f, 0.1f) - f.a)) <= Reach(speed, o.time))
             {
                 best = o.spot;
                 path = f;
@@ -409,6 +412,17 @@ public class RouteRunner : MonoBehaviour
             shown++;
         }
         return false;
+    }
+
+    /// <summary>
+    /// Half the time strafing takes to swing the velocity round to `dir` (each tick turns it by about atan(30/v)):
+    /// roughly the flight time lost to a turn.
+    /// </summary>
+    static float TurnTime(Vector2 v, Vector2 dir)
+    {
+        if (v.magnitude < 30f || dir.magnitude < 1f) return 0f;
+        float angle = Vector2.Angle(v, dir) * Mathf.Deg2Rad, perTick = Mathf.Atan(AirCap / v.magnitude);
+        return 0.5f * angle / perTick * 0.01f;
     }
 
     /// <summary>Average speed reachable over a hop of `time` s from `speed`: strafing adds 30 u/s sideways per tick,
