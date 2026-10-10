@@ -82,10 +82,15 @@ public class SampleWorldTestRunner : MonoBehaviour
                 }
             }
             var props = visuals.Find("[StaticProps]");
-            if (props != null) { propColliders = props.GetComponentsInChildren<MeshCollider>(true).Length; staticProps = props.childCount; }
+            if (props != null)
+            {
+                propColliders = props.GetComponentsInChildren<MeshCollider>(true).Length;
+                // Only props with a model count: stock HL2/CS:S models are missing without a CS:S folder.
+                foreach (Transform p in props) if (p.GetComponentInChildren<Renderer>(true) != null) staticProps++;
+            }
         }
         Check(renderers > 0 && tools == 0 && (staticProps == 0 || propColliders > 0),
-            $"{name}: visuals imported ({renderers} renderers, {tools} tool surfaces drawn, {staticProps} static props, {propColliders} prop colliders)");
+            $"{name}: visuals imported ({renderers} renderers, {tools} tool surfaces drawn, {staticProps} static props with a model, {propColliders} prop colliders)");
         yield return Shot(name, spawn);
 
         // Teleports: up to 15, spread over the map.
@@ -106,7 +111,8 @@ public class SampleWorldTestRunner : MonoBehaviour
                 SourceMapTeleport next = null;
                 foreach (var other in teleports)
                     foreach (var c in other.GetComponents<MeshCollider>())
-                        if (c.enabled && (c.ClosestPoint(dest + Vector3.up * 0.5f) - (dest + Vector3.up * 0.5f)).sqrMagnitude < 1e-6f) next = other;
+                        for (float h = 0.1f; h < 1.7f; h += 0.4f) // anywhere the player's body would be
+                            if (c.enabled && (c.ClosestPoint(dest + Vector3.up * h) - (dest + Vector3.up * h)).sqrMagnitude < 1e-6f) next = other;
                 if (next == null || next == t) break;
                 dest = next.destination.position;
             }
