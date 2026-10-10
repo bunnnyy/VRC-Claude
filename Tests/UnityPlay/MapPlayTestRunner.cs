@@ -17,7 +17,8 @@ using VRC.Udon;
 ///   runs      - bhop (hold W + jump, strafe with A/D and turning) along the longest open floors from the destinations,
 ///               and surf along the map's biggest surfable slopes: no stalls (sudden speed loss with no wall ahead,
 ///               e.g. a fake wall at a seam between collision mesh triangles)
-/// SM_ONLY=runs (environment) skips stand and teleports.
+///   blocks    - bhop blocks: standing on one sends you back, bouncing on it doesn't, switched off you can stand
+/// SM_ONLY=runs or SM_ONLY=blocks (environment) runs only that part.
 /// </summary>
 public class MapPlayTestRunner : MonoBehaviour
 {
@@ -67,6 +68,7 @@ public class MapPlayTestRunner : MonoBehaviour
         }
         bool onlyRuns = System.Environment.GetEnvironmentVariable("SM_ONLY") == "runs";
         if (onlyRuns) { yield return Runs(points); Finish(); yield break; }
+        if (System.Environment.GetEnvironmentVariable("SM_ONLY") == "blocks") { yield return BhopBlocks(points); Finish(); yield break; }
         int stood = 0;
         var notStanding = new List<string>();
         foreach (var p in points)
@@ -91,6 +93,7 @@ public class MapPlayTestRunner : MonoBehaviour
         {
             var col = t.GetComponent<Collider>();
             if (col == null || !col.enabled) continue;
+            if (t.filterName != "") continue; // bhop block teleports: only for a player with a name (blocks test)
             total++;
             // Drop in from above like a falling player: the first spot on a 5x5 grid over the trigger where there's
             // room above it and no ground above the trigger's top.
@@ -133,8 +136,138 @@ public class MapPlayTestRunner : MonoBehaviour
         Check(total > 0 && arrived == total, $"teleports: {arrived}/{total} working trigger_teleports send the player to their destination");
         foreach (var s in missed) Log("   missed: " + s);
         Log($"   {unreachable.Count} teleports not reachable from above (ground above the trigger), not tested: " + string.Join(", ", unreachable));
+        yield return BhopBlocks(points);
         yield return Runs(points);
         Finish();
+    }
+
+    // ------------------------------------------------------------------ bhop blocks
+
+    /// <summary>
+    /// Bhop blocks (SourceMapBlocks), like CS:S: standing on a block sends the player back (name trigger + filtered
+    /// teleport, or a func_door that sinks into a teleport); bouncing on it with jump held doesn't; with blocks off,
+    /// standing is fine.
+    /// </summary>
+    IEnumerator BhopBlocks(List<SourceEntity> points)
+    {
+        var blocksObj = GameObject.Find("Bhop Blocks");
+        if (blocksObj == null) { Log("   no bhop blocks in this map"); yield break; }
+        var blocks = UdonOf(blocksObj.GetComponent<SourceMapBlocks>());
+        var teleports = FindObjectsOfType<SourceMapTeleport>();
+        // Spots on top of blocks: a name trigger over a filtered teleport (the name it sets is the filter), or a door.
+        var spots = new List<KeyValuePair<Vector3, Vector3>>(); // stand point, where the player should end up
+        var spotParts = new List<string>();
+        var spotTops = new List<float>();
+        var doorSpots = new List<KeyValuePair<Vector3, SourceMapDoor>>();
+        foreach (var nt in FindObjectsOfType<SourceMapNameTrigger>())
+        {
+            if (spots.Count >= 6) break;
+            var c = nt.GetComponent<Collider>();
+            foreach (var t in teleports)
+            {
+                if (t.filterName == "" || System.Array.IndexOf(nt.names, t.filterName) < 0) continue;
+                var tc = t.GetComponent<Collider>();
+                if (tc == null || !tc.bounds.Intersects(c.bounds)) continue;
+                // A spot inside both triggers, on the block (the middle of where they overlap).
+                var both = new Bounds();
+                both.SetMinMax(Vector3.Max(c.bounds.min, tc.bounds.min), Vector3.Min(c.bounds.max, tc.bounds.max));
+                var top = new Vector3(both.center.x, both.max.y + 0.5f, both.center.z);
+                if (!Physics.Raycast(top, Vector3.down, out var hit, 3f, Solid, QueryTriggerInteraction.Ignore)) continue;
+                var body = hit.point + Vector3.up * 0.06f;
+                if ((c.ClosestPoint(body) - body).sqrMagnitude > 1e-6f || (tc.ClosestPoint(body) - body).sqrMagnitude > 1e-6f) continue;
+                spots.Add(new KeyValuePair<Vector3, Vector3>(hit.point, Relayed(t)));
+                spotTops.Add(tc.bounds.max.y);
+                spotParts.Add($"name trigger {c.bounds.min.y / U:F1}..{c.bounds.max.y / U:F1}, teleport {tc.bounds.min.y / U:F1}..{tc.bounds.max.y / U:F1} filter '{t.filterName}', floor {hit.point.y / U:F1}");
+                break;
+            }
+        }
+        foreach (var d in FindObjectsOfType<SourceMapDoor>())
+        {
+            if (doorSpots.Count >= 6) break;
+            if (!d.dropThrough) continue;
+            var b = d.solid.bounds;
+            if (Physics.Raycast(new Vector3(b.center.x, b.max.y + 0.5f, b.center.z), Vector3.down, out var hit, 1f, Solid, QueryTriggerInteraction.Ignore))
+                doorSpots.Add(new KeyValuePair<Vector3, SourceMapDoor>(hit.point, d));
+        }
+        Log($"   bhop blocks: testing {spots.Count} name-trigger blocks, {doorSpots.Count} door blocks");
+
+        // Stand: on each block for 1 s -> sent away (to the filtered teleport's destination, or the door's pit).
+        int sent = 0, total = 0;
+        var notes = new List<string>();
+        foreach (var spot in spots)
+        {
+            total++;
+            yield return Teleport(spot.Key + Vector3.up * 0.05f, Quaternion.identity);
+            bool reached = false;
+            for (int i = 0; i < frameRate && !reached; i++)
+            {
+                yield return null;
+                Vector3 d = player.GetPosition() - spot.Value;
+                reached = new Vector2(d.x, d.z).magnitude < 0.5f && Mathf.Abs(d.y) < 1.5f;
+            }
+            int k = spots.IndexOf(spot);
+            reached |= (player.GetPosition() - spot.Key).magnitude > 2f; // or sent back by another teleport over it
+            if (reached) sent++; else notes.Add($"stayed on block at {spot.Key / U:F0} (player at {player.GetPosition() / U:F0}, name '{blocks.GetProgramVariable("activator")}', {spotParts[k]})");
+        }
+        foreach (var spot in doorSpots)
+        {
+            total++;
+            yield return Teleport(spot.Key + Vector3.up * 0.05f, Quaternion.identity);
+            Vector3 start = player.GetPosition();
+            yield return Frames(1.5f);
+            bool gone = (player.GetPosition() - start).magnitude > 1f; // sank, fell into the teleport and went to its destination
+            var du = UdonOf(spot.Value);
+            var ccc = FindObjectOfType<CharacterController>();
+            var box = spot.Value.GetComponent<BoxCollider>();
+            bool overlaps = Physics.ComputePenetration(ccc, ccc.transform.position, ccc.transform.rotation, box, box.transform.position, box.transform.rotation, out _, out _);
+            if (gone) sent++; else notes.Add($"stayed on door at {spot.Key / U:F0}: overlaps touch box {overlaps}, blocks set {du.GetProgramVariable("blocks") != null}, box trigger {box.isTrigger} layer {box.gameObject.layer}, state {du.GetProgramVariable("state")}, t {du.GetProgramVariable("t")}, door at {spot.Value.transform.position / U:F0}, " +
+                $"touch box {spot.Value.GetComponent<BoxCollider>().bounds.min / U:F0}..{spot.Value.GetComponent<BoxCollider>().bounds.max / U:F0}, cc bottom {FindObjectOfType<CharacterController>().bounds.min.y / U:F1}");
+        }
+        Check(total > 0 && sent == total, $"bhop blocks: standing 1 s on a block sends the player back ({sent}/{total})");
+
+        // Bhop: bounce on each name-trigger block for 2 s holding jump (auto bhop) -> never sent away. Only blocks whose
+        // teleport reaches at most 20 units over them (8 more here: triggers are raised): a jump is 23 units up 0.09 s
+        // after leaving, so it clears them. Taller ones (bhop_arcane_v1 has 65 units) send bouncers back in CS:S too.
+        int kept = 0, bounced = 0;
+        foreach (var spot in spots)
+        {
+            if (spotTops[spots.IndexOf(spot)] - spot.Key.y > (20f + 8f) * U) continue;
+            bounced++;
+            yield return Teleport(spot.Key + Vector3.up * 0.6f, Quaternion.identity);
+            Keys(Key.Space);
+            bool stayed = true;
+            var heights = new StringBuilder();
+            for (int i = 0; i < frameRate * 2 && stayed; i++)
+            {
+                yield return null;
+                stayed = (player.GetPosition() - spot.Key).magnitude < 2f; // teleports go far; a bounce can drift a little
+                if (i % 3 == 0) heights.Append($" {(player.GetPosition().y - spot.Key.y) / U:F0}");
+            }
+            Keys();
+            int k = spots.IndexOf(spot);
+            if (stayed) kept++; else notes.Add($"bounce sent away from {spot.Key / U:F0} to {player.GetPosition() / U:F0} ({spotParts[k]}; height over the block every 3 frames:{heights})");
+            yield return Frames(0.7f); // land
+        }
+        Check(kept == bounced, $"bhop blocks: bouncing on a block with jump held is safe ({kept}/{bounced})");
+
+        // Off: standing stays.
+        blocks.SetProgramVariable("on", false);
+        int stood = 0;
+        foreach (var spot in spots)
+        {
+            yield return Teleport(spot.Key + Vector3.up * 0.05f, Quaternion.identity);
+            yield return Frames(1f);
+            if ((player.GetPosition() - spot.Key).magnitude < 2f) stood++;
+        }
+        foreach (var spot in doorSpots)
+        {
+            yield return Teleport(spot.Key + Vector3.up * 0.05f, Quaternion.identity);
+            yield return Frames(1.5f);
+            if ((player.GetPosition() - spot.Key).magnitude < 2f) stood++;
+        }
+        blocks.SetProgramVariable("on", true);
+        Check(stood == spots.Count + doorSpots.Count, $"bhop blocks off: the player can stand on blocks ({stood}/{spots.Count + doorSpots.Count})");
+        foreach (var n in notes) Log("   " + n);
     }
 
     // ------------------------------------------------------------------ bhop and surf runs
@@ -458,6 +591,15 @@ public class MapPlayTestRunner : MonoBehaviour
     }
 
     bool OnGround() { return (bool)movement.GetProgramVariable("onGround"); }
+
+    /// <summary>The Udon program behind a U# component (an object can hold several, e.g. a marker plus a teleport).</summary>
+    static UdonBehaviour UdonOf(Component proxy)
+    {
+        string type = proxy.GetType().Name;
+        foreach (var u in proxy.GetComponents<UdonBehaviour>())
+            if (u.programSource != null && u.programSource.name == type) return u;
+        return null;
+    }
 
     static UdonBehaviour FindUdon(string objectName)
     {

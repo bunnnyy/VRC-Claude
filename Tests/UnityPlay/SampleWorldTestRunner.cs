@@ -91,6 +91,20 @@ public class SampleWorldTestRunner : MonoBehaviour
         }
         Check(renderers > 0 && tools == 0 && (staticProps == 0 || propColliders > 0),
             $"{name}: visuals imported ({renderers} renderers, {tools} tool surfaces drawn, {staticProps} static props with a model, {propColliders} prop colliders)");
+        // Source lighting: props drawn with SourceMaps/Prop carry vertex light; door blocks move their visible model.
+        int litProps = 0, propRenderers = 0;
+        var propGroup = visuals != null ? visuals.Find("[StaticProps]") : null;
+        if (propGroup != null)
+            foreach (var r in propGroup.GetComponentsInChildren<Renderer>(true))
+            {
+                propRenderers++;
+                var mesh = r is SkinnedMeshRenderer smr ? smr.sharedMesh : r.GetComponent<MeshFilter>()?.sharedMesh;
+                if (System.Array.Exists(r.sharedMaterials, m => m != null && m.shader.name == "SourceMaps/Prop") && mesh != null && mesh.colors.Length > 0) litProps++;
+            }
+        var doors = root.GetComponentsInChildren<SourceMapDoor>(true);
+        int linked = System.Array.FindAll(doors, d => d.visuals != null).Length;
+        Check((propRenderers == 0 || litProps > 0) && linked == doors.Length,
+            $"{name}: Source lighting on {litProps}/{propRenderers} prop renderers; {linked}/{doors.Length} door blocks move their model");
         yield return Shot(name, spawn);
 
         // Teleports: up to 15, spread over the map.
@@ -100,6 +114,7 @@ public class SampleWorldTestRunner : MonoBehaviour
         for (int i = 0; i < teleports.Length && tested < 15; i += Mathf.Max(1, teleports.Length / 15))
         {
             var t = teleports[i];
+            if (t.filterName != "") continue; // bhop block teleports (MapPlayTestRunner's blocks test)
             var drops = DropPoints(t, 3);
             if (drops.Count == 0) continue;
             tested++;

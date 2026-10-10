@@ -140,6 +140,20 @@ Seconds, Rtv Ratio, Time Limit Minutes, Extend Minutes). The rest is wiring the 
 | Time Limit Minutes | 0 | This map's own time limit; 0 = the manager's |
 
 **SourceMapTeleport** (fall respawns from `trigger_teleport`): **Destination** = where the player is sent.
+**Filter Name** / **Filter Negate** / **Filter Class**: only for a player with that name (or class), from the map's
+`filter_activator_name` / `_class` (bhop blocks); empty = everyone. **Blocks** = the map's Bhop Blocks object.
+
+**SourceMapBlocks** ("Bhop Blocks" under a map that has blocks, made by the importer):
+
+| Setting | Default | What it does |
+|---|---|---|
+| On | ticked | Bhop blocks work like CS:S (stand on one too long and you're sent back). Unticked: every block is a plain platform |
+| Filtered, Gated (+ names) | filled by the importer | The teleports, pushes and boosters that check the player's name |
+
+**SourceMapNameTrigger** (`trigger_multiple`s that rename the player): Names / Delays (and Leave Names for
+OnEndTouch), **Wait** = seconds before it fires again while you touch it (Source's `wait`; negative = once).
+**SourceMapDoor** (`func_door` blocks that open on touch): **Move Local** (metres), **Speed** (m/s), **Wait** (seconds
+open), **Drop Through** (lets you fall into the teleport below when fully open), **Visuals** (the model moved with it).
 **SourceEntity** (markers): read-only copies of the map entity's data (class name, name, keyvalues, outputs,
 volume); changing them does nothing.
 

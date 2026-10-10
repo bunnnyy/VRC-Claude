@@ -167,6 +167,39 @@ static class Program
         Check(stuck == 0, $"no spawn/destination puts the player hull inside a brush ({stuck} stuck)");
         foreach (var p in problems.Take(8)) Console.WriteLine("         " + p);
 
+        // Ambient light (what Source lights props with) at the stand points, 36 units up (chest height).
+        var lit = standPoints.Select(e => bsp.AmbientCube(e.GetVector("origin") + new Vector3(0, 0, 36))).Where(c => c != null).ToList();
+        float mean = lit.Count == 0 ? 0 : lit.Average(c => c.Average(v => (v.X + v.Y + v.Z) / 3f));
+        Console.WriteLine($"  ambient light: {bsp.LeafAmbient.Count(l => l != null && l.Length > 0)} leaves with samples, mean at stand points {mean:F2} (1 = full)");
+        Check(lit.Count >= standPoints.Count * 0.9 && mean > 0.002f && mean < 4f,
+            $"ambient light samples at {lit.Count}/{standPoints.Count} spawns/destinations, plausible brightness (indirect light only)");
+
+        // Bhop blocks: name triggers, filters, touch doors.
+        int nameTrig = bsp.Entities.Count(e => BspMechanics.NameSets(e).Count > 0);
+        var filteredTp = bsp.Entities.Where(e => e.ClassName == "trigger_teleport" && e.Get("filtername") != "").ToList();
+        int resolved = filteredTp.Count(e => BspMechanics.FilterName(bsp, e, out _) != "?");
+        var doors = bsp.Entities.Where(BspMechanics.IsTouchDoor).ToList();
+        Console.WriteLine($"  bhop blocks: {nameTrig} name triggers, {resolved}/{filteredTp.Count} filtered teleports resolved, {doors.Count} touch doors");
+        Check(resolved == filteredTp.Count, $"every filtered teleport's filter is a filter_activator_name or missing ({resolved}/{filteredTp.Count})");
+        if (name == "bhop_eazy_v2")
+        {
+            var move = BspMechanics.DoorMove(bsp, doors[0]);
+            Check(doors.Count == 259 && Math.Abs(move.Z + 9) < 0.01f && Math.Abs(move.X) < 0.01f && Math.Abs(move.Y) < 0.01f,
+                $"259 touch-door blocks, the first sinks 9 units (8 thick + lip 1): {move}");
+        }
+        if (name == "bhop_japan")
+        {
+            var t = bsp.Entities.First(e => BspMechanics.NameSets(e).Any(n => n.Name == "activator"));
+            var sets = BspMechanics.NameSets(t);
+            Check(sets.Any(n => n.Name == "activator" && Math.Abs(n.Delay - 0.09f) < 1e-4) && sets.Any(n => n.Name == "default" && Math.Abs(n.Delay - 0.1f) < 1e-4),
+                "block trigger renames to activator at 0.09 s and default at 0.1 s");
+        }
+
+        var kinds = bsp.WorldLights.GroupBy(w => w.Type).OrderBy(g => g.Key).Select(g => $"type {g.Key}: {g.Count()}");
+        Console.WriteLine($"  world lights: {string.Join(", ", kinds)}");
+        Check(bsp.WorldLights.Length > 0 && bsp.WorldLights.All(w => float.IsFinite(w.Intensity.X) && w.Type >= 0 && w.Type <= 5),
+            $"{bsp.WorldLights.Length} world lights read");
+
         // Brush entity models are stored relative to the entity origin: bounds should be near zero.
         var brushEnts = bsp.Entities.Where(e => e.BrushModel > 0).ToList();
         int farOff = brushEnts.Count(e =>

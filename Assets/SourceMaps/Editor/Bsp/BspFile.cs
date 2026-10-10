@@ -19,7 +19,8 @@ namespace SourceMaps.Bsp
         const int LumpEntities = 0, LumpPlanes = 1, LumpTexData = 2, LumpVertexes = 3, LumpNodes = 5,
             LumpTexInfo = 6, LumpFaces = 7, LumpLeafs = 10, LumpEdges = 12, LumpSurfEdges = 13, LumpModels = 14,
             LumpLeafBrushes = 17, LumpBrushes = 18, LumpBrushSides = 19, LumpDispInfo = 26, LumpDispVerts = 33,
-            LumpTexDataStringData = 43, LumpTexDataStringTable = 44;
+            LumpTexDataStringData = 43, LumpTexDataStringTable = 44,
+            LumpWorldLights = 15, LumpWorldLightsHdr = 54, LumpLeafAmbientIndexHdr = 51, LumpLeafAmbientIndex = 52, LumpLeafAmbientLightingHdr = 55, LumpLeafAmbientLighting = 56;
 
         // Brush contents flags (bspflags.h)
         public const int ContentsSolid = 0x1, ContentsWindow = 0x2, ContentsGrate = 0x8, ContentsSlime = 0x10,
@@ -35,7 +36,9 @@ namespace SourceMaps.Bsp
         public struct BrushSide { public int Plane, TexInfo, DispInfo; public bool Bevel; }
         public struct Model { public Vector3 Mins, Maxs, Origin; public int HeadNode, FirstFace, NumFaces; }
         public struct Node { public int Plane, Child0, Child1; }
-        public struct Leaf { public int Contents, FirstLeafBrush, NumLeafBrushes; }
+        public struct Leaf { public int Contents, FirstLeafBrush, NumLeafBrushes; public Vector3 Mins, Maxs; }
+        /// <summary>Ambient light sample: 6 linear colours (+x, -x, +y, -y, +z, -z, Source axes) at a point.</summary>
+        public struct AmbientSample { public Vector3[] Cube; public Vector3 Position; }
         public struct TexInfo { public int Flags, TexData; }
         public struct Face { public int Plane, Side, FirstEdge, NumEdges, TexInfo, DispInfo; }
         public struct DispInfo { public Vector3 StartPosition; public int DispVertStart, Power, Contents, MapFace; }
@@ -51,6 +54,17 @@ namespace SourceMaps.Bsp
         public Model[] Models;
         public Node[] Nodes;
         public Leaf[] Leafs;
+        /// <summary>Per leaf: the ambient light samples VRAD stored in it (BSP 20+; empty for solid leaves).</summary>
+        public AmbientSample[][] LeafAmbient;
+        /// <summary>A light VRAD compiled (point, spot, sun...), as the engine uses it to light models.</summary>
+        public struct WorldLight
+        {
+            public const int Surface = 0, Point = 1, Spot = 2, Sky = 3, Quake = 4, SkyAmbient = 5;
+            public Vector3 Origin, Intensity, Normal;
+            public int Type;
+            public float StopDot, StopDot2, Exponent, Radius, Constant, Linear, Quadratic;
+        }
+        public WorldLight[] WorldLights = new WorldLight[0];
         public ushort[] LeafBrushes;
         public TexInfo[] TexInfos;
         public string[] TexDataNames;
@@ -157,9 +171,64 @@ namespace SourceMaps.Bsp
                 {
                     long start = br.BaseStream.Position;
                     int contents = br.ReadInt32();
-                    br.ReadBytes(2 + 2 + 12 + 4); // cluster, area/flags, mins, maxs, firstleafface, numleaffaces
-                    bsp.Leafs[i] = new Leaf { Contents = contents, FirstLeafBrush = br.ReadUInt16(), NumLeafBrushes = br.ReadUInt16() };
+                    br.ReadBytes(2 + 2); // cluster, area/flags
+                    var mins = new Vector3(br.ReadInt16(), br.ReadInt16(), br.ReadInt16());
+                    var maxs = new Vector3(br.ReadInt16(), br.ReadInt16(), br.ReadInt16());
+                    br.ReadBytes(4); // firstleafface, numleaffaces
+                    bsp.Leafs[i] = new Leaf { Contents = contents, FirstLeafBrush = br.ReadUInt16(), NumLeafBrushes = br.ReadUInt16(), Mins = mins, Maxs = maxs };
                     br.BaseStream.Position = start + size;
+                }
+            }
+
+            // Ambient light samples per leaf (LDR, else HDR): index = (ushort count, ushort first) per leaf; a sample is
+            // 6 ColorRGBExp32 (r, g, b, signed exponent) then x, y, z fractions of the leaf box (0-255) and a pad byte.
+            bool ldr = lengths[LumpLeafAmbientLighting] > 0;
+            int indexLump = ldr ? LumpLeafAmbientIndex : LumpLeafAmbientIndexHdr, lightLump = ldr ? LumpLeafAmbientLighting : LumpLeafAmbientLightingHdr;
+            bsp.LeafAmbient = new AmbientSample[bsp.Leafs.Length][];
+            if (lengths[indexLump] / 4 == bsp.Leafs.Length && lengths[lightLump] > 0)
+            {
+                byte[] light;
+                using (var br = lump(lightLump)) light = br.ReadBytes(lengths[lightLump]);
+                using (var br = lump(indexLump))
+                    for (int i = 0; i < bsp.Leafs.Length; i++)
+                    {
+                        int n = br.ReadUInt16(), first = br.ReadUInt16();
+                        var samples = new AmbientSample[n];
+                        for (int k = 0; k < n; k++)
+                        {
+                            int at = (first + k) * 28;
+                            var cube = new Vector3[6];
+                            for (int f = 0; f < 6; f++)
+                            {
+                                float scale = (float)Math.Pow(2, (sbyte)light[at + f * 4 + 3]);
+                                cube[f] = new Vector3(light[at + f * 4], light[at + f * 4 + 1], light[at + f * 4 + 2]) * scale;
+                            }
+                            var frac = new Vector3(light[at + 24], light[at + 25], light[at + 26]) / 255f;
+                            var leaf = bsp.Leafs[i];
+                            samples[k] = new AmbientSample { Cube = cube, Position = leaf.Mins + (leaf.Maxs - leaf.Mins) * frac };
+                        }
+                        bsp.LeafAmbient[i] = samples;
+                    }
+            }
+
+            // World lights (LDR, else HDR), dworldlight_t: 88 bytes (version 0), 100 with a shadow offset (version 1).
+            int wl = lengths[LumpWorldLights] > 0 ? LumpWorldLights : LumpWorldLightsHdr;
+            int wlSize = versions[wl] >= 1 ? 100 : 88;
+            using (var br = lump(wl))
+            {
+                bsp.WorldLights = new WorldLight[count(wl, wlSize)];
+                for (int i = 0; i < bsp.WorldLights.Length; i++)
+                {
+                    long start = br.BaseStream.Position;
+                    var w = new WorldLight { Origin = ReadVector(br), Intensity = ReadVector(br), Normal = ReadVector(br) };
+                    if (wlSize == 100) ReadVector(br); // shadow cast offset
+                    br.ReadInt32(); // cluster
+                    w.Type = br.ReadInt32();
+                    br.ReadInt32(); // style
+                    w.StopDot = br.ReadSingle(); w.StopDot2 = br.ReadSingle(); w.Exponent = br.ReadSingle(); w.Radius = br.ReadSingle();
+                    w.Constant = br.ReadSingle(); w.Linear = br.ReadSingle(); w.Quadratic = br.ReadSingle();
+                    bsp.WorldLights[i] = w;
+                    br.BaseStream.Position = start + wlSize;
                 }
             }
 
@@ -309,6 +378,84 @@ namespace SourceMaps.Bsp
         }
 
         static Vector3 ReadVector(BinaryReader br) { return new Vector3(br.ReadSingle(), br.ReadSingle(), br.ReadSingle()); }
+
+        /// <summary>The world leaf containing a point (Source space).</summary>
+        public int LeafAt(Vector3 p)
+        {
+            int node = Models[0].HeadNode;
+            while (node >= 0)
+            {
+                var plane = Planes[Nodes[node].Plane];
+                node = Vector3.Dot(plane.Normal, p) - plane.Dist >= 0 ? Nodes[node].Child0 : Nodes[node].Child1;
+            }
+            return -1 - node;
+        }
+
+        /// <summary>
+        /// Source's ambient light at a point (what it lights models with): the nearest sample in the point's leaf. Null if
+        /// the map has none there (no samples, or the point is in a solid leaf).
+        /// </summary>
+        public Vector3[] AmbientCube(Vector3 p)
+        {
+            if (LeafAmbient == null) return null;
+            var samples = LeafAmbient[LeafAt(p)];
+            if (samples == null || samples.Length == 0) return null;
+            var best = samples[0];
+            foreach (var s in samples)
+                if (Vector3.DistanceSquared(s.Position, p) < Vector3.DistanceSquared(best.Position, p)) best = s;
+            return best.Cube;
+        }
+
+        /// <summary>Ambient cube lighting for a direction n (unit, Source space), as Source's shaders sum it.</summary>
+        public static Vector3 AmbientLight(Vector3[] cube, Vector3 n)
+        {
+            return n.X * n.X * cube[n.X >= 0 ? 0 : 1] + n.Y * n.Y * cube[n.Y >= 0 ? 2 : 3] + n.Z * n.Z * cube[n.Z >= 0 ? 4 : 5];
+        }
+
+        /// <summary>
+        /// Light from a world light arriving at p (Source space): its colour, and the unit direction towards it. Zero for
+        /// lights out of range or behind a spot's cone (like the engine's model lighting; no shadows here: the caller
+        /// checks visibility). Surface and ambient-only lights give zero (they are in the ambient cubes).
+        /// </summary>
+        public static Vector3 LightAt(WorldLight w, Vector3 p, out Vector3 toLight)
+        {
+            toLight = -w.Normal;
+            if (w.Type == WorldLight.Sky) return w.Intensity;
+            if (w.Type != WorldLight.Point && w.Type != WorldLight.Spot) return Vector3.Zero;
+            Vector3 d = w.Origin - p;
+            float dist = d.Length();
+            if (dist < 1f || (w.Radius > 0 && dist > w.Radius)) return Vector3.Zero;
+            toLight = d / dist;
+            float ratio = 1f / Math.Max(1e-6f, w.Constant + w.Linear * dist + w.Quadratic * dist * dist);
+            if (w.Type == WorldLight.Spot)
+            {
+                float dot = Vector3.Dot(-toLight, w.Normal);
+                if (dot <= w.StopDot2) return Vector3.Zero;
+                if (dot < w.StopDot && w.StopDot > w.StopDot2)
+                    ratio *= (float)Math.Pow((dot - w.StopDot2) / (w.StopDot - w.StopDot2), w.Exponent);
+            }
+            return w.Intensity * ratio;
+        }
+
+        /// <summary>True if p is inside a brush with a sky face (what a ray towards the sun hits when it gets out).</summary>
+        public bool InSkyBrush(Vector3 p)
+        {
+            var leaf = Leafs[LeafAt(p)];
+            for (int i = 0; i < leaf.NumLeafBrushes; i++)
+            {
+                var brush = Brushes[LeafBrushes[leaf.FirstLeafBrush + i]];
+                bool inside = true, sky = false;
+                for (int sIdx = 0; sIdx < brush.NumSides; sIdx++)
+                {
+                    var side = BrushSides[brush.FirstSide + sIdx];
+                    var plane = Planes[side.Plane];
+                    if (Vector3.Dot(plane.Normal, p) - plane.Dist > 0.5f) { inside = false; break; }
+                    if (side.TexInfo >= 0 && (TexInfos[side.TexInfo].Flags & SurfSky) != 0) sky = true;
+                }
+                if (inside && sky) return true;
+            }
+            return false;
+        }
 
         /// <summary>Brush indices of a brush model (0 = world), found by walking its BSP tree to the leaves.</summary>
         public List<int> ModelBrushes(int model)

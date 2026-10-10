@@ -76,10 +76,11 @@ Step-by-step setup: **[docs/GUIDE.md](docs/GUIDE.md)**; design and test history:
 - **Import** (**Tools > Source Maps > Import BSP...**, our own BSP reader): collision from every player-solid brush
   (incl. invisible clips) and displacement, without the faces where two brushes touch (Source never collides with
   those; in a mesh their edges stop surfers); one `SourceEntity` marker per entity with all its keyvalues and outputs;
-  working teleports, pushes, boosters, gravity, water and ladders for SourceMovement.
+  working teleports, pushes, boosters, gravity, water and ladders for SourceMovement; **bhop blocks** like CS:S
+  (name-filtered teleports and sinking `func_door` blocks: stand too long and you're sent back), switchable per map.
 - **Visuals** with [uSource](https://github.com/DeadZoneLuna/uSource) (installed by you, not included): the map's own
-  Source **lightmaps** on a small `SourceMaps/Lightmapped` shader (nothing to bake), tool surfaces removed, solid
-  props get colliders.
+  Source **lightmaps** on a small `SourceMaps/Lightmapped` shader (nothing to bake), static props lit from the map's
+  ambient light and lights like CS:S lights models, tool surfaces removed, solid props get colliders.
 - **Timer zones** from [zones-cstrike](https://github.com/srcwr/zones-cstrike) (what CS:S bhop servers use).
 - **Map rotation** (`SourceMapManager`): 5 random maps per vote, 60 s timer, owner controls, rock the vote, time
   limit with extend, saved records per map. **Build Sample World** makes all of it from a folder of `.bsp` files.

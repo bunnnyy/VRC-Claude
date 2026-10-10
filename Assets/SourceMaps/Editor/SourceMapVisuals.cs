@@ -14,7 +14,9 @@ using Num = System.Numerics;
 ///   - solid static props get MeshColliders (uSource imports props without collision),
 ///   - meshes are saved as assets (uSource keeps them inside the scene),
 ///   - the map's own Source lightmaps (uSource reads them into Unity's lightmap list, which isn't saved with the scene)
-///     are saved as textures and put on the surfaces' materials (SourceMaps/Lightmapped shader).
+///     are saved as textures and put on the surfaces' materials (SourceMaps/Lightmapped shader),
+///   - static props are lit like Source lights models: the map's ambient cube plus its strongest visible lights, baked
+///     into vertex colours (SourceMaps/Prop shader).
 /// </summary>
 public static class SourceMapVisuals
 {
@@ -27,7 +29,10 @@ public static class SourceMapVisuals
         set { EditorPrefs.SetString(PrefsCssFolder, value); }
     }
 
-    /// <summary>Light the surfaces with the map's own Source lightmaps (off: uSource's materials, lit by Unity lights).</summary>
+    /// <summary>
+    /// Light the map like Source: surfaces with its own lightmaps, static props with its ambient light and lights
+    /// (off: uSource's materials, lit by Unity lights).
+    /// </summary>
     public static bool UseLightmaps = true;
 
     public static bool USourceInstalled { get { return FindType("uSource.uLoader") != null; } }
@@ -84,11 +89,14 @@ public static class SourceMapVisuals
         visuals.transform.SetParent(parent, false);
 
         int removed = RemoveHiddenSurfaces(visuals);
+        int doors = LinkDoors(visuals);
         int lit = !UseLightmaps ? 0 : ApplyLightmaps(visuals, "Assets/SourceMapsImported/" + mapName + "/Lightmaps");
-        int propColliders = AddPropColliders(visuals, BspFile.Load(bspPath), scale);
+        var bsp = BspFile.Load(bspPath);
+        int propColliders = AddPropColliders(visuals, bsp, scale);
+        int propsLit = !UseLightmaps ? 0 : LightProps(visuals, bsp, scale, "Assets/SourceMapsImported/" + mapName + "/Props");
         int meshes = SaveMeshes(visuals, "Assets/SourceMapsImported/" + mapName + "/" + mapName + "_visuals.asset");
         Debug.Log($"[Source Maps] {mapName} visuals: {visuals.GetComponentsInChildren<MeshRenderer>(true).Length} renderers, " +
-                  $"{removed} tool surfaces removed, {lit} surfaces with Source lightmaps, {propColliders} solid props given colliders, {meshes} meshes saved" +
+                  $"{removed} tool surfaces removed, {lit} surfaces with Source lightmaps, {propsLit} props lit, {doors} door blocks linked, {propColliders} solid props given colliders, {meshes} meshes saved" +
                   (css == "" ? " (no CS:S folder set: stock textures missing)" : ""));
         return visuals;
     }
@@ -130,6 +138,28 @@ public static class SourceMapVisuals
         string file = m.Substring(m.LastIndexOf('/') + 1);
         // uSource's saved materials are named without their folder ("toolstrigger"); every hidden name starts with "tools".
         return Hidden.Contains(file.Replace(" (instance)", "").Trim());
+    }
+
+    /// <summary>
+    /// Gives each SourceMapDoor (bhop block) its visible model, so it moves with the collider: uSource makes brush model
+    /// N as the N-th child of "[Faces]".
+    /// </summary>
+    static int LinkDoors(GameObject visuals)
+    {
+        var faces = visuals.transform.Find("[Faces]");
+        var root = visuals.transform.parent;
+        if (faces == null || root == null) return 0;
+        int linked = 0;
+        foreach (var door in root.GetComponentsInChildren<SourceMapDoor>(true))
+        {
+            var marker = door.GetComponent<SourceEntity>();
+            int model;
+            if (marker == null || !int.TryParse(marker.GetValue("model").TrimStart('*'), out model) || model >= faces.childCount) continue;
+            door.visuals = faces.GetChild(model);
+            UdonSharpEditor.UdonSharpEditorUtility.CopyProxyToUdon(door);
+            linked++;
+        }
+        return linked;
     }
 
     // uSource's shaders for surfaces Source draws with a lightmap (LightmappedGeneric, WorldVertexTransition, alpha tested).
@@ -183,6 +213,130 @@ public static class SourceMapVisuals
         LightmapSettings.lightmaps = new LightmapData[0];
         return lit;
     }
+
+    /// <summary>
+    /// Lights each static prop the way the engine lights models without baked vertex lighting: at the prop's centre,
+    /// the ambient cube VRAD stored there plus the 4 strongest world lights that can see it (a ray against the map's
+    /// collision; the sun only if the ray ends in a sky brush), with N.L per vertex. The result goes into a copy of the
+    /// mesh's vertex colours, drawn by SourceMaps/Prop. Translucent and other special materials keep uSource's material.
+    /// Returns props lit.
+    /// </summary>
+    static int LightProps(GameObject visuals, BspFile bsp, float scale, string folder)
+    {
+        var group = visuals.transform.Find("[StaticProps]");
+        var shader = Shader.Find("SourceMaps/Prop");
+        var root = visuals.transform.parent;
+        var collision = root != null ? root.Find("Collision")?.GetComponent<Collider>() : null;
+        if (group == null || shader == null || root == null) return 0;
+        Physics.SyncTransforms();
+        AssetDatabase.DeleteAsset(folder);
+        Directory.CreateDirectory(folder);
+        var materials = new Dictionary<Material, Material>();
+        int lit = 0, unlit = 0;
+        foreach (Transform prop in group)
+        {
+            var renderers = prop.GetComponentsInChildren<Renderer>(true);
+            if (renderers.Length == 0) continue;
+            Bounds b = renderers[0].bounds;
+            foreach (var r in renderers) b.Encapsulate(r.bounds);
+            Num.Vector3 at = ToSource(root.InverseTransformPoint(b.center) / scale);
+            // The centre can sit in a leaf without samples (inside a wall, or a tall prop's top in another leaf):
+            // then the nearest of a few points around it, lower ones first.
+            Num.Vector3[] cube = null;
+            foreach (var o in AmbientProbe)
+                if ((cube = bsp.AmbientCube(at + o)) != null) break;
+            if (cube == null) { cube = new Num.Vector3[6]; unlit++; }
+
+            // The strongest lights reaching the centre (colour without N.L), with their direction (Unity world space).
+            var lights = new List<KeyValuePair<Vector3, Vector3>>();
+            foreach (var w in bsp.WorldLights)
+            {
+                var color = BspFile.LightAt(w, at, out var toLight);
+                if (color.X + color.Y + color.Z < 0.001f) continue;
+                Vector3 dir = root.TransformDirection(ToUnity(toLight)).normalized;
+                float dist = w.Type == BspFile.WorldLight.Sky ? 32768f : Num.Vector3.Distance(w.Origin, at);
+                if (collision != null && collision.Raycast(new Ray(b.center, dir), out var hit, dist * scale * root.lossyScale.x))
+                {
+                    if (w.Type != BspFile.WorldLight.Sky) continue; // something in between
+                    Num.Vector3 beyond = ToSource(root.InverseTransformPoint(hit.point + dir * scale) / scale);
+                    if (!bsp.InSkyBrush(beyond)) continue;
+                }
+                lights.Add(new KeyValuePair<Vector3, Vector3>(new Vector3(color.X, color.Y, color.Z), dir));
+            }
+            lights.Sort((x, y) => (y.Key.x + y.Key.y + y.Key.z).CompareTo(x.Key.x + x.Key.y + x.Key.z));
+            if (lights.Count > 4) lights.RemoveRange(4, lights.Count - 4);
+
+            foreach (var r in renderers)
+            {
+                var mf = r.GetComponent<MeshFilter>();
+                var smr = r as SkinnedMeshRenderer;
+                Mesh src = smr != null ? smr.sharedMesh : mf != null ? mf.sharedMesh : null;
+                if (src == null) continue;
+                var mats = r.sharedMaterials;
+                bool any = false;
+                for (int i = 0; i < mats.Length; i++)
+                {
+                    if (mats[i] == null || !LightmappedShaders.Contains(mats[i].shader.name)) continue;
+                    if (!materials.TryGetValue(mats[i], out var m))
+                    {
+                        m = new Material(shader) { name = mats[i].name };
+                        m.SetTexture("_MainTex", mats[i].mainTexture);
+                        m.mainTextureScale = mats[i].mainTextureScale;
+                        m.mainTextureOffset = mats[i].mainTextureOffset;
+                        if (mats[i].HasProperty("_Color")) m.SetColor("_Color", mats[i].GetColor("_Color"));
+                        if (mats[i].shader.name == "USource/CutoutGeneric") m.SetFloat("_Cutoff", 0.5f);
+                        AssetDatabase.CreateAsset(m, $"{folder}/{materials.Count}_{Path.GetFileName(mats[i].name)}.mat");
+                        materials[mats[i]] = m;
+                    }
+                    mats[i] = m;
+                    any = true;
+                }
+                if (!any) continue;
+                // Leaves and other alpha-tested cards are seen from both sides: light them from the brighter side.
+                bool twoSided = mats.Any(m => m != null && m.GetFloat("_Cutoff") > 0f);
+                var mesh = Object.Instantiate(src);
+                mesh.name = src.name + " lit";
+                var normals = mesh.normals;
+                var colors = new Color[mesh.vertexCount];
+                for (int v = 0; v < colors.Length; v++)
+                {
+                    Vector3 n = v < normals.Length ? r.transform.TransformDirection(normals[v]).normalized : Vector3.up;
+                    Vector3 c = Light(cube, lights, n, root);
+                    if (twoSided)
+                    {
+                        Vector3 back = Light(cube, lights, -n, root);
+                        if (back.x + back.y + back.z > c.x + c.y + c.z) c = back;
+                    }
+                    colors[v] = new Color(Mathf.Min(1f, c.x * 0.5f), Mathf.Min(1f, c.y * 0.5f), Mathf.Min(1f, c.z * 0.5f), 1f);
+                }
+                mesh.colors = colors;
+                if (smr != null) smr.sharedMesh = mesh; else mf.sharedMesh = mesh;
+                r.sharedMaterials = mats;
+            }
+            lit++;
+        }
+        if (unlit > 0) Debug.Log($"[Source Maps] {unlit} props found no ambient light sample nearby (lit by world lights only)");
+        return lit;
+    }
+
+    /// <summary>Ambient cube plus lights (N.L) for a world-space normal.</summary>
+    static Vector3 Light(Num.Vector3[] cube, List<KeyValuePair<Vector3, Vector3>> lights, Vector3 n, Transform root)
+    {
+        var a = BspFile.AmbientLight(cube, ToSource(root.InverseTransformDirection(n)));
+        Vector3 c = new Vector3(a.X, a.Y, a.Z);
+        foreach (var l in lights) c += l.Key * Mathf.Max(0f, Vector3.Dot(n, l.Value));
+        return c;
+    }
+
+    static readonly Num.Vector3[] AmbientProbe =
+    {
+        Num.Vector3.Zero, new Num.Vector3(0, 0, -32), new Num.Vector3(0, 0, 32), new Num.Vector3(32, 0, 0), new Num.Vector3(-32, 0, 0),
+        new Num.Vector3(0, 32, 0), new Num.Vector3(0, -32, 0), new Num.Vector3(0, 0, -96), new Num.Vector3(0, 0, 96)
+    };
+
+    /// <summary>Unity axes (units) to Source axes: the inverse of BspGeometry.ToUnity (x = -Y, y = Z, z = X).</summary>
+    static Num.Vector3 ToSource(Vector3 u) { return new Num.Vector3(u.z, -u.x, u.y); }
+    static Vector3 ToUnity(Num.Vector3 s) { return new Vector3(-s.Y, s.Z, s.X); }
 
     /// <summary>
     /// MeshColliders on static props the map marks solid (2 = bounding box, 6 = vphysics; both use the render mesh

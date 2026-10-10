@@ -23,7 +23,10 @@ using Num = System.Numerics;
 public static class SourceMapImporter
 {
     const string OutputRoot = "Assets/SourceMapsImported";
-    /// <summary>Teleport triggers get this much taller (units), so a player standing on a thin trigger touches it.</summary>
+    /// <summary>
+    /// Triggers get this much taller (units), so a player standing on a thin trigger touches it: VRChat's capsule floats
+    /// about 6 units over the floor (2 hover + its skin), so this is about where Source's box would touch.
+    /// </summary>
     const float TriggerRaiseTop = 8f;
 
     // Brush entities that don't block players (everything else named func_* does).
@@ -117,25 +120,79 @@ public static class SourceMapImporter
             if (e.TargetName != "" && !byName.ContainsKey(e.TargetName)) byName[e.TargetName] = go.transform;
         }
 
-        // Working teleports
+        // Bhop blocks (SourceMapBlocks, made when the map has any): the player's name, set by trigger outputs, and what
+        // checks it (filtered teleports, pushes, boosters); func_door blocks that sink when touched.
+        SourceMapBlocks blocks = null;
+        System.Func<SourceMapBlocks> Blocks = () =>
+        {
+            if (blocks != null) return blocks;
+            var b = new GameObject("Bhop Blocks");
+            b.transform.SetParent(root.transform, false);
+            return blocks = b.AddUdonSharpComponent<SourceMapBlocks>();
+        };
+        var blockTeleports = new List<SourceMapTeleport>();
+        var nameTriggerList = new List<SourceMapNameTrigger>();
+        var gated = new List<Collider>();
+        var gatedNames = new List<string>();
+        var gatedNegate = new List<bool>();
+        var gatedClass = new List<bool>();
+
+        // Working teleports; filtered ones check the player's name (filter_activator_name; other filters stay markers).
         int teleports = 0, filtered = 0, noTarget = 0;
         for (int i = 0; i < bsp.Entities.Count; i++)
         {
             var e = bsp.Entities[i];
             if (e.ClassName != "trigger_teleport" || e.BrushModel <= 0) continue;
-            if (e.Get("filtername") != "") { filtered++; continue; }
+            string filterName = BspMechanics.FilterName(bsp, e, out bool negate, out bool filterClass);
+            if (filterName == "?") { filtered++; continue; }
             Transform target;
             if (!byName.TryGetValue(e.Get("target"), out target)) { noTarget++; continue; }
             var go = markers[i];
             AddTriggerColliders(go, bsp, e, scale, meshes);
             var teleport = go.AddUdonSharpComponent<SourceMapTeleport>();
             teleport.destination = target;
+            if (filterName != null)
+            {
+                teleport.filterName = filterName;
+                teleport.filterNegate = negate;
+                teleport.filterClass = filterClass;
+                teleport.blocks = Blocks();
+                blockTeleports.Add(teleport);
+            }
             UdonSharpEditorUtility.CopyProxyToUdon(teleport);
             teleports++;
         }
 
+        // Triggers that rename the player ("!activator AddOutput targetname X"), e.g. on top of bhop blocks.
+        int nameTriggers = 0;
+        for (int i = 0; i < bsp.Entities.Count; i++)
+        {
+            var e = bsp.Entities[i];
+            var sets = BspMechanics.NameSets(e);
+            if (sets.Count == 0 || e.BrushModel <= 0 || e.Get("StartDisabled") == "1") continue;
+            string filterName = BspMechanics.FilterName(bsp, e, out bool negate, out bool filterClass);
+            if (filterName == "?") continue;
+            var go = markers[i];
+            AddTriggerColliders(go, bsp, e, scale, meshes);
+            var names = go.AddUdonSharpComponent<SourceMapNameTrigger>();
+            names.blocks = Blocks();
+            names.names = sets.Where(n => !n.OnLeave).Select(n => n.Name).ToArray();
+            names.delays = sets.Where(n => !n.OnLeave).Select(n => n.Delay).ToArray();
+            names.isClass = sets.Where(n => !n.OnLeave).Select(n => n.IsClass).ToArray();
+            names.leaveNames = sets.Where(n => n.OnLeave).Select(n => n.Name).ToArray();
+            names.leaveDelays = sets.Where(n => n.OnLeave).Select(n => n.Delay).ToArray();
+            names.leaveIsClass = sets.Where(n => n.OnLeave).Select(n => n.IsClass).ToArray();
+            names.wait = BspMechanics.TriggerWait(e);
+            names.filterName = filterName ?? "";
+            names.filterNegate = negate;
+            names.filterClass = filterClass;
+            UdonSharpEditorUtility.CopyProxyToUdon(names);
+            nameTriggerList.Add(names);
+            nameTriggers++;
+        }
+
         // Pushes and boosters for SourceMovement (if it's in the project; looked up by name so SourceMaps compiles
-        // without it). Filtered ones stay markers, like filtered teleports.
+        // without it). Filtered ones work through SourceMapBlocks; other filter classes stay markers.
         var pushType = FindType("SourcePushTrigger");
         var boostType = FindType("SourceBoostTrigger");
         int pushes = 0, boosts = 0, filteredMechanics = 0;
@@ -146,10 +203,23 @@ public static class SourceMapImporter
             bool push = e.ClassName == "trigger_push";
             var boostList = push ? new List<BspMechanics.Boost>() : BspMechanics.Boosts(e);
             if (!push && boostList.Count == 0) continue;
-            if (e.Get("filtername") != "") { filteredMechanics++; continue; }
+            string filterName = BspMechanics.FilterName(bsp, e, out bool negate, out bool filterClass);
+            if (filterName == "?") { filteredMechanics++; continue; }
             if ((push && pushType == null) || (!push && boostType == null)) continue;
             var go = markers[i];
             AddTriggerColliders(go, bsp, e, scale, meshes);
+            if (filterName != null) // only works while the player has that name: SourceMapBlocks switches it
+            {
+                Blocks();
+                foreach (var col in go.GetComponents<MeshCollider>())
+                {
+                    if (gated.Contains(col)) continue;
+                    gated.Add(col);
+                    gatedNames.Add(filterName);
+                    gatedNegate.Add(negate);
+                    gatedClass.Add(filterClass);
+                }
+            }
             if (push)
             {
                 var c = go.AddUdonSharpComponent(pushType);
@@ -169,6 +239,48 @@ public static class SourceMapImporter
             }
         }
 
+        // func_door bhop blocks ("touch opens"): sink when touched, back after "wait"; over a teleport they let the
+        // player fall into it when fully open (they sank into it in CS:S).
+        int doors = 0;
+        var teleportBounds = root.GetComponentsInChildren<SourceMapTeleport>()
+            .SelectMany(t => t.GetComponents<MeshCollider>()).Select(c => c.bounds).ToList();
+        for (int i = 0; i < bsp.Entities.Count; i++)
+        {
+            var e = bsp.Entities[i];
+            var go = markers[i];
+            if (!BspMechanics.IsTouchDoor(e) || e.BrushModel <= 0 || go.GetComponent<MeshCollider>() == null) continue;
+            var marker = go.GetComponent<SourceEntity>();
+            var door = go.AddUdonSharpComponent<SourceMapDoor>();
+            door.blocks = Blocks();
+            door.moveLocal = ToUnity(BspGeometry.ToUnity(BspMechanics.DoorMove(bsp, e), scale));
+            door.speed = ParseFloat(e.Get("speed", "100")) * scale;
+            door.wait = ParseFloat(e.Get("wait", "3"));
+            door.solid = go.GetComponent<MeshCollider>();
+            var touch = go.AddComponent<BoxCollider>(); // touching it (standing on it or bumping it) opens it
+            touch.isTrigger = true;
+            touch.center = marker.bounds.center + new Vector3(0, 6f * scale, 0); // 12 units over its top (as the
+            touch.size = marker.bounds.size + new Vector3(2f, 12f, 2f) * scale;  // raised triggers: the capsule floats)
+            var open = new Bounds(go.transform.position + marker.bounds.center + door.moveLocal, marker.bounds.size);
+            open.Encapsulate(open.min - new Vector3(0, 16f * scale, 0));
+            door.dropThrough = teleportBounds.Any(b => b.Intersects(open));
+            UdonSharpEditorUtility.CopyProxyToUdon(door);
+            doors++;
+        }
+        if (blocks != null)
+        {
+            blocks.filtered = blockTeleports.ToArray();
+            blocks.nameTriggers = nameTriggerList.ToArray();
+            // Source's player box, for checking filtered teleports like Source: its bottom lifted by how much the
+            // triggers were raised, less the 2 units the player hovers, so it touches them exactly where Source's would.
+            blocks.hullHalf = new Vector3(16f, 36f, 16f) * scale;
+            blocks.hullBottom = (TriggerRaiseTop - 2f) * scale;
+            blocks.gated = gated.ToArray();
+            blocks.gatedNames = gatedNames.ToArray();
+            blocks.gatedNegate = gatedNegate.ToArray();
+            blocks.gatedClass = gatedClass.ToArray();
+            UdonSharpEditorUtility.CopyProxyToUdon(blocks);
+        }
+
         // Water and ladder volumes as trigger boxes (SourceMovement's water layer 4 and ladder layer 22).
         int water = AddVolumes(root.transform, "Water", bsp, BspFile.ContentsWater, 4, scale);
         int ladders = AddVolumes(root.transform, "Ladders", bsp, BspFile.ContentsLadder, 22, scale);
@@ -181,9 +293,16 @@ public static class SourceMapImporter
         Debug.Log($"[Source Maps] {mapName}: {worldBrushes} solid brushes + {bsp.DispInfos.Length} displacements " +
                   $"({worldMesh.Triangles.Count / 3} triangles, {innerFaces} faces trimmed where brushes touch), {bsp.Entities.Count} entity markers, {teleports} working teleports, " +
                   $"{filtered} filtered teleports left as markers, {noTarget} teleports without a destination, " +
+                  $"bhop blocks: {blockTeleports.Count} filtered teleports, {nameTriggers} name triggers, {gated.Count} name-gated push/booster brushes, {doors} doors; " +
                   $"{pushes} pushes, {boosts} boosters, {filteredMechanics} filtered pushes/boosters left as markers, " +
                   $"{water} water volumes, {ladders} ladders");
         return root;
+    }
+
+    static float ParseFloat(string s)
+    {
+        float f;
+        return float.TryParse(s, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out f) ? f : 0f;
     }
 
     /// <summary>One convex trigger collider per brush of the entity's brush model, on the marker itself.</summary>
@@ -308,7 +427,8 @@ public static class SourceMapImporter
             AssetDatabase.CreateAsset(programAsset, assetPath);
             created = true;
         }
-        if (!created) return;
+        // The interactive editor recompiles changed U# scripts by itself; a batch mode run (tests) may not have yet.
+        if (!created && !Application.isBatchMode) return;
         AssetDatabase.Refresh();
         UdonSharp.Compiler.UdonSharpCompilerV1.CompileSync();
     }

@@ -80,11 +80,14 @@ saves the scene as `Assets/SourceMapsSample.unity`. Then continue at step 10. St
 **Lighting:** nothing to bake. The importer uses each map's own Source lightmaps (the light the mapper compiled into
 the BSP): every map surface gets a material with the small `SourceMaps/Lightmapped` shader (texture x lightmap, like
 CS:S), and the lightmaps are saved as textures in `Assets/SourceMapsImported/<map>/Lightmaps`, so they are part of the
-uploaded world. Props are still lit by Unity's lights (Source lights them per vertex, not imported), and glass/glowing
-surfaces keep uSource's materials. You may see a faint line where two lit faces meet (edges of the lightmap
+uploaded world. Glass/glowing surfaces keep uSource's materials. Static props (trees, crates...) are lit like CS:S lights them: the map's ambient
+light at the prop plus the strongest lights that reach it (the sun only where the sky is visible), baked into the
+model's vertex colours (`SourceMaps/Prop` shader). You may see a faint line where two lit faces meet (edges of the lightmap
 atlas).
 
 ![bhop_arcane_v1's start room in the sample world, lit by its own lightmaps (it was black before)](images/sample_bhop_arcane_v1_lit.png)
+
+![bhop_japan: left Unity's default light, right the map's own light on the world and on the props (tree, bushes)](images/props_bhop_japan.png)
 
 ![bhop_eazy_v2: left Unity's default light (before), right the map's own lightmaps (white walls: stock CS:S texture missing on the build machine)](images/lightmaps_bhop_eazy_v2.png)
 
@@ -95,8 +98,11 @@ atlas).
      two brushes touch (like Source; those would stop surfers).
    - **Entities**: one marker per map entity (triggers, buttons, ...) keeping all its settings.
    - Working **fall teleports**, **boosters/push triggers**, **water** and **ladders** (for SourceMovement).
-   Teleports and boosters with a name filter (on bhop maps usually "bhop block" teleports that fire when you stand
-   on a platform too long) stay markers for now. `func_door` bhop blocks are solid platforms.
+   - **Bhop blocks**, like on CS:S servers: stand on a block too long and you're sent back; a clean bhop is fine.
+     Both kinds are imported: blocks that rename you when touched plus a teleport that only takes that name
+     (bhop_japan, arcane, badges), and `func_door` blocks that sink when touched (bhop_eazy_v2). To make every block a
+     plain platform, select the map's **Bhop Blocks** object and untick **On**. Each player's blocks are their own
+     (someone else standing on a block doesn't move it for you), as on most bhop servers.
 2. Move the map's object to a free spot: every map needs its own place in the world (maps are up to ~620 m across;
    the sample world puts them 700 m apart along X). Do this before adding visuals and zones.
 3. **Visuals**: with uSource installed, the sample world builder imports them automatically
