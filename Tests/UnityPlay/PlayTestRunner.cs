@@ -88,6 +88,7 @@ public class PlayTestRunner : MonoBehaviour
         yield return Run("strafe", AirStrafe());
         yield return Run("surf", Surf());
         yield return Run("surf", SurfFullRamp());
+        yield return Run("wall", SeamedWall());
         yield return Run("teleport", Teleports());
         yield return Run("ladder", Ladder());
         yield return Run("water", Water());
@@ -249,6 +250,25 @@ public class PlayTestRunner : MonoBehaviour
         Log($"full ramp: reached z {Real().z:F0} (ramp ends at 10300), lowest speed {minSpeed:F0} u/s");
         Check("surf", Real().z > 9500f && minSpeed > 950f, "surfs the whole mesh ramp across its triangle seam");
         yield return Teleport(new Vector3(0, 0, 100), 0f, false); // out of the air before the next test
+    }
+
+    IEnumerator SeamedWall()
+    {
+        // Bhop along the test map's seamed wall (face at x 1856 facing -x, vertical mesh seams every 200 u)
+        // holding D into it. A seam's edge normal lies along the wall and used to stop the player there.
+        yield return Spawn(new Vector3(1830, 0, 450), 0f);
+        movement.SetProgramVariable("velocity", new Vector3(0, 0, 800));
+        Keys(Key.Space, Key.D);
+        float minSpeed = 1e9f, maxX = 0f;
+        yield return Frames(1.2f, () =>
+        {
+            minSpeed = Mathf.Min(minSpeed, ((Vector3)movement.GetProgramVariable("velocity")).z);
+            maxX = Mathf.Max(maxX, Real().x);
+        });
+        Keys();
+        Log($"seamed wall: reached z {Real().z:F0}, lowest speed along the wall {minSpeed:F0} u/s, closest x {maxX:F1} (wall 1856)");
+        Check("wall", Real().z > 1250f && minSpeed > 600f, "slides along a seamed mesh wall without stopping");
+        Check("wall", maxX < 1841f, "stays outside the wall");
     }
 
     IEnumerator Teleports()

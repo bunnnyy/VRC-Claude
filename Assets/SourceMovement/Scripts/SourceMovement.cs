@@ -842,7 +842,7 @@ public class SourceMovement : UdonSharpBehaviour
             // Started inside something: ignore it so we can move out instead of getting stuck.
             if (hit.distance <= 0f && hit.point == Vector3.zero) break;
 
-            Vector3 normal = FaceNormal(hit);
+            Vector3 normal = FaceNormal(hit, (start + lift + hullCenter) * metersPerUnit + dir * hit.distance);
             float cos = -Vector3.Dot(dir, normal);
             if (cos < 0.01f && attempt == 0)
             {
@@ -866,16 +866,19 @@ public class SourceMovement : UdonSharpBehaviour
 
     /// <summary>
     /// Mesh colliders report an edge normal where two triangles meet, even inside a flat face, which acts like
-    /// a wall that isn't there. Read the real face normal with a short ray along the reported normal, or straight
-    /// down from just above the hit when that ray runs along the face (seams across the direction of travel).
+    /// a wall that isn't there. Read the real face normal with a short ray along the reported normal, or else
+    /// with a ray from the hull centre at impact to the contact point (seams that run along the reported normal,
+    /// like seams across a surf ramp or vertical seams in a wall built from several brushes).
     /// </summary>
-    private Vector3 FaceNormal(RaycastHit hit)
+    private Vector3 FaceNormal(RaycastHit hit, Vector3 center)
     {
         RaycastHit face;
         float back = Skin * metersPerUnit;
         if (Physics.Raycast(hit.point + hit.normal * back, -hit.normal, out face, back * 2f, collisionLayers, QueryTriggerInteraction.Ignore))
             return face.normal;
-        if (Physics.Raycast(hit.point + Vector3.up * back, Vector3.down, out face, back * 2f, collisionLayers, QueryTriggerInteraction.Ignore))
+        Vector3 toPoint = hit.point - center;
+        float length = toPoint.magnitude;
+        if (length > 0.0001f && Physics.Raycast(center, toPoint / length, out face, length + back, collisionLayers, QueryTriggerInteraction.Ignore))
             return face.normal;
         return hit.normal;
     }

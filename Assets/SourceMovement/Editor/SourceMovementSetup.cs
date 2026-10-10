@@ -157,6 +157,11 @@ public static class SourceMovementSetup
         foreach (var trigger in map.GetComponentsInChildren<UdonSharpBehaviour>())
             if (trigger is SourcePushTrigger || trigger is SourceBoostTrigger) UdonSharpEditorUtility.CopyProxyToUdon(trigger);
 
+        // A wall facing -x beside its own floor, one mesh with vertical seams every 200 units, like a wall
+        // built from several brushes in a converted map (the seams can report an edge normal along the wall).
+        Solid(map, "WallFloor", new Vector3(1600, -32, 1000), new Vector3(512, 64, 1200));
+        SeamedWall(map, "SeamedWall", 1856, 256, 400, 600, 800, 1000, 1200, 1400, 1600);
+
         // Surf ramp: two 60 degree faces meeting at a ridge, running along Z below the end of the lane.
         Vector3 ridge = new Vector3(400, -256, 0);
         // One mesh with seams across the direction of travel every 1500 units, like coplanar brush faces in
@@ -204,6 +209,36 @@ public static class SourceMovementSetup
         int n = vertices.Count;
         vertices.AddRange(new[] { left + first, right + first, top + first, left + last, top + last, right + last });
         triangles.AddRange(new[] { n, n + 2, n + 1, n + 3, n + 5, n + 4 }); // end caps
+        for (int i = 0; i < vertices.Count; i++) vertices[i] *= U;
+        var mesh = new Mesh { name = name };
+        mesh.SetVertices(vertices);
+        mesh.SetTriangles(triangles, 0);
+        mesh.RecalculateNormals();
+        mesh.RecalculateBounds();
+
+        var go = GameObject.CreatePrimitive(PrimitiveType.Cube);
+        go.name = name;
+        go.transform.SetParent(parent, false);
+        Object.DestroyImmediate(go.GetComponent<BoxCollider>());
+        go.GetComponent<MeshFilter>().sharedMesh = mesh;
+        go.AddComponent<MeshCollider>().sharedMesh = mesh;
+        go.isStatic = true;
+    }
+
+    /// <summary>
+    /// A wall face at x facing -x, from y 0 to height, as one mesh split at each z cut (vertical seams).
+    /// </summary>
+    static void SeamedWall(Transform parent, string name, float x, float height, params float[] cuts)
+    {
+        var vertices = new System.Collections.Generic.List<Vector3>();
+        var triangles = new System.Collections.Generic.List<int>();
+        for (int c = 0; c + 1 < cuts.Length; c++)
+        {
+            int i = vertices.Count;
+            vertices.AddRange(new[] { new Vector3(x, 0, cuts[c]), new Vector3(x, height, cuts[c]),
+                new Vector3(x, height, cuts[c + 1]), new Vector3(x, 0, cuts[c + 1]) });
+            triangles.AddRange(new[] { i, i + 2, i + 1, i, i + 3, i + 2 });
+        }
         for (int i = 0; i < vertices.Count; i++) vertices[i] *= U;
         var mesh = new Mesh { name = name };
         mesh.SetVertices(vertices);
