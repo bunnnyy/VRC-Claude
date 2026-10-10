@@ -68,7 +68,7 @@ public class SampleWorldTestRunner : MonoBehaviour
 
         // Visuals: something is drawn, no tool texture is drawn, solid props have colliders.
         var visuals = root.transform.Find("Visuals");
-        int renderers = 0, tools = 0, propColliders = 0;
+        int renderers = 0, tools = 0, propColliders = 0, staticProps = 0;
         if (visuals != null)
         {
             foreach (var r in visuals.GetComponentsInChildren<MeshRenderer>(true))
@@ -82,9 +82,10 @@ public class SampleWorldTestRunner : MonoBehaviour
                 }
             }
             var props = visuals.Find("[StaticProps]");
-            if (props != null) propColliders = props.GetComponentsInChildren<MeshCollider>(true).Length;
+            if (props != null) { propColliders = props.GetComponentsInChildren<MeshCollider>(true).Length; staticProps = props.childCount; }
         }
-        Check(renderers > 0 && tools == 0, $"{name}: visuals imported ({renderers} renderers, {tools} tool surfaces drawn, {propColliders} prop colliders)");
+        Check(renderers > 0 && tools == 0 && (staticProps == 0 || propColliders > 0),
+            $"{name}: visuals imported ({renderers} renderers, {tools} tool surfaces drawn, {staticProps} static props, {propColliders} prop colliders)");
         yield return Shot(name, spawn);
 
         // Teleports: up to 15, spread over the map.
@@ -97,7 +98,18 @@ public class SampleWorldTestRunner : MonoBehaviour
             Vector3? drop = DropPoint(t);
             if (drop == null) continue;
             tested++;
+            // Where the player really ends up: a destination inside another working teleport forwards them (in
+            // Source too, e.g. bhop_arcane_v1's *_stop relay destinations), so follow up to 3 hops.
             Vector3 dest = t.destination.position;
+            for (int hop = 0; hop < 3; hop++)
+            {
+                SourceMapTeleport next = null;
+                foreach (var other in teleports)
+                    foreach (var c in other.GetComponents<MeshCollider>())
+                        if (c.enabled && (c.ClosestPoint(dest + Vector3.up * 0.5f) - (dest + Vector3.up * 0.5f)).sqrMagnitude < 1e-6f) next = other;
+                if (next == null || next == t) break;
+                dest = next.destination.position;
+            }
             Teleport(spawn.position);
             yield return Seconds(0.3f);
             Teleport(drop.Value);

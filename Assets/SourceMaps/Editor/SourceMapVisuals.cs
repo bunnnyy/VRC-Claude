@@ -143,21 +143,32 @@ public static class SourceMapVisuals
             foreach (var mf in t.GetComponentsInChildren<MeshFilter>(true))
                 if (mf.sharedMesh != null && mf.GetComponent<Collider>() == null)
                     mf.gameObject.AddComponent<MeshCollider>().sharedMesh = mf.sharedMesh;
+            // Models with bones come as SkinnedMeshRenderers: collide with the mesh in its current (static) pose.
+            foreach (var smr in t.GetComponentsInChildren<SkinnedMeshRenderer>(true))
+            {
+                if (smr.sharedMesh == null || smr.GetComponent<Collider>() != null) continue;
+                var baked = new Mesh { name = smr.sharedMesh.name + " collision" };
+                smr.BakeMesh(baked);
+                smr.gameObject.AddComponent<MeshCollider>().sharedMesh = baked;
+            }
             added++;
         }
         return added;
     }
 
-    /// <summary>Saves every mesh that only lives in the scene into one asset file.</summary>
+    /// <summary>Saves every mesh that only lives in the scene (rendered, skinned, colliders) into one asset file.</summary>
     static int SaveMeshes(GameObject root, string path)
     {
         Directory.CreateDirectory(Path.GetDirectoryName(path));
         AssetDatabase.DeleteAsset(path);
+        var all = root.GetComponentsInChildren<MeshFilter>(true).Select(m => m.sharedMesh)
+            .Concat(root.GetComponentsInChildren<SkinnedMeshRenderer>(true).Select(m => m.sharedMesh))
+            .Concat(root.GetComponentsInChildren<MeshCollider>(true).Select(m => m.sharedMesh))
+            .Where(m => m != null).Distinct();
         int n = 0;
-        foreach (var mf in root.GetComponentsInChildren<MeshFilter>(true))
+        foreach (var mesh in all)
         {
-            var mesh = mf.sharedMesh;
-            if (mesh == null || AssetDatabase.Contains(mesh)) continue;
+            if (AssetDatabase.Contains(mesh)) continue;
             if (n == 0) AssetDatabase.CreateAsset(mesh, path);
             else AssetDatabase.AddObjectToAsset(mesh, path);
             n++;
