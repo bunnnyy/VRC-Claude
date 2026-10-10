@@ -44,7 +44,7 @@ public class RouteRunner : MonoBehaviour
     /// <summary>Source x, y to flat Unity-axis coordinates (x = -y, z = x), Source units.</summary>
     static Vector2 V(float x, float y) { return new Vector2(-y, x); }
 
-    struct Spot { public Vector3 p; public float s, lat, ceil; public bool deep, edge, duck; public int seg; public float need; }
+    struct Spot { public Vector3 p; public float s, lat, ceil; public bool deep, edge, duck, duckSoon; public int seg; public float need; }
 
     readonly List<List<Spot>> spots = new List<List<Spot>>();
     readonly List<float[]> lengths = new List<float[]>();
@@ -53,7 +53,7 @@ public class RouteRunner : MonoBehaviour
     Transform playerBody;
     Keyboard keyboard;
     int layers;
-    float hull = 62f, duckHull = 45f; // the movement's hull heights
+    float hull = 62f, duckHull = 45f, jumpImpulse = 301.99f; // the movement's hull heights and jump speed
     bool finished;
 
     int section;
@@ -85,6 +85,7 @@ public class RouteRunner : MonoBehaviour
         layers = ((LayerMask)movement.GetProgramVariable("collisionLayers")).value;
         hull = (float)movement.GetProgramVariable("hullHeight");
         duckHull = (float)movement.GetProgramVariable("duckHullHeight");
+        jumpImpulse = (float)movement.GetProgramVariable("jumpImpulse");
 
         InputSystem.settings.backgroundBehavior = InputSettings.BackgroundBehavior.IgnoreFocus;
         InputSystem.settings.editorInputBehaviorInPlayMode = InputSettings.EditorInputBehaviorInPlayMode.AllDeviceInputAlwaysGoesToGameView;
@@ -205,7 +206,6 @@ public class RouteRunner : MonoBehaviour
             hasTarget = PickTarget(pos, vel, out target, out flight);
             if (hasTarget) Crouch(flight.duck);
             takeoffTime = Time.time;
-            if (!hasTarget) Log($"no landing spot from {here} at {v.magnitude:F0} u/s (s {progress:F0}), following the route line");
         }
         wasOnGround = onGround;
         if (onGround && runOnLanding)
@@ -380,84 +380,113 @@ public class RouteRunner : MonoBehaviour
         return best;
     }
 
-    /// <summary>
-    /// The landing spot to aim for from a takeoff: furthest along the section, reachable at about the current speed
-    /// (strafing can add a little), not much slower than now, with a flight path that hits nothing.
-    /// </summary>
+    string nextHop = ""; // the hop after the one picked, as the model sees it (log)
+
+    /// <summary>A hop's start: feet and velocity at takeoff, the view, the strafe key held (and for how many frames),
+    /// ducked or not.</summary>
+    struct Takeoff { public Vector3 pos, vel; public float yaw; public int held, heldFor; public bool ducked; }
+
+    /// <summary>The landing spot for this takeoff, logged.</summary>
     bool PickTarget(Vector3 pos, Vector3 vel, out Spot best, out Flight path)
+    {
+        var from = new Takeoff { pos = pos, vel = vel, yaw = viewYaw, held = heldKey, heldFor = heldFrames, ducked = (bool)movement.GetProgramVariable("ducked") };
+        float speed = Flat(vel).magnitude;
+        int found = Search(from, progress, true, out best, out path, out float miss, out int count);
+        if (found == 2)
+            Log($"hop {hops} s {progress:F0} -> {best.s:F0} speed {speed:F0} need {path.length / path.time:F0} deep {best.deep}{(path.curved ? " curved" : "")}{(path.duck ? " ducked" : "")} miss {miss:F1} of {count}, then {nextHop}");
+        else if (found == 1)
+            Log($"hop {hops} s {progress:F0} -> {best.s:F0} speed {speed:F0}: nothing lands within its margin with a way on from there, taking the best (misses by {miss:F1} more)");
+        else
+            Log($"no landing spot from {Flat(pos)} at {speed:F0} u/s (s {progress:F0}), following the route line");
+        return found > 0;
+    }
+
+    /// <summary>
+    /// The landing spot to aim for from a takeoff at `at` along the section: furthest along, reachable at about the
+    /// current speed (strafing can add a little), not much slower than now, with a flight path that hits nothing,
+    /// checked by flying it in the model. With `ahead`, a spot only counts if a next hop from it works too, from where
+    /// and how fast the model lands there: a block reached too fast or heading the wrong way can leave no way past
+    /// the wall after it. 2: found, 1: only one that misses its margin or leads nowhere, 0: nothing.
+    /// </summary>
+    int Search(Takeoff from, float at, bool ahead, out Spot best, out Flight path, out float bestMiss, out int count)
     {
         best = default;
         path = default;
+        bestMiss = float.MaxValue;
+        count = 0;
         var list = spots[section];
-        Vector2 here = Flat(pos);
-        float speed = new Vector2(vel.x, vel.z).magnitude;
-        float fallbackMiss = float.MaxValue, endS = list.Count > 0 ? list[list.Count - 1].s : 0f;
+        Vector2 here = Flat(from.pos);
+        float speed = Flat(from.vel).magnitude;
+        float endS = list.Count > 0 ? list[list.Count - 1].s : 0f;
         // Under a low ceiling now, or going under one: duck (in the air the feet pull up, see SimulateHop).
-        float standRoof = Headroom(here, pos.y, hull), duckRoof = Headroom(here, pos.y, duckHull);
-        bool lowHere = standRoof - pos.y < LowRoof;
+        float standRoof = Headroom(here, from.pos.y, hull), duckRoof = Headroom(here, from.pos.y, duckHull);
+        bool lowHere = standRoof - from.pos.y < LowRoof;
+        int maxSims = ahead ? 16 : 6;
         for (int pass = 0; pass < 2; pass++)
         {
-            var options = new List<(float score, Spot spot, float need, float time)>();
+            var options = new List<(float score, Spot spot, float time)>();
             foreach (var s in list)
             {
-                if (s.s < progress + 24f || s.s > progress + 700f) continue;
+                if (s.s < at + 24f || s.s > at + 700f) continue;
                 float roof = s.duck || lowHere ? duckRoof : standRoof;
-                float time = FlightTime(pos.y, vel.y, s.p.y, Mathf.Min(roof, s.ceil));
+                float time = FlightTime(from.pos.y, from.vel.y, s.p.y, Mathf.Min(roof, s.ceil));
                 if (float.IsNaN(time) || time < 0.2f) continue;
                 float need = (new Vector2(s.p.x, s.p.z) - here).magnitude / time;
                 // Can't get there, or (first pass) would land too slow to go on from there.
                 if (need > Reach(speed, time) || (pass == 0 && need < s.need)) continue;
                 // Furthest along, near the middle of the lane, well inside a surface, and without braking (speed lost
-                // braking has to be strafed back).
-                // Near the end of the section, the middle of the lane: lined up with the doorway to the next one.
+                // braking has to be strafed back). Near the end of the section, the middle of the lane: lined up with
+                // the doorway to the next one.
                 float score = s.s - (s.s > endS - 300f ? 2f : 0.5f) * Mathf.Abs(s.lat) - (s.deep ? 0f : s.edge ? 400f : 250f) - 3f * Mathf.Max(0f, 0.9f * speed - need)
                     + 1.5f * Mathf.Clamp(need - speed, 0f, 60f); // and building speed for the long gaps
-                options.Add((score, s, need, time));
+                options.Add((score, s, time));
             }
             options.Sort((x, y) => y.score.CompareTo(x.score));
+            count = options.Count;
             // Fly the best few in the model (our own steering, input lag, the map's collision) and take the first
             // that lands well inside its spot's margin.
             int simulated = 0;
             foreach (var o in options)
             {
-                if (simulated >= 10) break;
-                bool duck = o.spot.duck || lowHere;
+                if (simulated >= maxSims) break;
+                bool duck = o.spot.duck || o.spot.duckSoon || lowHere;
                 float roof = duck ? duckRoof : standRoof;
                 for (int k = 0, tries = 0; k <= 8 && tries < 3; k++)
                 {
-                    if (!FlightWithBend(pos, vel.y, o.spot.p, o.time, Mathf.Min(roof, o.spot.ceil), duck, k, out Flight f)) continue;
+                    if (!FlightWithBend(from.pos, from.vel.y, o.spot.p, o.time, Mathf.Min(roof, o.spot.ceil), duck, k, out Flight f)) continue;
                     tries++;
                     simulated++;
-                    bool ok = SimulateHop(pos, vel, o.spot, f, out float miss);
+                    if (!SimulateHop(from, o.spot, f, out float miss, out Takeoff land)) continue;
                     float margin = o.spot.deep ? 20f : o.spot.edge ? 5f : 12f;
-                    if (ok && miss <= margin)
-                    {
-                        best = o.spot;
-                        path = f;
-                        Log($"hop {hops} s {progress:F0} -> {o.spot.s:F0} speed {speed:F0} need {f.length / o.time:F0} deep {o.spot.deep}{(f.curved ? " curved" : "")}{(f.duck ? " ducked" : "")} miss {miss:F1} of {options.Count}");
-                        return true;
-                    }
-                    if (ok && miss - margin < fallbackMiss) { fallbackMiss = miss - margin; best = o.spot; path = f; }
+                    Spot then = default;
+                    Flight thenPath = default;
+                    bool onward = !ahead || o.spot.s > endS - 64f || Search(land, o.spot.s, false, out then, out thenPath, out _, out _) == 2;
+                    if (ahead && onward) nextHop = o.spot.s > endS - 64f ? "the end" : $"s {then.s:F0} at {Flat(then.p)}{(thenPath.curved ? " curved" : "")} from {Flat(land.pos)} at {Flat(land.vel).magnitude:F0} u/s";
+                    if (miss <= margin && onward) { best = o.spot; path = f; bestMiss = miss; return 2; }
+                    // Otherwise the best of the rest: landing inside the margin first, then the smallest miss.
+                    float over = Mathf.Max(0f, miss - margin) + (onward ? 0f : 1000f);
+                    if (over < bestMiss) { bestMiss = over; best = o.spot; path = f; }
                 }
             }
         }
-        if (fallbackMiss < float.MaxValue)
+        if (bestMiss < float.MaxValue)
         {
-            Log($"hop {hops} s {progress:F0} -> {best.s:F0} speed {speed:F0}: nothing lands within its margin, best misses by {fallbackMiss:F1} more");
-            return true;
+            if (bestMiss >= 1000f) bestMiss -= 1000f;
+            return 1;
         }
+        if (!ahead) return 0;
         // Nothing: say why, for the nearest spots ahead.
         int shown = 0;
         foreach (var sp in list)
         {
-            if (sp.s < progress + 24f || shown >= 12) continue;
-            float time = FlightTime(pos.y, vel.y, sp.p.y, Mathf.Min(sp.duck || lowHere ? duckRoof : standRoof, sp.ceil));
+            if (sp.s < at + 24f || shown >= 12) continue;
+            float time = FlightTime(from.pos.y, from.vel.y, sp.p.y, Mathf.Min(sp.duck || lowHere ? duckRoof : standRoof, sp.ceil));
             if (float.IsNaN(time)) continue;
             float need = (new Vector2(sp.p.x, sp.p.z) - here).magnitude / time;
             Log($"  rejected {sp.p:F0} s {sp.s:F0} edge {sp.edge}: need {need:F0} reach {Reach(speed, time):F0} plan {sp.need:F0} time {time:F2}");
             shown++;
         }
-        return false;
+        return 0;
     }
 
     /// <summary>
@@ -515,14 +544,15 @@ public class RouteRunner : MonoBehaviour
     /// shrinks around its middle, the feet going up half the difference; standing up moves them back down once
     /// there's room below.
     /// </summary>
-    bool SimulateHop(Vector3 pos, Vector3 vel, Spot tgt, Flight path, out float miss)
+    bool SimulateHop(Takeoff from, Spot tgt, Flight path, out float miss, out Takeoff land)
     {
         const float Dt = 0.01f;
         miss = float.MaxValue;
-        Vector2 p = Flat(pos), v = new Vector2(vel.x, vel.z);
-        float y = pos.y, vy = vel.y, yaw = viewYaw, shift = (hull - duckHull) * 0.5f;
-        bool ducked = (bool)movement.GetProgramVariable("ducked");
-        int held = heldKey, heldFor = heldFrames, lag = Mathf.Max(keyLag, yawLag);
+        land = default;
+        Vector2 p = Flat(from.pos), v = Flat(from.vel);
+        float y = from.pos.y, vy = from.vel.y, yaw = from.yaw, shift = (hull - duckHull) * 0.5f;
+        bool ducked = from.ducked;
+        int held = from.held, heldFor = from.heldFor, lag = Mathf.Max(keyLag, yawLag);
         var pending = new Queue<Decision>();
         for (int i = 0; i < lag - 1; i++) pending.Enqueue(new Decision { key = 0, yaw = yaw });
         for (int tick = 0; tick < 200; tick++)
@@ -548,7 +578,13 @@ public class RouteRunner : MonoBehaviour
             float y0 = y;
             y += (vy - 0.5f * Gravity * Dt) * Dt;
             vy -= Gravity * Dt;
-            if (vy < 0f && y <= tgt.p.y) { miss = (p - new Vector2(tgt.p.x, tgt.p.z)).magnitude; return true; }
+            if (vy < 0f && y <= tgt.p.y)
+            {
+                // Landed: auto bhop jumps on the next tick, keeping the speed (no friction on a jump tick).
+                miss = (p - new Vector2(tgt.p.x, tgt.p.z)).magnitude;
+                land = new Takeoff { pos = new Vector3(p.x, tgt.p.y, p.y), vel = new Vector3(v.x, jumpImpulse, v.y), yaw = yaw, held = held, heldFor = heldFor, ducked = ducked };
+                return true;
+            }
             if (y > tgt.p.y + 2f && HullHits(p, y, h))
             {
                 // Rising into something overhead: Source stops the head there (vertical speed to zero). Anything
@@ -610,7 +646,7 @@ public class RouteRunner : MonoBehaviour
             {
                 var B = list[hopsFrom[h].b];
                 float time = hopsFrom[h].time;
-                if (FindFlight(A.p, jump, B.p, time, Mathf.Min(A.ceil, B.ceil), A.duck || B.duck, h < 6, out Flight f)) { A.need = MinSpeed(f.length / time, time); break; }
+                if (FindFlight(A.p, jump, B.p, time, Mathf.Min(A.ceil, B.ceil), A.duck || B.duck || B.duckSoon, h < 6, out Flight f)) { A.need = MinSpeed(f.length / time, time); break; }
             }
             list[a] = A;
         }
@@ -650,8 +686,17 @@ public class RouteRunner : MonoBehaviour
                 }
             s0 += len;
         }
+        // Spots just before a low ceiling: land there ducked already. Ducking in the air lifts the feet 8.5 units, too
+        // high to get in under the ceiling's edge on the hop after.
+        for (int i = 0, j = 0; i < list.Count; i++) // spots are in order of s: j, the next duck spot, only moves on
+        {
+            while (j < list.Count && (list[j].s <= list[i].s || !list[j].duck)) j++;
+            if (j < list.Count && list[j].s <= list[i].s + DuckAhead) { var sp = list[i]; sp.duckSoon = true; list[i] = sp; }
+        }
         return list;
     }
+
+    const float DuckAhead = 200f;
 
     /// <summary>The spot's headroom; under a low ceiling (a standing jump bumps its head within LowRoof units) it's a
     /// duck spot: hops to and from it are flown ducked, like a player crouching through a tunnel.</summary>
@@ -780,7 +825,9 @@ public class RouteRunner : MonoBehaviour
     {
         foreach (var c in Physics.OverlapBox(HullCenter(p, feet, h), HullHalf(0f, h), Quaternion.identity, ~0, QueryTriggerInteraction.Collide))
             if (c.isTrigger && c.GetComponent<SourceMapTeleport>() != null) return true;
-        Vector3 bottom = new Vector3(p.x, feet + CapsuleRadius, p.y) * U, top = new Vector3(p.x, feet + CapsuleHeight - CapsuleRadius, p.y) * U;
+        // From 1 unit up, like the hull: the capsule rides a little over the floor (the map's floor teleports are
+        // raised to exactly the top of the blocks between them).
+        Vector3 bottom = new Vector3(p.x, feet + 1f + CapsuleRadius, p.y) * U, top = new Vector3(p.x, feet + 1f + CapsuleHeight - CapsuleRadius, p.y) * U;
         foreach (var c in Physics.OverlapCapsule(bottom, top, CapsuleRadius * U, ~0, QueryTriggerInteraction.Collide))
             if (c.isTrigger && c.GetComponent<SourceMapTeleport>() != null) return true;
         return false;
