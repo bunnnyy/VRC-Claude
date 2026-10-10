@@ -2,17 +2,18 @@
 # Turns a RouteRunner recording (run.sh route ... outdir) into an mp4: 50 fps frames, with the speed (bottom), the
 # map timer's text (top) and the keys held (W A S D JUMP, DUCK while ducked) burnt in from outdir/hud.txt, plus an
 # optional title line for the first seconds.
-#   make_video.sh outdir out.mp4 ["title"]
+#   [SCALE=960:540] [CRF=26] [FIRST=n LAST=m] make_video.sh outdir out.mp4 ["title"]
 set -euo pipefail
 dir=$1; out=$2; title=${3:-}
 ass=$dir/hud.ass
-python3 - "$dir/hud.txt" "$ass" "$title" <<'PY'
+python3 - "$dir/hud.txt" "$ass" "$title" "${FIRST:-0}" "${LAST:-}" <<'PY'
 import sys
-hud, ass, title = sys.argv[1], sys.argv[2], sys.argv[3]
+hud, ass, title, first, last = sys.argv[1], sys.argv[2], sys.argv[3], int(sys.argv[4]), sys.argv[5]
 def ts(frame):  # 50 fps frame -> h:mm:ss.cc
     cs = frame * 2
     return f"{cs // 360000}:{cs // 6000 % 60:02d}:{cs // 100 % 60:02d}.{cs % 100:02d}"
 lines = [(l.rstrip("\n").split("\t") + ["", "", ""])[:3] for l in open(hud)]
+lines = lines[first:int(last) if last else None]  # the frames cut out (FIRST/LAST)
 out = ["[Script Info]", "ScriptType: v4.00+", "PlayResX: 1280", "PlayResY: 720", "",
        "[V4+ Styles]",
        "Format: Name, Fontname, Fontsize, PrimaryColour, OutlineColour, BackColour, Bold, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV",
@@ -42,6 +43,8 @@ if title:
     out.append(f"Dialogue: 0,{ts(0)},{ts(250)},Title,{title}")
 open(ass, "w").write("\n".join(out) + "\n")
 PY
-ffmpeg -y -loglevel error -framerate 50 -i "$dir/f%05d.jpg" -vf "ass=$ass" -c:v libx264 -preset slow -crf 26 \
-  -pix_fmt yuv420p -movflags +faststart "$out"
+# SCALE=960:540 (say) makes a smaller file; FIRST/LAST frame numbers cut it.
+first=${FIRST:-0}; last=${LAST:-}
+ffmpeg -y -loglevel error -framerate 50 -start_number "$first" -i "$dir/f%05d.jpg" ${last:+-frames:v $((last - first))} \
+  -vf "setpts=PTS-STARTPTS,ass=$ass${SCALE:+,scale=$SCALE}" -c:v libx264 -preset slow -crf "${CRF:-26}" -pix_fmt yuv420p -movflags +faststart "$out"
 echo "$out: $(du -h "$out" | cut -f1), $(ls "$dir"/f*.jpg | wc -l) frames"

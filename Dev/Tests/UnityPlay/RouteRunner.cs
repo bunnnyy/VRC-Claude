@@ -37,7 +37,11 @@ public class RouteRunner : MonoBehaviour
         new[] { V(2368, 0), V(4096, 0), V(4096, 416), V(2368, 416), V(2368, 832), V(4096, 832), V(4096, 1248), V(2160, 1248) },
         new[] { V(128, 1888), V(1856, 1888), V(1856, 2304), V(128, 2304), V(128, 2720), V(1856, 2720), V(1856, 3136), V(-80, 3136) },
         new[] { V(2368, 1888), V(4096, 1888), V(4096, 2304), V(2368, 2304), V(2368, 2720), V(4096, 2720), V(4096, 3136), V(2160, 3136) },
-        new[] { V(4608, 0), V(6336, 0), V(6336, 416), V(4608, 416), V(4608, 832), V(6336, 832), V(6336, 1248), V(4400, 1248) },
+        // Red lanes 3 and 4 each have glass pillars in line with the blocks before and after them: the lines zig-zag
+        // round them the way you'd hop it (onto the block before at an angle, curving round the pillar's side).
+        new[] { V(4608, 0), V(6336, 0), V(6336, 416), V(4608, 416), V(4680, 740), V(4832, 812), V(4912, 896), V(4992, 840),
+                V(5216, 832), V(6336, 832), V(6336, 1248), V(5440, 1248), V(5280, 1320), V(5200, 1376), V(5120, 1320), V(4992, 1200),
+                V(4912, 1120), V(4832, 1176), V(4400, 1248) },
     };
     static readonly Rect EndZone = new Rect(-2256, 4512, 2256 - 1728, 5056 - 4512); // flat coords (unity x, z)
 
@@ -145,6 +149,8 @@ public class RouteRunner : MonoBehaviour
                     sectionStart = Time.time;
                     progress = 0f;
                     ridge = 0;
+                    circling = -1;
+                    System.Array.Clear(circled, 0, circled.Length);
                     tabu.Clear();
                 }
                 else if (EndZone.Contains(Flat(pos)))
@@ -160,6 +166,8 @@ public class RouteRunner : MonoBehaviour
                     foreach (var t in recentTargets) if (t != Vector3.zero) tabu.Add(t);
                     progress = Project(Flat(pos), -1f);
                     ridge = 0;
+                    circling = -1;
+                    System.Array.Clear(circled, 0, circled.Length);
                     DumpRecent();
                     if (fails >= MaxFails) { Log($"FAIL: giving up after {MaxFails} fails"); break; }
                 }
@@ -187,7 +195,7 @@ public class RouteRunner : MonoBehaviour
         }
         string time = timer != null ? Label() : "";
         Log($"run over: {hops} hops, {fails} fails, timer '{time}', {shotNumber} frames recorded");
-        if (recordDir != "") System.IO.File.WriteAllText(System.IO.Path.Combine(recordDir, "hud.txt"), hud.ToString());
+        if (recordDir != "") FlushHud();
         Finish(fails == 0 ? 0 : 1);
     }
 
@@ -205,8 +213,25 @@ public class RouteRunner : MonoBehaviour
         Vector2 here = Flat(pos), v = new Vector2(vel.x, vel.z);
         progress = Project(here, progress);
         var line = Route[section];
+        int segment = SegmentAt(line, progress);
+        if (segment != lastSegment || section != lastSegmentSection)
+        {
+            lastSegment = segment; lastSegmentSection = section;
+            Log($"section {section + 1} segment {segment + 1} at frame {frame}, shot {shotNumber}, game time {Time.time:F2}");
+        }
         float lookYaw = Yaw(PointAt(line, progress + 160f) - here);
-        if (section == RidgeSection && ridge == 0 && here.y < RidgeFrom.y - 300f && Mathf.Abs(here.x) < 200f) { ridge = 1; circleTurn = 0; } // on red's start platform
+        Vector2 src = new Vector2(here.y, -here.x); // Source x, y
+        for (int i = 0; i < Circles.Length && circling < 0; i++)
+            if (!circled[i] && hopping && Circles[i].section == section && Circles[i].area.Contains(src) && (Circles[i].always || v.magnitude < Circles[i].speed))
+            { circling = i; circleTurn = 0; }
+        if (circling >= 0)
+        {
+            if (CircleStep(pos, vel, onGround, Circles[circling])) return;
+            circled[circling] = true;
+            if (circling == 0 && hasTarget) ridge = 2; // then onto the ridge from its first block
+            circling = -1;
+            return;
+        }
         if (ridge > 0 && ridge < 5 && hopping && RidgeStep(pos, vel, onGround)) return;
 
         if (!hopping)
@@ -226,7 +251,7 @@ public class RouteRunner : MonoBehaviour
         if (wasOnGround && !onGround)
         {
             hops++;
-            hasTarget = PickTarget(pos, vel, out target, out flight, ridge == 2 ? RidgeLaunch.y - RidgeLaunchS0 : float.MaxValue);
+            hasTarget = PickTarget(pos, vel, out target, out flight, ridge == 2 ? RidgeLaunchTo - RidgeLaunchS0 : float.MaxValue);
             if (hasTarget) recentTargets[hops % recentTargets.Length] = target.p;
             if (hasTarget) Crouch(flight.duck);
             takeoffTime = Time.time;
@@ -236,7 +261,8 @@ public class RouteRunner : MonoBehaviour
         {
             // How far from the target we came down: along the flight (+ long) and across it.
             Vector2 d = here - Flat(target.p), dir = (Flat(target.p) - flight.a).normalized;
-            Log($"landed {Vector2.Dot(d, dir):F1} long, {Vector2.Dot(d, new Vector2(dir.y, -dir.x)):F1} aside of s {target.s:F0} ({(target.deep ? "deep" : target.edge ? "edge" : "normal")}) at {v.magnitude:F0} u/s");
+            Vector2 m = here - Flat(predicted);
+            Log($"landed {Vector2.Dot(d, dir):F1} long, {Vector2.Dot(d, new Vector2(dir.y, -dir.x)):F1} aside of s {target.s:F0} ({(target.deep ? "deep" : target.edge ? "edge" : "normal")}) at {v.magnitude:F0} u/s; the model said {Vector2.Dot(m, dir):F1} long, {Vector2.Dot(m, new Vector2(dir.y, -dir.x)):F1} aside of where we are");
         }
         wasLanded = onGround;
         if (onGround)
@@ -268,72 +294,88 @@ public class RouteRunner : MonoBehaviour
     // the start platform first (circle strafing; the exit needs about 400 u/s), hop to a block before it, jump onto
     // its face beside the crest, climb the face holding A, and fly off it round the end wall onto the block after it.
     const int RidgeSection = 4;
-    static readonly Vector2 RidgeFrom = V(5056, 0), Circle = V(4608, 0), RidgeLaunch = V(4880, 0); // launch from the first block (x 4800..4864)
+    static readonly Vector2 RidgeFrom = V(5056, 0);
+    const float RidgeLaunchFrom = 4780f, RidgeLaunchTo = 5010f; // Source x of the blocks before the ridge (4800..4864, 4928..4992)
     const float RidgeLaunchS0 = 4608f; // Source x where the lane's route line starts (s 0)
-    const float RidgeSpeed = 400f, RidgeFeet = 140f;
-    int ridge; // 0 not there, 1 building speed, 2 hops to a block before the ridge, 3 jumping onto its face, 4 surfing, 5 off it
+    const float RidgeFeet = 140f;
+    int ridge; // 0 not there (or circling first, see Circles), 2 hops to a block before the ridge, 3 jumping onto its face, 4 surfing, 5 off it
     bool ridgeIn; // jumping onto the face: past its front, moving in
     int circleTurn; // circling: 1 turning right (D), -1 left (A)
     float circleSince;
+
+    // Where the bot first builds speed by circle strafing (map-specific, like the route): on `area` (Source x, y), round
+    // `centre`, until at a takeoff heading `down` the lane (within 60 degrees), at `speed` or more (or after 20 s, as
+    // fast as it got), the model finds a landing between `fromS` and `untilS` along the section. `always`: also when
+    // already fast (it's for the position, not only the speed).
+    struct Circling { public string name; public int section; public Rect area; public Vector2 centre, down; public float speed, fromS, untilS; public bool always; }
+    static readonly Circling[] Circles =
+    {
+        // (Leaving fast down the lane, a hop is ~350 units: from the circle's side it lands on the second block, x 4960.
+        // The side is 40 units off the middle, so it lands on that block's outer edge, near where the ridge is passed.)
+        new Circling { name = "red lane 1 (to a block before the ridge)", section = 4, area = new Rect(4480, -192, 256, 384), centre = V(4608, -40),
+            down = V(1, 0), speed = 420f, fromS = 176f, untilS = 400f, always = true },
+    };
+    int circling = -1;
+    readonly bool[] circled = new bool[1];
+
+    /// <summary>Circle strafing (see Circles); false once it leaves (with the target set).</summary>
+    bool CircleStep(Vector3 pos, Vector3 vel, bool onGround, Circling c)
+    {
+        Vector2 here = Flat(pos), v = Flat(vel);
+        bool takeoff = wasOnGround && !onGround;
+        if (takeoff) hops++;
+        wasOnGround = onGround;
+        // The velocity the keys and view sent now will act on: after the pushes already on their way.
+        Vector2 vp = v;
+        for (int k = Mathf.Max(keyLag, yawLag) - 1; k >= 1; k--)
+            if (frame - k >= 0 && keyQueue[(frame - k) % 32] != 0) vp = PushAt(vp, yawQueue[(frame - k) % 32] + 90f * keyQueue[(frame - k) % 32]);
+        float travel = vp.magnitude > 30f ? Yaw(vp) : viewYaw;
+        if (circleTurn == 0)
+        {
+            Vector2 r0 = here - c.centre;
+            circleTurn = Mathf.DeltaAngle(travel, Yaw(r0.magnitude < 1f ? -v : -r0)) < 0f ? -1 : 1;
+            circleSince = Time.time;
+        }
+        // Wide enough to hold at this speed: strafing turns the velocity atan(30 / v) a tick, a radius of v^2 / 3000.
+        // Its side where it heads down the lane lies on the lane's middle line.
+        float radius = Mathf.Max(70f, v.sqrMagnitude / 2500f);
+        Vector2 centre = c.centre + new Vector2(c.down.y, -c.down.x).normalized * (radius * circleTurn);
+        if (takeoff && Mathf.Abs(Mathf.DeltaAngle(Yaw(v), Yaw(c.down))) < 60f && (v.magnitude >= c.speed || Time.time - circleSince > 20f))
+        {
+            var from = new Takeoff { pos = pos, vel = vel, yaw = viewYaw, held = heldKey, heldFor = heldFrames, ducked = (bool)movement.GetProgramVariable("ducked") };
+            if (Search(from, Mathf.Max(progress, c.fromS - 24f), false, out Spot spot, out Flight f, out float miss, out _, c.untilS) == 2)
+            {
+                circleTurn = 0;
+                target = spot; flight = f; hasTarget = true; takeoffTime = Time.time;
+                Log($"circling: {v.magnitude:F0} u/s after {Time.time - circleSince:F1} s on {c.name}, to {Flat(spot.p)} miss {miss:F1}");
+                return false;
+            }
+        }
+        if (Time.time - circleSince > 30f) { circleTurn = 0; Log($"circling: no way on found in 30 s on {c.name}, hopping on as usual"); return false; }
+        if (frame % 200 == 0) Log($"circling at {v.magnitude:F0} u/s");
+        // Circle strafing: looking where we go, A or D pushes square to the velocity, which turns it and adds speed
+        // every tick; let go while already heading inside the circle.
+        progressTime = Time.time; // circling isn't being stuck
+        Vector2 r = here - centre;
+        if (r.magnitude < 1f) r = Vector2.right;
+        // The heading of the circle here (the way round we're going), bent inwards when outside it.
+        float round = Yaw(-r) - 90f * circleTurn + Mathf.Clamp((r.magnitude - radius) * 1.5f, -40f, 40f) * circleTurn;
+        bool turn = Mathf.DeltaAngle(travel, round) * circleTurn > 0f;
+        // The view along that velocity: a view even a few degrees behind it makes the push add nothing (Source caps
+        // the speed along the push at 30), one ahead of it pushes a little backwards.
+        Act(turn ? circleTurn : 0, Mathf.MoveTowardsAngle(viewYaw, travel, MaxTurn), true);
+        return true;
+    }
 
     /// <summary>Red lane 1's ridge (see above); false when the usual hopping should handle this frame.</summary>
     bool RidgeStep(Vector3 pos, Vector3 vel, bool onGround)
     {
         Vector2 here = Flat(pos), v = Flat(vel);
         bool takeoff = wasOnGround && !onGround;
-        if (ridge == 1)
-        {
-            if (takeoff) hops++;
-            wasOnGround = onGround;
-            // The velocity the keys and view sent now will act on: after the pushes already on their way.
-            Vector2 vp = v;
-            for (int k = Mathf.Max(keyLag, yawLag) - 1; k >= 1; k--)
-                if (frame - k >= 0 && keyQueue[(frame - k) % 32] != 0) vp = PushAt(vp, yawQueue[(frame - k) % 32] + 90f * keyQueue[(frame - k) % 32]);
-            float travel = vp.magnitude > 30f ? Yaw(vp) : viewYaw;
-            if (circleTurn == 0)
-            {
-                Vector2 r0 = here - Circle;
-                circleTurn = Mathf.DeltaAngle(travel, Yaw(r0.magnitude < 1f ? -v : -r0)) < 0f ? -1 : 1;
-                circleSince = Time.time;
-            }
-            // Wide enough to hold at this speed: strafing turns the velocity atan(30 / v) a tick, a radius of v^2 / 3000.
-            // Its side where it heads down the lane lies on the lane's middle line.
-            float radius = Mathf.Max(70f, v.sqrMagnitude / 2500f);
-            Vector2 centre = Circle + new Vector2(radius * circleTurn, 0f);
-            // Fast enough (or after 20 s, as fast as it got) and heading down the lane: leave at a takeoff from which the
-            // model lands on the first block (at this speed a hop is ~375 units: from most places it would overshoot).
-            bool down = Mathf.Abs(Mathf.DeltaAngle(Yaw(v), Yaw(RidgeFrom - Circle))) < 60f;
-            if (takeoff && down && (v.magnitude >= RidgeSpeed || Time.time - circleSince > 20f))
-            {
-                var from = new Takeoff { pos = pos, vel = vel, yaw = viewYaw, held = heldKey, heldFor = heldFrames, ducked = (bool)movement.GetProgramVariable("ducked") };
-                if (Search(from, progress, false, out Spot spot, out Flight f, out float miss, out _, RidgeLaunch.y - RidgeLaunchS0) == 2)
-                {
-                    ridge = 2;
-                    circleTurn = 0;
-                    target = spot; flight = f; hasTarget = true; takeoffTime = Time.time;
-                    Log($"ridge: {v.magnitude:F0} u/s after circling {Time.time - circleSince:F1} s on the start platform, to the first block at {Flat(spot.p)} miss {miss:F1}");
-                    return false;
-                }
-            }
-            if (frame % 200 == 0) Log($"ridge: circling at {v.magnitude:F0} u/s");
-            // Circle strafing: looking where we go, A or D pushes square to the velocity, which turns it and adds speed
-            // every tick; let go while already heading inside the circle.
-            progressTime = Time.time; // circling isn't being stuck
-            Vector2 r = here - centre;
-            if (r.magnitude < 1f) r = Vector2.right;
-            // The heading of the circle here (the way round we're going), bent inwards when outside it.
-            float round = Yaw(-r) - 90f * circleTurn + Mathf.Clamp((r.magnitude - radius) * 1.5f, -40f, 40f) * circleTurn;
-            bool turn = Mathf.DeltaAngle(travel, round) * circleTurn > 0f;
-            // The view along that velocity: a view even a few degrees behind it makes the push add nothing (Source caps
-            // the speed along the push at 30), one ahead of it pushes a little backwards.
-            Act(turn ? circleTurn : 0, Mathf.MoveTowardsAngle(viewYaw, travel, MaxTurn), true);
-            return true;
-        }
         if (ridge == 2)
         {
-            // Taking off from the first block before the ridge (the one after it leaves too little room to get beside the
-            // ridge's front): onto its face.
-            if (!(takeoff && here.y > RidgeLaunch.y - 100f && here.y < RidgeLaunch.y + 20f && Mathf.Abs(here.x) < 60f)) return false;
+            // Taking off from a block before the ridge: onto its face.
+            if (!(takeoff && here.y > RidgeLaunchFrom && here.y < RidgeLaunchTo && Mathf.Abs(here.x) < 60f)) return false;
             ridge = 3;
             ridgeIn = false;
             hops++;
@@ -357,7 +399,7 @@ public class RouteRunner : MonoBehaviour
         }
         // Surfing: look along the ridge, A pushes into the face (it lifts us), let go near the top or rising fast.
         bool push = (vel.y < 0f || pos.y < RidgeFeet - 8f) && pos.y < RidgeFeet + 4f;
-        Act(push ? -1 : 0, Mathf.MoveTowardsAngle(viewYaw, Yaw(RidgeFrom - Circle), MaxTurn), true);
+        Act(push ? -1 : 0, Mathf.MoveTowardsAngle(viewYaw, 0f, MaxTurn), true); // along the ridge (Source +x)
         // From the middle on, fly off it as soon as the model finds a way round the end wall onto what follows.
         if (here.y > RidgeFrom.y + 230f && frame % 2 == 0)
         {
@@ -392,9 +434,12 @@ public class RouteRunner : MonoBehaviour
         if (!has) return (noTarget - here).normalized * Mathf.Max(v.magnitude, 250f);
         Vector2 aim = new Vector2(tgt.p.x, tgt.p.z);
         float tLeft = FlightTime(y, vy, tgt.p.y, path.ceil);
-        if (float.IsNaN(tLeft) || tLeft < 0.12f || (!path.curved && (aim - here).magnitude < 24f)) { coast = true; return v; }
+        // Coast near the end (steering then swings "distance left / time left" around); an edge spot (the hull
+        // hanging over) needs steering to the last moment and no landing long.
+        float coastTime = tgt.edge ? 0.06f : 0.12f, coastDistance = tgt.edge ? 8f : 24f;
+        if (float.IsNaN(tLeft) || tLeft < coastTime || (!path.curved && (aim - here).magnitude < coastDistance)) { coast = true; return v; }
         if (path.curved) return (Curve(path, Mathf.Min(t / path.time + 0.1f, 1f)) - here) / (0.1f * path.time);
-        aim += (aim - here).normalized * 6f; // land a little long, never short
+        if (!tgt.edge) aim += (aim - here).normalized * 6f; // land a little long, never short
         return (aim - here) / tLeft;
     }
 
@@ -545,6 +590,7 @@ public class RouteRunner : MonoBehaviour
     readonly Vector3[] recentTargets = new Vector3[3]; // the last few hops' targets
     readonly List<Vector3> tabu = new List<Vector3>(); // targets that led to a fall in this section
     Takeoff bestLand;    // where the model lands on the best target found (log)
+    Vector3 predicted;   // where the model lands on the target picked (log)
 
     /// <summary>A takeoff as the bot sees it: two ticks into the jump (it notices a frame late), the speed scaled.</summary>
     static Takeoff Seen(Takeoff t, float faster)
@@ -657,10 +703,10 @@ public class RouteRunner : MonoBehaviour
                         || (Search(Seen(land, 1f), o.spot.s, false, out then, out thenPath, out _, out _, float.MaxValue, o.spot.block) == 2
                             && Search(Seen(land, 1.05f), o.spot.s, false, out _, out _, out _, out _, float.MaxValue, o.spot.block) == 2);
                     if (ahead && onward) nextHop = o.spot.s > endS - 64f ? "the end" : $"s {then.s:F0} at {Flat(then.p)}{(thenPath.curved ? " curved" : "")} from {Flat(land.pos)} at {Flat(land.vel).magnitude:F0} u/s";
-                    if (miss <= margin && onward) { best = o.spot; path = f; bestMiss = miss; return 2; }
+                    if (miss <= margin && onward) { best = o.spot; path = f; bestMiss = miss; if (ahead) predicted = land.pos; return 2; }
                     // Otherwise the best of the rest: landing inside the margin first, then the smallest miss.
                     float over = Mathf.Max(0f, miss - margin) + (onward ? 0f : 1000f);
-                    if (over < bestMiss) { bestMiss = over; best = o.spot; path = f; if (ahead) bestLand = land; }
+                    if (over < bestMiss) { bestMiss = over; best = o.spot; path = f; if (ahead) { bestLand = land; predicted = land.pos; } }
                 }
             }
         }
@@ -1184,6 +1230,19 @@ public class RouteRunner : MonoBehaviour
         return near < 0 ? bestS : Mathf.Max(bestS, near - 300f);
     }
 
+    int lastSegment = -1, lastSegmentSection = -1;
+
+    static int SegmentAt(Vector2[] line, float s)
+    {
+        for (int i = 0; i + 1 < line.Length; i++)
+        {
+            float len = (line[i + 1] - line[i]).magnitude;
+            if (s <= len) return i;
+            s -= len;
+        }
+        return line.Length - 2;
+    }
+
     static Vector2 PointAt(Vector2[] line, float s)
     {
         for (int i = 0; i + 1 < line.Length; i++)
@@ -1229,6 +1288,13 @@ public class RouteRunner : MonoBehaviour
         string keys = sentKeys[(frame - keyLag + 32) % 32] ?? "";
         if ((bool)movement.GetProgramVariable("ducked")) keys += "+Duck";
         hud.Append(Mathf.RoundToInt(v.magnitude)).Append('\t').Append(timer != null ? Label() : "").Append('\t').Append(keys).Append('\n');
+        if (shotNumber % 500 == 0) FlushHud(); // a run stopped early keeps its overlay up to here
+    }
+
+    void FlushHud()
+    {
+        System.IO.File.AppendAllText(System.IO.Path.Combine(recordDir, "hud.txt"), hud.ToString());
+        hud.Clear();
     }
 
     string Label()

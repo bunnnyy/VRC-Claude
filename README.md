@@ -134,6 +134,18 @@ Dev/Tests/UnityPlay/run.sh vote                    # map rotation (vote, owner c
 Dev/Tests/UnityPlay/run.sh sample                  # the whole sample world with uSource visuals and zones
 ```
 
+A bot plays bhop_eazy_v2 with only a player's inputs (A/D strafes with the view, jump, C to duck, W to run up),
+and can record it: `ROUTE_SECTION=n` starts at a section, the frames and a HUD log go to the folder given, and
+`make_video.sh` turns them into an mp4 with the speed, the map timer and the keys burnt in. It plans each hop by
+flying it in a model of the movement (input lag, air acceleration, the map's collision, surf faces) and checks a
+hop on from where it lands; the route, red lane 1's ridge surf (built up to speed by circle strafing first) and
+the zig-zag lines round glass pillars are specific to that map.
+
+```
+Dev/Tests/UnityPlay/run.sh route bhop_eazy_v2.bsp zones.json [framesdir]
+SCALE=960:540 Dev/Tests/UnityPlay/make_video.sh framesdir run.mp4 "title"
+```
+
 What this can't cover: Unity's real PhysX collision and how the player controller responds to
 `SetVelocity`. For that there is a play test in a real Unity editor:
 
