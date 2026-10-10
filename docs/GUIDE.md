@@ -75,6 +75,11 @@ the one with `cstrike` and `hl2` in it; asked once). It does steps 6-8 for every
 collision, markers, timer zones, a thumbnail from the spawn, the lobby with practice courses and a records wall, and
 saves the scene as `Assets/SourceMapsSample.unity`. Then continue at step 10. Steps 6-8 are for adding maps one by one.
 
+![bhop_eazy_v2 in the sample world, from its spawn (its textures are packed in the map)](images/sample_bhop_eazy_v2.png)
+
+**Lighting:** the import brings no lights, so indoor maps (e.g. bhop_arcane_v1's start) are dark until you bake
+lighting: add a Directional Light for outdoor maps and use **Window > Rendering > Lighting > Generate Lighting**.
+
 ## 6. Import a map (one by one)
 
 1. **Tools > Source Maps > Import BSP...** and pick the `.bsp`. You get an object named after the map with:

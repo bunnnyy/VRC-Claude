@@ -272,3 +272,22 @@ the render meshes (needs a test). I did not dig into why USource's geometry does
   remote players, practice runs and saved bests); `run.sh 90` (movement) all passed; `run.sh map` bhop_japan
   40/40 + 55/55; `Tests/Bsp` 24/24 (incl. booster/push parsing); `Tests/Sim` all passed.
   Not testable here: two real VRChat clients at once (ClientSim is one client).
+
+### Step 4: the sample world with all 5 maps (2026-10-10)
+- Maps from GameBanana (`Tests/Bsp/get_maps.sh`, zip/rar/7z): bhop_japan, bhop_kitsune, bhop_eazy_v2,
+  bhop_arcane_v1, bhop_badges. `Tests/Bsp` 56/56 on all five (arcane's 91 `*_stop` destinations sit inside
+  player clips and kitsune has 7 teleports without a target: both map design, counted separately).
+- Timer zones: not in the BSPs, but the zone files CS:S bhop servers use exist for all five
+  ([srcwr/zones-cstrike](https://github.com/srcwr/zones-cstrike), downloaded at import, not stored here):
+  start/end per track, stages as checkpoints, bonus tracks as their own courses.
+- New: static props from the game lump (japan 89 solid of 248, arcane 114 of 288), `SourceMapVisuals` (runs uSource,
+  removes tool surfaces Source doesn't draw, solid props get colliders, saves meshes), `SourceMapZones`,
+  SourceTimer `CourseBoards` (records wall in the lobby; boards can't live in switched-off maps),
+  `Build Sample World` (maps 700 m apart, thumbnails rendered from the spawn), respawn height below the deepest map.
+- Real Unity + ClientSim + SourceMovement (`run.sh sample`): 34/35. Per map: forced from the board, player stands
+  at the spawn, visuals without tool surfaces, sampled teleports (japan 15/15, badges 14/14, kitsune 10/10,
+  eazy 7/7, arcane 3/4), start -> end run timed onto the map's saved board. The arcane miss: the player falls
+  through a huge (54 x 88 x 47 m) out-of-bounds teleport without it firing; single-map arcane test: stand 185/185,
+  teleports 20/27 tested (118 not reachable by the test's drop-in probe). Not fully explained yet.
+- Known gaps: stock CS:S textures/models aren't available here (white surfaces, missing stock props); no lighting
+  is imported (indoor maps are dark until lighting is baked; uSource can read the maps' lightmaps, untried).
