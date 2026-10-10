@@ -64,6 +64,7 @@ public static class MovementTests
         Test("Respawn resets velocity", RespawnResets);
         Test("Same result at 45, 90 and 144 fps", FrameRateIndependent);
         Test("Tracks the player with one frame of VRChat latency", LatencyTolerant);
+        Test("Tracks the player at 240 and 800 fps when VRChat moves it only on 50 Hz physics steps", PhysicsStepTracking);
         Test("Turning off restores VRChat movement and keeps momentum", Deactivate);
         Test("Collision cost per tick fits Udon", CastBudget);
         extraTests?.Invoke(Test);
@@ -810,6 +811,30 @@ public static class MovementTests
         Note($"worst player/simulation gap {worst:F1} u");
         Check(r.Speed > 240, "speed " + r.Speed);
         Check(worst < 20, "gap " + worst);
+    }
+
+    /// <summary>
+    /// ClientSim (and an uncapped frame rate) moves the player only on physics steps, with the last velocity we set.
+    /// The rig's player has no collision of its own, like a map in SourceMovement.hullOnly: nothing stops an overshoot.
+    /// </summary>
+    static void PhysicsStepTracking()
+    {
+        foreach (float fps in new[] { 240f, 800f })
+        {
+            var r = OnFloor();
+            r.frameTime = 1f / fps;
+            r.movesOnPhysicsSteps = true;
+            r.Teleport(new Vector3(3000, 0, 0)); // plain TeleportTo, spawn exactly on the floor
+            r.Frame(); // the simulation follows
+            float worst = 0;
+            r.Run(1f, () => worst = Math.Max(worst, (r.Pos - r.Origin).magnitude));
+            Check(r.OnGround && Math.Abs(r.Pos.x - 3000) < 2 && Math.Abs(r.Pos.y) < 2, $"{fps} fps: after the teleport at {r.Pos}, ground {r.OnGround}");
+            r.Move(1, 0);
+            r.Run(1f, () => worst = Math.Max(worst, (r.Pos - r.Origin).magnitude));
+            Note($"{fps} fps: worst player/simulation gap {worst:F1} u");
+            Check(Math.Abs(r.Speed - 250) < 0.5f, $"{fps} fps speed {r.Speed}");
+            Check(worst < 12, $"{fps} fps gap {worst}");
+        }
     }
 
     static void Deactivate()

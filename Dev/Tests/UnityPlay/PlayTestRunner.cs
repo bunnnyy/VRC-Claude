@@ -770,14 +770,21 @@ public class PlayTestRunner : MonoBehaviour
     /// <summary>
     /// Where physics put the player vs where the simulation asked for (the previous frame's target), minus one
     /// physics step of travel: ClientSim moves the player in FixedUpdate, so between steps it trails by up to that much.
+    /// The travel is at the fastest speed within the last step: a step started before a landing still moves the
+    /// player at the falling speed after the simulation has stopped (above the physics rate).
     /// </summary>
     float TrackError()
     {
         float step = Mathf.Max(Time.fixedDeltaTime, 1f / frameRate);
         Vector3 moving = (Vector3)movement.GetProgramVariable("velocity") + (Vector3)movement.GetProgramVariable("pushVelocity");
-        float travel = moving.magnitude * step;
-        return Mathf.Max(0f, (Real() - prevTarget).magnitude - travel);
+        if (moving.magnitude >= stepSpeed || Time.time > stepSpeedUntil)
+        {
+            stepSpeed = moving.magnitude;
+            stepSpeedUntil = Time.time + step;
+        }
+        return Mathf.Max(0f, (Real() - prevTarget).magnitude - stepSpeed * step);
     }
+    float stepSpeed, stepSpeedUntil;
 
     /// <summary>Gap between the 32x72 box hull and the left ramp face (normal (-0.866, 0.5) through the ridge).</summary>
     static float RampGap(Vector3 feet)

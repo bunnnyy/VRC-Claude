@@ -309,8 +309,10 @@ public class SourceMovement : UdonSharpBehaviour
             teleportWait = 0;
         }
 
-        // Follow the real player if something else moved them (teleport, respawn, blocked).
-        float lag = velocity.magnitude * dt * 2f;
+        // Follow the real player if something else moved them (teleport, respawn, blocked). Above the physics rate
+        // VRChat moves them once per physics step, so they trail us by up to a step's travel between steps.
+        float step = Mathf.Max(dt, Time.fixedDeltaTime);
+        float lag = velocity.magnitude * step * 2f;
         // VRChat's player capsule (about 84 units) is taller than the hull (62, ducked 45): under a low ceiling it
         // bumps its head first and lags below us for a moment. Don't count that as being blocked.
         Vector3 off = actual - lastTarget;
@@ -350,11 +352,13 @@ public class SourceMovement : UdonSharpBehaviour
         if (ticks > 0) prevYaw = yaw;
 
         // Drive the real player: this frame's simulated motion plus half the remaining error.
-        // Correcting only half keeps it stable even if VRChat applies the velocity a frame late.
+        // Correcting only half keeps it stable even if VRChat applies the velocity a frame late. Above the physics
+        // rate one velocity moves the player for a whole physics step, so spread the correction over that step:
+        // over one frame it would overshoot more every step (nothing stops it on a hullOnly map).
         Vector3 target = Vector3.Lerp(prevOrigin, origin, accumulator / tick);
-        Vector3 drive = (target - lastTarget) + (lastTarget - actual) * 0.5f;
+        Vector3 drive = (target - lastTarget) / dt + (lastTarget - actual) * (0.5f / step);
         lastTarget = target;
-        localPlayer.SetVelocity(drive * (metersPerUnit / dt));
+        localPlayer.SetVelocity(drive * metersPerUnit);
     }
 
     private void UpdateHull()

@@ -12,6 +12,9 @@ public class Rig
     public float frameTime = 0.01f;
     public bool oneFrameLatency; // VRChat applies our velocity a frame late
     public int teleportDelayFrames; // VRChat applies teleports this many frames late
+    public float physicsStep = 0.02f; // Time.fixedDeltaTime
+    public bool movesOnPhysicsSteps; // like ClientSim: the player moves only on physics steps, with the last velocity
+    float physicsTime;
     Vector3 pendingVelocity, pendingTeleport;
     float pendingYaw;
     int teleportFramesLeft = -1;
@@ -74,6 +77,7 @@ public class Rig
     public void Frame()
     {
         Time.deltaTime = frameTime;
+        Time.fixedDeltaTime = physicsStep;
         Time.time += frameTime;
         Call("Update");
         Input.scroll = 0;
@@ -81,7 +85,8 @@ public class Rig
         // Stand-in for VRChat's character controller: move by the velocity we were given.
         Vector3 v = oneFrameLatency ? pendingVelocity : player.velocity;
         pendingVelocity = player.velocity;
-        player.position += v * frameTime;
+        if (!movesOnPhysicsSteps) player.position += v * frameTime;
+        else for (physicsTime += frameTime; physicsTime >= physicsStep; physicsTime -= physicsStep) player.position += v * physicsStep;
         if (teleportFramesLeft >= 0) ApplyTeleport();
     }
 

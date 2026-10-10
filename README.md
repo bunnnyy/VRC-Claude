@@ -157,8 +157,9 @@ It creates a VRChat world project in `Dev/Tests/UnityPlay/.cache` with `vpm`, th
 VRChat Creator Companion (`dotnet tool install --global vrchat.vpm.cli`), from VRChat's official World
 template with Worlds SDK 3.10.5, so it has VRChat's layers and project settings. It copies
 `Assets/SourceMovement` and `Assets/SourceTimer` in, builds the test map with the
-**Build Test Scene** menu code, then plays it with ClientSim at 30, 90 and 144 fps, using a virtual
-keyboard through ClientSim's own input path. It checks the real player against the simulation: walk speed,
+**Build Test Scene** menu code, then plays it with ClientSim at 30, 90, 144 and 300 fps, using a virtual
+keyboard through ClientSim's own input path (300 fps is above the 50 Hz physics rate, where VRChat moves the player
+once per physics step with the last velocity set). It checks the real player against the simulation: walk speed,
 stopping, bhop jump height, air strafe gain, surfing on the PhysX ramp (stays on it, keeps speed and height),
 `TeleportTo` and `TeleportPlayer`, that the speedometer and timer text show, legit mode through the
 world button (no pogo), and a timed run through the real trigger zones (checkpoint, reset zone, end zone,

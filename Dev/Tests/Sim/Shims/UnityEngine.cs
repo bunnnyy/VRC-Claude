@@ -130,6 +130,7 @@ namespace UnityEngine
     public static class Time
     {
         public static float deltaTime = 1f / 60f;
+        public static float fixedDeltaTime = 0.02f;
         public static float time;
     }
 

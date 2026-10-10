@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Play-tests the prefab in a real Unity 2022.3.22f1 editor: builds the test map with the editor menu code,
 # then runs PlayTestRunner in play mode with VRChat's ClientSim (real PhysX, ClientSim's player controller
-# and input path) at each frame rate given (default 30 90 144).
+# and input path) at each frame rate given (default 30 90 144 300).
 # Needs an activated Unity license, UNITY pointing at the editor binary and VRChat's vpm CLI
 # (dotnet tool install --global vrchat.vpm.cli). The project is created in Dev/Tests/UnityPlay/.cache (git-ignored).
 set -euo pipefail
@@ -179,7 +179,7 @@ if [ -n "${KEEP_BUILD:-}" ]; then
 fi
 copy_assets
 status=0
-for fps in "${@:-30 90 144}"; do
+for fps in "${@:-30 90 144 300}"; do
   for f in $fps; do
     if run "play_$f" -executeMethod PlayTestBootstrap.Run -smFrameRate "$f"; then r="ALL PASSED"; else r="FAILED"; status=1; fi
     echo "== $f fps: $r"

@@ -136,7 +136,7 @@ bhop_exodus, bhop_cobblestone, bhop_lego2. (Popularity not verified on GameBanan
 - Repo: `bunnnyy/vrc-claude`. Read `README.md` first. Previous work is on branch
   `claude/vrchat-source-movement-mn0xl0`.
 - Tests: `dotnet run --project Dev/Tests/Sim`, `UDON_TEST=1 Dev/Tests/UdonCompile/compile.sh` (with
-  `Dev/Tests/UdonCompile/setup.sh`), `Dev/Tests/UnityPlay/run.sh` (real Unity + ClientSim at 30/90/144 fps,
+  `Dev/Tests/UdonCompile/setup.sh`), `Dev/Tests/UnityPlay/run.sh` (real Unity + ClientSim at 30/90/144/300 fps,
   47 checks).
 - Unity: download 2022.3.22f1 from
   `https://download.unity3d.com/download_unity/887be4894c44/LinuxEditorInstaller/Unity.tar.xz`, extract to

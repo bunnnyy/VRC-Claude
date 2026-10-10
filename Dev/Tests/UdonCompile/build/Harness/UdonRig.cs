@@ -24,6 +24,9 @@ public class Rig
     public float frameTime = 0.01f;
     public bool oneFrameLatency;
     public int teleportDelayFrames;
+    public float physicsStep = 0.02f; // Time.fixedDeltaTime
+    public bool movesOnPhysicsSteps; // like ClientSim: the player moves only on physics steps, with the last velocity
+    float physicsTime;
     Vector3 pendingTeleport;
     float pendingYaw;
     int teleportFramesLeft = -1;
@@ -160,7 +163,8 @@ public class Rig
         keysDown.Clear();
         Vector3 v = oneFrameLatency ? pendingVelocity : velocity;
         pendingVelocity = velocity;
-        position += v * frameTime;
+        if (!movesOnPhysicsSteps) position += v * frameTime;
+        else for (physicsTime += frameTime; physicsTime >= physicsStep; physicsTime -= physicsStep) position += v * physicsStep;
         if (teleportFramesLeft >= 0) ApplyTeleport();
     }
 
@@ -236,6 +240,7 @@ public class Rig
         {
             this.inner = inner;
             overrides["UnityEngineTime.__get_deltaTime__SystemSingle"] = (heap, a) => heap.SetHeapVariable(a[0], current.frameTime);
+            overrides["UnityEngineTime.__get_fixedDeltaTime__SystemSingle"] = (heap, a) => heap.SetHeapVariable(a[0], current.physicsStep);
             overrides["UnityEngineInput.__GetAxis__SystemString__SystemSingle"] = (heap, a) =>
                 heap.SetHeapVariable(a[1], heap.GetHeapVariable<string>(a[0]) == "Mouse ScrollWheel" ? current.scroll : 0f);
             overrides["UnityEngineInput.__GetKeyDown__UnityEngineKeyCode__SystemBoolean"] = (heap, a) =>
