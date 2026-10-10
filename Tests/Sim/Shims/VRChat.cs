@@ -96,9 +96,11 @@ namespace VRC.SDKBase
             if (onTeleport != null) onTeleport(p, r);
             else { position = p; yaw = r.eulerAngles.y; }
         }
+        public float headHeight = 1.6f, eyeHeight = 1.6f; // head above the feet (crouching lowers it), avatar eye height
+        public float GetAvatarEyeHeightAsMeters() => eyeHeight;
         public TrackingData GetTrackingData(TrackingDataType t) => new TrackingData
         {
-            position = position + Vector3.up * 1.6f,
+            position = position + Vector3.up * headHeight,
             rotation = Quaternion.Euler(pitch, yaw, 0),
         };
 

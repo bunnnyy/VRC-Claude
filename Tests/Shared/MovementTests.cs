@@ -34,6 +34,11 @@ public static class MovementTests
         Test("Step + surf: walking into a surf ramp never stands on it", WalkIntoRamp);
         Test("Walking down a 30 degree slope stays on the ground", WalkDownSlope);
         Test("Falling speed clamps at sv_maxvelocity 3500", MaxVelocity);
+        Test("Duck: Ctrl ducks after 0.4 s on the ground, crouch walking is 85 u/s (250 x 0.34)", DuckWalk);
+        Test("Duck: crouching in VRChat (head low) ducks too", DuckCrouch);
+        Test("Duck: the CS:S standing hull (62) walks under a 64 unit gap, not a 60 unit one", StandingHull);
+        Test("Duck: ducked walks under a 50 unit gap, stays ducked until there is room", DuckUnderGap);
+        Test("Duck: a crouch jump gets onto a 62 unit ledge (57 + 8.5), a plain jump doesn't", CrouchJump);
         Test("Ladder: walking into it grabs it and W climbs at 200 u/s", LadderClimb);
         Test("Ladder: looking down 60 degrees + W climbs down at 73 u/s", LadderClimbDown);
         Test("Ladder: no keys hangs on without falling", LadderHang);
@@ -422,6 +427,94 @@ public static class MovementTests
             Note($"{(viaApi ? "TeleportPlayer" : "TeleportTo")}: lowest hull height {lowest:F2} u, on ground {r.OnGround}");
             Check(lowest > -0.01f, "hull sank into the floor: " + lowest);
             Check(r.OnGround, "not standing after teleport");
+        }
+    }
+
+    // ------------------------------------------------------------------ ducking (CS:S: hull 62, ducked 45)
+
+    static void DuckWalk()
+    {
+        var r = OnFloor();
+        r.HoldKey(KeyCode.LeftControl, true);
+        r.Run(0.3f);
+        bool early = r.Ducked;
+        r.Run(0.2f);
+        Check(!early && r.Ducked, $"ducked after 0.3 s {early}, after 0.5 s {r.Ducked} (TIME_TO_DUCK 0.4 s)");
+        r.Move(1, 0);
+        r.Run(1.5f);
+        Note($"crouch walking {r.Speed:F2} u/s");
+        Check(Math.Abs(r.Speed - 85f) < 1f, "crouch speed " + r.Speed);
+        r.HoldKey(KeyCode.LeftControl, false);
+        r.Run(0.3f);
+        Check(!r.Ducked, "still ducked 0.3 s after letting go");
+        r.Run(1.5f);
+        Check(r.Speed > 245f, "speed standing " + r.Speed);
+    }
+
+    static void DuckCrouch()
+    {
+        var r = OnFloor();
+        r.Crouch(true);
+        r.Run(0.5f);
+        Check(r.Ducked, "crouching did not duck");
+        r.Crouch(false);
+        r.Run(0.3f);
+        Check(!r.Ducked, "standing up again did not unduck");
+    }
+
+    /// <summary>A ceiling from `height` up over z 100..300, across the whole floor.</summary>
+    static void Gap(float height) => Rig.Box(new Vector3(0, height + 50f, 200f), new Vector3(1000f, 100f, 200f));
+
+    static void StandingHull()
+    {
+        foreach (float height in new[] { 64f, 60f })
+        {
+            var r = OnFloor();
+            Gap(height);
+            r.Move(1, 0);
+            r.Run(2.5f);
+            Note($"{height} unit gap: z {r.Origin.z:F0}");
+            if (height == 64f) Check(r.Origin.z > 350f, "standing hull blocked by a 64 unit gap: z " + r.Origin.z);
+            else Check(r.Origin.z < 90f, "standing hull got under a 60 unit gap: z " + r.Origin.z);
+        }
+    }
+
+    static void DuckUnderGap()
+    {
+        var r = OnFloor();
+        Gap(50f);
+        r.HoldKey(KeyCode.LeftControl, true);
+        r.Run(0.5f);
+        r.Move(1, 0);
+        for (int i = 0; i < 600 && r.Origin.z < 200f; i++) r.Frame();
+        r.HoldKey(KeyCode.LeftControl, false); // let go under the ceiling
+        r.Run(0.5f);
+        Check(r.Ducked && r.Origin.z > 200f, $"under the gap: ducked {r.Ducked}, z {r.Origin.z:F0}");
+        for (int i = 0; i < 600 && r.Origin.z < 340f; i++) r.Frame();
+        r.Run(0.3f);
+        Note($"out at z {r.Origin.z:F0}, ducked {r.Ducked}");
+        Check(!r.Ducked && r.Origin.z > 340f, "did not stand up after the gap");
+    }
+
+    static void CrouchJump()
+    {
+        foreach (bool crouch in new[] { false, true })
+        {
+            var r = new Rig(new Vector3(0, 0, -400));
+            Rig.Floor();
+            Rig.Box(new Vector3(0, 31f, 300f), new Vector3(1000f, 62f, 400f)); // ledge top 62, face at z 100
+            r.Run(0.1f);
+            r.Move(1, 0);
+            for (int i = 0; i < 500 && r.Origin.z < 20f; i++) r.Frame();
+            r.Jump(true);
+            r.Frame();
+            r.Jump(false);
+            r.Frame();
+            if (crouch) r.HoldKey(KeyCode.LeftControl, true);
+            r.Run(1f);
+            Note($"{(crouch ? "crouch jump" : "plain jump")}: y {r.Origin.y:F1}, z {r.Origin.z:F0}");
+            if (crouch) Check(Math.Abs(r.Origin.y - 62f) < 1f && r.Origin.z > 100f, "crouch jump did not get onto the ledge: " + r.Origin);
+            else Check(r.Origin.y < 1f, "plain jump got onto a 62 unit ledge: " + r.Origin);
         }
     }
 

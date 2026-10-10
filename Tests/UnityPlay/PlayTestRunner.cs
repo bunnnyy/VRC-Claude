@@ -90,6 +90,7 @@ public class PlayTestRunner : MonoBehaviour
         yield return Run("surf", SurfFullRamp());
         yield return Run("wall", SeamedWall());
         yield return Run("edge", BlockEdge());
+        yield return Run("duck", Duck());
         yield return Run("teleport", Teleports());
         yield return Run("ladder", Ladder());
         yield return Run("water", Water());
@@ -252,6 +253,61 @@ public class PlayTestRunner : MonoBehaviour
         Check("surf", Real().z > 9500f && minSpeed > 950f, "surfs the whole mesh ramp across its triangle seam");
         yield return Teleport(new Vector3(0, 0, 100), 0f, false); // out of the air before the next test
     }
+
+    IEnumerator Duck()
+    {
+        // VRChat's crouch (C on desktop, ClientSim toggles it) ducks: CS:S crouch walking 85 u/s (250 x 0.34).
+        yield return Spawn(new Vector3(1520, 0, 900), 0f);
+        Keys(Key.C);
+        yield return Frames(0.1f, null);
+        Keys();
+        yield return Frames(0.6f, null);
+        Check("duck", Ducked(), "crouching in VRChat ducks");
+        Keys(Key.W);
+        float maxErr = 0f;
+        yield return Frames(1.5f, () => maxErr = Mathf.Max(maxErr, TrackError()));
+        Log($"crouch walking {Speed():F1} u/s (85), max tracking error beyond one physics step {maxErr:F2} u");
+        Check("duck", Mathf.Abs(Speed() - 85f) < 2f, "crouch walking at 85 u/s");
+
+        // Under a 50 unit ceiling (z 1200..1400): only the ducked hull fits. The test map is hull-only, so VRChat's
+        // 84 unit capsule passes through and follows.
+        float lowest = 1e9f;
+        for (int i = 0; i < 8 * frameRate && Real().z < 1420f; i++)
+        {
+            yield return null;
+            if (Real().z > 1220f && Real().z < 1380f) lowest = Mathf.Min(lowest, Real().y);
+            maxErr = Mathf.Max(maxErr, TrackError());
+        }
+        Keys();
+        Log($"ducked under a 50 unit gap: real z {Real().z:F0}, lowest real y under it {lowest:F2}, max tracking error {maxErr:F2} u");
+        Check("duck", Real().z > 1410f && maxErr < 4f, "walks under a 50 unit gap ducked, the player following");
+        Keys(Key.C);
+        yield return Frames(0.1f, null);
+        Keys();
+        yield return Frames(0.5f, null);
+        Check("duck", !Ducked(), "standing up again");
+
+        // Crouch jump onto a 62 unit ledge (face at z 1350): 57 + 8.5 clears it, a plain jump doesn't.
+        foreach (bool crouch in new[] { false, true })
+        {
+            yield return Spawn(new Vector3(720, 0, 900), 0f);
+            Keys(Key.W);
+            for (int i = 0; i < 4 * frameRate && Real().z < 1265f; i++) yield return null;
+            Keys(Key.W, Key.Space);
+            yield return Frames(0.05f, null);
+            if (crouch) { Keys(Key.W, Key.C); yield return null; }
+            Keys(Key.W);
+            yield return Frames(1f, null);
+            Keys();
+            Log($"{(crouch ? "crouch jump" : "plain jump")} at the 62 unit ledge: real y {Real().y:F1}, z {Real().z:F0}, ducked {Ducked()}");
+            if (crouch) Check("duck", Real().y > 61f, "a crouch jump gets onto a 62 unit ledge");
+            else Check("duck", Real().y < 2f, "a plain jump doesn't");
+            if (Ducked()) { Keys(Key.C); yield return null; Keys(); }
+            yield return Frames(0.5f, null);
+        }
+    }
+
+    bool Ducked() { return (bool)movement.GetProgramVariable("ducked"); }
 
     IEnumerator BlockEdge()
     {

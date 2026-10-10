@@ -31,15 +31,21 @@ public class SourceMovement : UdonSharpBehaviour
     [Tooltip("sv_stepsize, highest step you walk up without jumping")] public float stepSize = 18f;
     [Tooltip("Server tickrate (bhop servers use 100, CS:S default 66)")] public float tickRate = 100f;
 
-    [Header("Player hull (Source units, CS:S standing hull)")]
+    [Header("Player hull (Source units, CS:S sizes)")]
     public float hullWidth = 32f;
-    public float hullHeight = 72f;
+    [Tooltip("Standing hull height: CS:S 62 (Half-Life 2 uses 72)")] public float hullHeight = 62f;
+    [Tooltip("Crouched hull height: CS:S 45 (Half-Life 2 uses 36)")] public float duckHullHeight = 45f;
 
     [Header("World")]
     [Tooltip("Metres per Source unit. 0.01905 = 1 Hammer unit, so imported Source maps feel identical.")]
     public float metersPerUnit = 0.01905f;
     [Tooltip("Layers the player hull collides with")]
-    public LayerMask collisionLayers = (1 << 0) | (1 << 11); // Default, Environment
+    public LayerMask collisionLayers = (1 << 0) | (1 << 11) | (1 << 17); // Default, Environment, Walkthrough
+    [Tooltip("Maps and other objects whose solid colliders only the Source hull should collide with while Source " +
+        "movement is on. VRChat's player capsule (about 84 units) is taller than the CS:S hull (62, ducked 45) and " +
+        "would get stuck under low ceilings and in vents; their colliders move to the Walkthrough layer (17), which " +
+        "players pass through but the hull still hits, and back to their own layers when Source movement is off.")]
+    public GameObject[] hullOnly;
     [Tooltip("Layers of ladder volumes (CS:S func_ladder): trigger colliders against the climbable face. " +
         "You pass through them, the wall behind stops you. Layer 22 is the first free user layer in VRChat.")]
     public LayerMask ladderLayers = 1 << 22;
@@ -53,6 +59,11 @@ public class SourceMovement : UdonSharpBehaviour
     public bool autoBhop = true;
     [Tooltip("Desktop key that toggles auto bhop")]
     public KeyCode autoBhopToggleKey = KeyCode.B;
+    [Tooltip("Desktop key that ducks while held (CS:S: Ctrl). Crouching in VRChat ducks too.")]
+    public KeyCode duckKey = KeyCode.LeftControl;
+    [Tooltip("Duck when the head is lower than this fraction of the avatar's eye height above the feet: VRChat's " +
+        "crouch (C on desktop) or crouching in VR. 0 turns it off (duck key only).")]
+    [Range(0f, 1f)] public float duckHeadFraction = 0.75f;
 
     private const float ForwardSpeed = 450f;      // cl_forwardspeed / cl_sidespeed
     private const float NonJumpVelocity = 140f;   // moving up faster than this = not on ground
@@ -66,7 +77,12 @@ public class SourceMovement : UdonSharpBehaviour
     private const float MaxClimbSpeed = 200f;     // MAX_CLIMB_SPEED
     private const float LadderJumpSpeed = 270f;   // jumping off a ladder
     private const float LadderDistance = 2f;      // how close a ladder must be to grab it
-    private const float ViewHeight = 64f;         // eye height of the standing hull
+    private const float ViewHeight = 64f;         // eye height of the standing hull (CS:S)
+    private const float DuckViewHeight = 47f;     // eye height ducked (CS:S)
+    private const float TimeToDuck = 0.4f;        // TIME_TO_DUCK: ducking on the ground takes this long
+    private const float TimeToUnduck = 0.2f;      // TIME_TO_UNDUCK
+    private const float DuckSpeedModifier = 0.34f; // CS_PLAYER_SPEED_DUCK_MODIFIER: crouch walking at 34%
+    private const float CapsuleSlack = 40f;       // how far VRChat's taller capsule may lag below us (head bumps)
     private const float SwimUpSpeed = 100f;       // jump in water
     private const float SinkSpeed = 60f;          // no keys in water
     private const float WaterJumpUp = 256f;       // climbing out of water onto a ledge
@@ -80,6 +96,9 @@ public class SourceMovement : UdonSharpBehaviour
     private bool pendingResync;
     private int teleportWait;
     private float savedWalk, savedRun, savedStrafe, savedJump, savedGravity;
+    private Collider[] hullOnlyColliders;
+    private int[] hullOnlyLayers;
+    private const int WalkthroughLayer = 17;
 
     // Simulation state (Source units)
     private Vector3 origin;
@@ -95,6 +114,9 @@ public class SourceMovement : UdonSharpBehaviour
     private Vector3 waterJumpVel;
     private Vector3 ladderNormal;
     private float surfaceFriction = 1f;
+    private bool ducked;           // the hull is the crouched one
+    private bool duckHeld;         // duck key down or crouching in VRChat
+    private float duckTimer;       // seconds a duck or stand-up has been under way on the ground
     private float accumulator;
 
     // Input
@@ -127,6 +149,7 @@ public class SourceMovement : UdonSharpBehaviour
         savedJump = localPlayer.GetJumpImpulse();
         savedGravity = localPlayer.GetGravityStrength();
         UpdateHull();
+        CollectHullOnly();
         if (activeOnStart) SetMovementActive(true);
     }
 
@@ -135,6 +158,7 @@ public class SourceMovement : UdonSharpBehaviour
     {
         if (localPlayer == null || on == active) return;
         active = on;
+        SetHullOnly(on);
         if (on)
         {
             localPlayer.SetWalkSpeed(0f);
@@ -153,6 +177,51 @@ public class SourceMovement : UdonSharpBehaviour
             localPlayer.SetJumpImpulse(savedJump);
             localPlayer.SetGravityStrength(savedGravity);
             localPlayer.SetVelocity(velocity * metersPerUnit);
+        }
+    }
+
+    /// <summary>The solid colliders under hullOnly and their own layers.</summary>
+    private void CollectHullOnly()
+    {
+        int count = 0;
+        if (hullOnly != null)
+            for (int i = 0; i < hullOnly.Length; i++)
+                if (hullOnly[i] != null) count += hullOnly[i].GetComponentsInChildren<Collider>(true).Length;
+        hullOnlyColliders = new Collider[count];
+        hullOnlyLayers = new int[count];
+        count = 0;
+        if (hullOnly == null) return;
+        for (int i = 0; i < hullOnly.Length; i++)
+        {
+            if (hullOnly[i] == null) continue;
+            Collider[] found = hullOnly[i].GetComponentsInChildren<Collider>(true);
+            for (int j = 0; j < found.Length; j++)
+            {
+                // Only solid colliders, and only on objects without a trigger: a layer is per object, and the
+                // player has to keep touching triggers (teleports, zones, a bhop block's touch box).
+                if (found[j].isTrigger || HasTrigger(found[j].gameObject)) continue;
+                hullOnlyColliders[count] = found[j];
+                hullOnlyLayers[count] = found[j].gameObject.layer;
+                count++;
+            }
+        }
+    }
+
+    private bool HasTrigger(GameObject go)
+    {
+        Collider[] all = go.GetComponents<Collider>();
+        for (int i = 0; i < all.Length; i++) if (all[i].isTrigger) return true;
+        return false;
+    }
+
+    /// <summary>The collected hullOnly colliders on the Walkthrough layer (on) or their own layers (off).</summary>
+    private void SetHullOnly(bool on)
+    {
+        if (hullOnlyColliders == null) return;
+        for (int i = 0; i < hullOnlyColliders.Length; i++)
+        {
+            Collider c = hullOnlyColliders[i];
+            if (c != null) c.gameObject.layer = on ? WalkthroughLayer : hullOnlyLayers[i];
         }
     }
 
@@ -198,6 +267,7 @@ public class SourceMovement : UdonSharpBehaviour
     public float GetSpeed() { return new Vector3(velocity.x, 0f, velocity.z).magnitude; }
     public Vector3 GetSourceVelocity() { return velocity; }
     public bool IsOnGround() { return onGround; }
+    public bool IsDucked() { return ducked; }
     public bool IsMovementActive() { return active; }
 
     public override void InputMoveVertical(float value, UdonInputEventArgs args) { moveForward = value; }
@@ -221,6 +291,7 @@ public class SourceMovement : UdonSharpBehaviour
 
         if (Input.GetKeyDown(autoBhopToggleKey)) _ToggleAutoBhop();
         if (Input.GetAxis("Mouse ScrollWheel") != 0f) scrollJump = true;
+        duckHeld = Input.GetKey(duckKey) || HeadCrouched();
 
         UpdateHull();
 
@@ -240,7 +311,11 @@ public class SourceMovement : UdonSharpBehaviour
 
         // Follow the real player if something else moved them (teleport, respawn, blocked).
         float lag = velocity.magnitude * dt * 2f;
-        float drift = (actual - lastTarget).magnitude;
+        // VRChat's player capsule (about 84 units) is taller than the hull (62, ducked 45): under a low ceiling it
+        // bumps its head first and lags below us for a moment. Don't count that as being blocked.
+        Vector3 off = actual - lastTarget;
+        if (off.y < 0f) off.y = Mathf.Min(0f, off.y + CapsuleSlack);
+        float drift = off.magnitude;
         if (pendingResync || drift > TeleportDistance + lag)
         {
             if (!pendingResync) velocity = Vector3.zero;
@@ -284,8 +359,19 @@ public class SourceMovement : UdonSharpBehaviour
 
     private void UpdateHull()
     {
-        hullHalf = new Vector3(hullWidth * 0.5f, hullHeight * 0.5f, hullWidth * 0.5f);
-        hullCenter = new Vector3(0f, hullHeight * 0.5f, 0f);
+        float height = ducked ? duckHullHeight : hullHeight;
+        hullHalf = new Vector3(hullWidth * 0.5f, height * 0.5f, hullWidth * 0.5f);
+        hullCenter = new Vector3(0f, height * 0.5f, 0f);
+    }
+
+    /// <summary>The player crouches in VRChat: head lower than duckHeadFraction of the avatar's eye height.</summary>
+    private bool HeadCrouched()
+    {
+        if (duckHeadFraction <= 0f) return false;
+        float eye = localPlayer.GetAvatarEyeHeightAsMeters();
+        if (eye <= 0f) return false;
+        float head = localPlayer.GetTrackingData(VRCPlayerApi.TrackingDataType.Head).position.y - localPlayer.GetPosition().y;
+        return head < eye * duckHeadFraction;
     }
 
     /// <summary>
@@ -315,9 +401,50 @@ public class SourceMovement : UdonSharpBehaviour
 
     private void PlayerMove(float dt)
     {
+        Duck(dt);
         CategorizePosition();
         if (LadderMove()) MoveWithPush(dt); // FullLadderMove: no gravity, no friction
         else FullWalkMove(dt);
+    }
+
+    /// <summary>
+    /// Source's Duck with CS:S sizes. On the ground the hull shrinks from the top once ducking has taken
+    /// TIME_TO_DUCK; in the air at once, the feet coming up half the height difference (the crouch jump: 8.5
+    /// units more). Standing up takes TIME_TO_UNDUCK on the ground, at once in the air (feet down again), and only
+    /// when the standing hull fits; until then we stay ducked.
+    /// </summary>
+    private void Duck(float dt)
+    {
+        if (duckHeld == ducked) { duckTimer = 0f; return; }
+        duckTimer += dt;
+        bool inAir = !onGround;
+        if (duckHeld)
+        {
+            if (inAir || duckTimer >= TimeToDuck) SetDucked(true, inAir);
+        }
+        else if (inAir || duckTimer >= TimeToUnduck)
+        {
+            SetDucked(false, inAir);
+        }
+    }
+
+    /// <summary>Switch hulls; in the air the feet move by half the height difference. False if there's no room.</summary>
+    private bool SetDucked(bool duck, bool inAir)
+    {
+        float shift = inAir ? (hullHeight - duckHullHeight) * 0.5f : 0f;
+        Vector3 to = origin + Vector3.up * (duck ? shift : -shift);
+        if (!duck)
+        {
+            Vector3 half = new Vector3(hullWidth * 0.5f, hullHeight * 0.5f, hullWidth * 0.5f);
+            if (Physics.CheckBox((to + Vector3.up * (hullHeight * 0.5f)) * metersPerUnit, half * metersPerUnit,
+                Quaternion.identity, collisionLayers, QueryTriggerInteraction.Ignore)) return false;
+        }
+        prevOrigin += to - origin; // keep this frame's interpolation in step with the feet moving
+        origin = to;
+        ducked = duck;
+        duckTimer = 0f;
+        UpdateHull();
+        return true;
     }
 
     /// <summary>
@@ -468,6 +595,7 @@ public class SourceMovement : UdonSharpBehaviour
     {
         Vector3 wishVel = wishForward * (moveForward * ForwardSpeed) + wishRight * (moveRight * ForwardSpeed);
         if (wishVel.magnitude > maxSpeed) wishVel = wishVel.normalized * maxSpeed;
+        if (onGround && (ducked || duckHeld)) wishVel *= DuckSpeedModifier; // crouch walking (85 u/s with a knife)
         return wishVel;
     }
 
@@ -705,10 +833,10 @@ public class SourceMovement : UdonSharpBehaviour
         if (waterLayers.value != 0 && InWater(origin + Vector3.up))
         {
             waterLevel = 1;
-            if (InWater(origin + Vector3.up * (hullHeight * 0.5f)))
+            if (InWater(origin + hullCenter))
             {
                 waterLevel = 2;
-                if (InWater(origin + Vector3.up * ViewHeight)) waterLevel = 3;
+                if (InWater(origin + Vector3.up * (ducked ? DuckViewHeight : ViewHeight))) waterLevel = 3;
             }
         }
         return waterLevel > 1;
@@ -782,12 +910,12 @@ public class SourceMovement : UdonSharpBehaviour
         Vector3 flatVel = new Vector3(velocity.x, 0f, velocity.z);
         if (flatVel.sqrMagnitude > 0f && Vector3.Dot(flatVel, wishForward) < 0f) return; // backing up
 
-        Vector3 start = origin + Vector3.up * (hullHeight * 0.5f);
+        Vector3 start = origin + hullCenter;
         TraceHull(start, start + wishForward * 24f);
         if (trFraction == 1f) return; // nothing in front at the waist
         Vector3 jumpVel = -trNormal * 50f;
 
-        start = origin + Vector3.up * (ViewHeight + 8f);
+        start = origin + Vector3.up * ((ducked ? DuckViewHeight : ViewHeight) + 8f);
         TraceHull(start, start + wishForward * 24f);
         if (trFraction < 1f) return; // blocked at eye height too
         TraceHull(trEnd, trEnd - Vector3.up * 1024f);

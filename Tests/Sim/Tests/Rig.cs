@@ -21,6 +21,7 @@ public class Rig
         CollisionWorld.Clear();
         Input.scroll = 0;
         Input.keysDown.Clear();
+        Input.keysHeld.Clear();
         Time.time = 0;
         Networking.LocalPlayer = player;
         player.position = startUnits * U;
@@ -48,6 +49,10 @@ public class Rig
     public void Jump(bool held) => move.InputJump(held, default);
     public void Scroll(float delta) => Input.scroll = delta;
     public void PressKey(KeyCode key) => Input.keysDown.Add(key);
+    public void HoldKey(KeyCode key, bool down) { if (down) Input.keysHeld.Add(key); else Input.keysHeld.Remove(key); }
+    /// <summary>Crouch in VRChat: the head drops to 1 m (ClientSim's crouch height) from 1.6 m.</summary>
+    public void Crouch(bool down) => player.headHeight = down ? 1.0f : 1.6f;
+    public bool Ducked => move.IsDucked();
     public float Yaw { get => player.yaw; set => player.yaw = value; }
     public float Pitch { get => player.pitch; set => player.pitch = value; }
     public bool AutoBhop { get => move.autoBhop; set => move.autoBhop = value; }

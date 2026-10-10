@@ -114,7 +114,7 @@ namespace UnityEngine
         public static implicit operator LayerMask(int v) => new LayerMask { value = v };
     }
 
-    public enum KeyCode { None, B, G, N, R }
+    public enum KeyCode { None, B, G, N, R, LeftControl }
     public enum QueryTriggerInteraction { UseGlobal, Ignore, Collide }
 
     public static class Input
@@ -123,6 +123,8 @@ namespace UnityEngine
         public static readonly HashSet<KeyCode> keysDown = new HashSet<KeyCode>();
         public static float GetAxis(string name) => name == "Mouse ScrollWheel" ? scroll : 0f;
         public static bool GetKeyDown(KeyCode k) => keysDown.Contains(k);
+        public static readonly HashSet<KeyCode> keysHeld = new HashSet<KeyCode>();
+        public static bool GetKey(KeyCode k) => keysHeld.Contains(k);
     }
 
     public static class Time
@@ -146,6 +148,9 @@ namespace UnityEngine
         public void SetActive(bool v) => activeSelf = v;
         public static GameObject Find(string name) => null;
         public T GetComponent<T>() where T : class => null;
+        public int layer;
+        public T[] GetComponents<T>() => new T[0];
+        public T[] GetComponentsInChildren<T>(bool includeInactive) => new T[0];
     }
     public class Component : Object
     {
@@ -161,7 +166,7 @@ namespace UnityEngine
     }
     public class Behaviour : Component { public bool enabled = true; }
     public class MonoBehaviour : Behaviour { }
-    public class Collider : Component { }
+    public class Collider : Component { public bool isTrigger; }
 
     public struct RaycastHit
     {

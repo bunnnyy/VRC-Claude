@@ -104,6 +104,10 @@ public static class SourceMovementSetup
         movementInstance.transform.Find("AutoBhopButton").position = new Vector3(200, 48, 250) * U;
 
         BuildMap(timer);
+        // The test map is hull-only: VRChat's taller capsule passes through it, the CS:S hull collides (ducking).
+        var movementScript = movementInstance.GetComponent<SourceMovement>();
+        movementScript.hullOnly = new[] { GameObject.Find("TestMap") };
+        UdonSharpEditorUtility.CopyProxyToUdon(movementScript);
         EditorSceneManager.SaveScene(EditorSceneManager.GetActiveScene(), ScenePath);
         Debug.Log("[Source Movement] Test scene saved: " + ScenePath);
     }
@@ -161,6 +165,10 @@ public static class SourceMovementSetup
         // built from several brushes in a converted map (the seams can report an edge normal along the wall).
         Solid(map, "WallFloor", new Vector3(1600, -32, 1000), new Vector3(512, 64, 1200));
         SeamedWall(map, "SeamedWall", 1856, 256, 400, 600, 800, 1000, 1200, 1400, 1600);
+        // Ducking: a ceiling 50 units over the floor (only a ducked hull fits under it) and a 62 unit ledge beside the
+        // booster platform (a crouch jump reaches it, a plain jump doesn't).
+        Solid(map, "DuckGap", new Vector3(1520, 100, 1300), new Vector3(352, 100, 200));
+        Solid(map, "Ledge62", new Vector3(720, 31, 1450), new Vector3(128, 62, 200));
         // A 64 unit bhop block as a mesh (like a converted func_door) on the same floor, to stand on its edge.
         MeshBlock(map, "EdgeBlock", new Vector3(1500, 24, 700), new Vector3(64, 48, 64));
 

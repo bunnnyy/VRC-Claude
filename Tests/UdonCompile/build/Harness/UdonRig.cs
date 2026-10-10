@@ -29,8 +29,9 @@ public class Rig
     int teleportFramesLeft = -1;
     readonly UdonVM vm;
     Vector3 position, velocity, pendingVelocity;
-    float yaw, pitch, scroll, walk = 2f, run = 4f, strafe = 2f, jump = 3f, gravityStrength = 1f;
+    float yaw, pitch, scroll, walk = 2f, run = 4f, strafe = 2f, jump = 3f, gravityStrength = 1f, headHeight = 1.6f;
     readonly HashSet<KeyCode> keysDown = new HashSet<KeyCode>();
+    readonly HashSet<KeyCode> keysHeld = new HashSet<KeyCode>();
 
     public static void Init(IUdonProgram compiled, IUdonWrapper realWrapper)
     {
@@ -49,7 +50,8 @@ public class Rig
         Hook("_GetVelocity", (Func<VRCPlayerApi, Vector3>)(p => current.velocity));
         Hook("_SetVelocity", (Action<VRCPlayerApi, Vector3>)((p, v) => current.velocity = v));
         Hook("_GetTrackingData", (Func<VRCPlayerApi, VRCPlayerApi.TrackingDataType, VRCPlayerApi.TrackingData>)((p, t) =>
-            new VRCPlayerApi.TrackingData(current.position + new Vector3(0, 1.6f, 0), CollisionWorld.Euler(current.pitch, current.yaw, 0))));
+            new VRCPlayerApi.TrackingData(current.position + new Vector3(0, current.headHeight, 0), CollisionWorld.Euler(current.pitch, current.yaw, 0))));
+        Hook("_GetAvatarEyeHeightAsMeters", (Func<VRCPlayerApi, float>)(p => 1.6f));
         Hook("_TeleportTo", (Action<VRCPlayerApi, Vector3, Quaternion>)((p, pos, rot) =>
         {
             current.pendingTeleport = pos;
@@ -113,6 +115,10 @@ public class Rig
     }
     public void Scroll(float delta) => scroll = delta;
     public void PressKey(KeyCode key) => keysDown.Add(key);
+    public void HoldKey(KeyCode key, bool down) { if (down) keysHeld.Add(key); else keysHeld.Remove(key); }
+    /// <summary>Crouch in VRChat: the head drops to 1 m (ClientSim's crouch height) from 1.6 m.</summary>
+    public void Crouch(bool down) => headHeight = down ? 1.0f : 1.6f;
+    public bool Ducked => GetVar<bool>("ducked");
     public float Yaw { get => yaw; set => yaw = value; }
     public float Pitch { get => pitch; set => pitch = value; }
     public bool AutoBhop { get => GetVar<bool>("autoBhop"); set => SetVar("autoBhop", value); }
@@ -234,6 +240,8 @@ public class Rig
                 heap.SetHeapVariable(a[1], heap.GetHeapVariable<string>(a[0]) == "Mouse ScrollWheel" ? current.scroll : 0f);
             overrides["UnityEngineInput.__GetKeyDown__UnityEngineKeyCode__SystemBoolean"] = (heap, a) =>
                 heap.SetHeapVariable(a[1], current.keysDown.Contains(heap.GetHeapVariable<KeyCode>(a[0])));
+            overrides["UnityEngineInput.__GetKey__UnityEngineKeyCode__SystemBoolean"] = (heap, a) =>
+                heap.SetHeapVariable(a[1], current.keysHeld.Contains(heap.GetHeapVariable<KeyCode>(a[0])));
             overrides["UnityEngineQuaternion.__get_eulerAngles__UnityEngineVector3"] = (heap, a) =>
                 heap.SetHeapVariable(a[1], CollisionWorld.EulerAngles(heap.GetHeapVariable<Quaternion>(a[0])));
             overrides["UnityEnginePhysics.__BoxCast__UnityEngineVector3_UnityEngineVector3_UnityEngineVector3_UnityEngineRaycastHitRef_UnityEngineQuaternion_SystemSingle_SystemInt32_UnityEngineQueryTriggerInteraction__SystemBoolean"] =
