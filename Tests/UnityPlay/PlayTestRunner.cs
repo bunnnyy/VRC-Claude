@@ -532,8 +532,7 @@ public class PlayTestRunner : MonoBehaviour
         yield return Frames(0.5f, () => { yaw = Mathf.MoveTowards(yaw, 0f, 90f * Time.deltaTime); SetYaw(yaw); });
         Log($"demo bhop: {Speed():F0} u/s at z {Real().z:F0}");
 
-        // Surf: onto the 60 degree ramp at 1000 u/s looking along it, holding D into it, off the end onto the
-        // end platform.
+        // Surf: onto the 60 degree ramp at 1000 u/s looking along it, holding D into it, then off the end.
         Keys();
         yield return Teleport(new Vector3(200, -560, 4400), 0f, false);
         movement.SetProgramVariable("velocity", new Vector3(0, 0, 1000));
@@ -545,7 +544,7 @@ public class PlayTestRunner : MonoBehaviour
             if (Mathf.Repeat(t, 1f) < Time.deltaTime) Log($"demo surf t {t:F1}: real {Real():F0}, speed {Speed():F0}");
         });
         Keys();
-        yield return Frames(2f, null);
+        yield return Frames(0.8f, null); // flying off the end of the ramp (the end platform is further on)
         Log($"demo surf end: {Speed():F0} u/s at {Real():F0}, {recordFrameNumber} frames");
     }
 
