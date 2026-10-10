@@ -25,6 +25,7 @@ public class RouteRunner : MonoBehaviour
 {
     public int frameRate = 100;
     public string recordDir = "";
+    public int startSection; // debugging: start at the beginning of this section
     const float U = 0.01905f;
     const float Gravity = 800f;
     const float AirCap = 30f;
@@ -43,7 +44,7 @@ public class RouteRunner : MonoBehaviour
     /// <summary>Source x, y to flat Unity-axis coordinates (x = -y, z = x), Source units.</summary>
     static Vector2 V(float x, float y) { return new Vector2(-y, x); }
 
-    struct Spot { public Vector3 p; public float s, lat; }
+    struct Spot { public Vector3 p; public float s, lat; public bool deep, edge; public int seg; public float need; }
 
     readonly List<List<Spot>> spots = new List<List<Spot>>();
     readonly List<float[]> lengths = new List<float[]>();
@@ -92,11 +93,55 @@ public class RouteRunner : MonoBehaviour
 
         float t0 = Time.realtimeSinceStartup;
         int total = 0;
-        foreach (var line in Route) { var list = FindSpots(line); spots.Add(list); total += list.Count; }
+        foreach (var line in Route) { var list = FindSpots(line); Plan(list); spots.Add(list); total += list.Count; }
         Log($"{total} landing spots in {Route.Length} sections ({Time.realtimeSinceStartup - t0:F1} s)");
+        if (startSection == 3)
+        {
+            foreach (var q in new[] { new Vector2(-2616, 2656), new Vector2(-2624, 2656), new Vector2(-2632, 2656) })
+                foreach (var h in Physics.RaycastAll(new Vector3(q.x, 300f, q.y) * U, Vector3.down, 600f * U, ~0, QueryTriggerInteraction.Collide))
+                    Log($"  ray at {q}: {h.collider.name} ({h.collider.GetType().Name}, layer {h.collider.gameObject.layer}, trigger {h.collider.isTrigger}) at y {h.point.y / U:F1} normal {h.normal:F2}");
+            string scan = "";
+            for (float sy = 2560f; sy <= 2880f; sy += 8f)
+            {
+                bool hit = Physics.Raycast(new Vector3(-sy, 120f, 2600f) * U, Vector3.forward, out RaycastHit h, 120f * U, layers, QueryTriggerInteraction.Ignore);
+                scan += hit ? $" {sy}:{h.point.z / U:F0}" : $" {sy}:-";
+            }
+            Log("  glass scan at height 120 (Source y: x of first solid from x 2600):" + scan);
+            var shotCam = new GameObject("ShotCam").AddComponent<Camera>();
+            shotCam.fieldOfView = 74f;
+            shotCam.nearClipPlane = 0.03f;
+            var srt = new RenderTexture(1280, 720, 24);
+            var stex = new Texture2D(1280, 720, TextureFormat.RGB24, false);
+            int n = 0;
+            foreach (var view in new[] { (new Vector3(-2720f, 112f, 2420f), 0f, 5f), (new Vector3(-2560f, 150f, 2560f), 30f, 20f), (new Vector3(-2720f, 260f, 2500f), 0f, 35f) })
+            {
+                shotCam.transform.SetPositionAndRotation(view.Item1 * U, Quaternion.Euler(view.Item3, view.Item2, 0f));
+                shotCam.targetTexture = srt;
+                shotCam.Render();
+                RenderTexture.active = srt;
+                stex.ReadPixels(new Rect(0, 0, 1280, 720), 0, 0);
+                stex.Apply();
+                RenderTexture.active = null;
+                System.IO.File.WriteAllBytes($"/tmp/claude-0/eazy/glass{n++}.png", stex.EncodeToPNG());
+            }
+            var from = new Vector3(-2615.6f, 48f, 2624.5f);
+            float jump = (float)movement.GetProgramVariable("jumpImpulse");
+            float flight = FallTime(0f, jump);
+            Vector2 to = new Vector2(-2616f, 2720f);
+            for (int i = 1; i <= 12; i++)
+            {
+                float t = flight * i / 12f;
+                Vector2 p = Vector2.Lerp(Flat(from), to, i / 12f);
+                float y = from.y + jump * t - 0.5f * Gravity * t * t;
+                var center = new Vector3(p.x, y + 37f, p.y) * U;
+                foreach (var c in Physics.OverlapBox(center, new Vector3(15.5f, 35.5f, 15.5f) * U, Quaternion.identity, ~0, QueryTriggerInteraction.Collide))
+                    Log($"  flight sample {i} at {p} y {y:F0}: overlaps {c.name} ({c.GetType().Name}, layer {c.gameObject.layer}, trigger {c.isTrigger}) bounds {c.bounds.min / U:F0}..{c.bounds.max / U:F0}");
+            }
+        }
 
         // Start in the start zone facing down the first lane.
-        Vector2 a = Route[0][0], b = Route[0][1];
+        section = startSection;
+        Vector2 a = Route[section][0], b = Route[section][1];
         viewYaw = camYaw = Yaw(b - a);
         movement.SetProgramVariable("__0_position__param", new Vector3(a.x, 49f, a.y) * U);
         movement.SetProgramVariable("__0_rotation__param", Quaternion.Euler(0, viewYaw, 0));
@@ -130,15 +175,22 @@ public class RouteRunner : MonoBehaviour
                     fails++;
                     Log($"FAIL section {section + 1}: teleported back from {Flat(last)} (s {progress:F0}) to {Flat(pos)}, target was {Flat(target.p)} s {target.s:F0}");
                     progress = Project(Flat(pos), -1f);
+                    DumpRecent();
+                    if (fails >= 5) { Log("FAIL: giving up after 5 fails"); break; }
                 }
                 hopping = false;
                 hasTarget = false;
+                runOnLanding = false;
             }
             last = pos;
             Step(pos);
             yield return null;
             frame++;
             if (recordDir != "" && frame % 2 == 0) Capture();
+            if (hops != lastHops) { lastHops = hops; lastHopTime = Time.time; }
+            if (progress > bestProgress + 32f || section != progressSection) { bestProgress = progress; progressSection = section; progressTime = Time.time; }
+            if (Time.time - progressTime > 20f) { Log("FAIL: stuck, no progress for 20 s"); DumpRecent(); Probe(Origin()); fails++; break; }
+            if (Time.time - lastHopTime > 10f) { Log("FAIL: stuck, no hop for 10 s"); DumpRecent(); Probe(Origin()); fails++; break; }
             if (Time.time - runStart > 600f) { Log("FAIL: no finish within 600 s of game time"); fails++; break; }
         }
         Keys();
@@ -155,10 +207,16 @@ public class RouteRunner : MonoBehaviour
     }
 
     /// <summary>One frame of the bot: run up to speed on the ground, then bhop from landing spot to landing spot.</summary>
+    string lastKeys = "";
+    int lastHops, progressSection;
+    float bestProgress, progressTime;
+    float lastHopTime;
+
     void Step(Vector3 pos)
     {
         Vector3 vel = (Vector3)movement.GetProgramVariable("velocity");
         bool onGround = (bool)movement.GetProgramVariable("onGround");
+        recent[frame % recent.Length] = $"f{frame} pos {pos:F1} vel {vel:F1} ground {onGround} hop {hopping} keys {lastKeys} yaw {viewYaw:F0} target {(hasTarget ? target.p.ToString("F0") : "-")}";
         Vector2 here = Flat(pos), v = new Vector2(vel.x, vel.z);
         progress = Project(here, progress);
         var line = Route[section];
@@ -183,58 +241,68 @@ public class RouteRunner : MonoBehaviour
             if (!hasTarget) Log($"no landing spot from {here} at {v.magnitude:F0} u/s (s {progress:F0}), heading for the section end");
         }
         wasOnGround = onGround;
-        if (onGround) { Keys(Key.Space); return; }
+        if (onGround && runOnLanding) { runOnLanding = false; hopping = false; hasTarget = false; Keys(Key.W); return; }
+        if (onGround) { steerYaw = v.magnitude > 1f ? Yaw(v) : lookYaw; SetYaw(steerYaw); Keys(Key.Space, Key.W); return; }
 
         // Velocity wanted now: straight onto the target, arriving when we come down to its height.
-        Vector2 aim = hasTarget ? new Vector2(target.p.x, target.p.z) : line[line.Length - 1];
+        // No spot to aim for (the end of a section): follow the route line, to go through doorways straight.
+        Vector2 aim = hasTarget ? new Vector2(target.p.x, target.p.z) : PointAt(line, progress + 96f);
         float h = hasTarget ? target.p.y : pos.y;
         float tLeft = FallTime(pos.y - h, vel.y);
+        if (hasTarget && (aim - here).magnitude > 1f) aim += (aim - here).normalized * 6f; // land a little long, never short
         Vector2 want = hasTarget ? (aim - here) / Mathf.Max(tLeft, 0.02f) : (aim - here).normalized * Mathf.Max(v.magnitude, 250f);
-        if (hasTarget && (float.IsNaN(tLeft) || tLeft < 0.02f)) want = v;
+        // Close to landing, or already over the spot (spots are 28+ units inside their surface): stop steering, or
+        // "distance left / time left" swings around and brakes hard.
+        if (hasTarget && (float.IsNaN(tLeft) || tLeft < 0.12f || (aim - here).magnitude < 24f)) want = v;
 
-        // Air acceleration (sv_airaccelerate 1000): the velocity along the wish direction goes up to 30 u/s.
-        float bestErr = (want - v).magnitude, bestYaw = 0f;
-        bool push = false;
-        if (bestErr > 4f)
-            for (int i = 0; i < 180; i++)
+        // Air acceleration (sv_airaccelerate 1000): each tick the velocity along the wish direction goes up to 30 u/s.
+        // Steer with the view only, holding W: the wish direction is the view direction. The view set now acts a
+        // frame later, so plan from the velocity after last frame's push. Look two ticks ahead: slowing down a
+        // little, or speeding up, takes two pushes to either side.
+        Vector2 vp = PushAt(v, steerYaw);
+        float bestErr = Best2(vp, want), bestYaw = Yaw(vp);
+        if ((want - vp).magnitude > 4f)
+            for (int i = 0; i < Directions; i++)
             {
-                float yaw = i * 2f;
-                Vector2 w = Dir(yaw);
-                float add = AirCap - Vector2.Dot(v, w);
-                if (add <= 0f) continue;
-                float err = (want - (v + w * add)).magnitude;
-                if (err < bestErr - 0.5f) { bestErr = err; bestYaw = yaw; push = true; }
+                Vector2 v1 = Push(vp, i);
+                if (v1 == vp) continue;
+                float err = Best2(v1, want);
+                if (err < bestErr - 0.5f) { bestErr = err; bestYaw = i * 360f / Directions; }
             }
-        if (!push)
-        {
-            viewYaw = Mathf.MoveTowardsAngle(viewYaw, Yaw(aim - here), 360f * Time.deltaTime);
-            SetYaw(viewYaw);
-            Keys(Key.Space);
-            return;
-        }
-        // Key combination whose direction keeps the view closest to where we're going.
-        Vector2 toAim = aim - here;
-        float look = toAim.magnitude > 1f ? Yaw(toAim) : viewYaw;
-        float bestDiff = 999f, bestAngle = 0f;
-        int bestKey = 0;
-        for (int k = 0; k < 8; k++)
-        {
-            float diff = Mathf.Abs(Mathf.DeltaAngle(bestYaw - k * 45f, look));
-            if (diff < bestDiff) { bestDiff = diff; bestKey = k; bestAngle = k * 45f; }
-        }
-        viewYaw = bestYaw - bestAngle;
-        SetYaw(viewYaw);
-        switch (bestKey)
-        {
-            case 0: Keys(Key.Space, Key.W); break;
-            case 1: Keys(Key.Space, Key.W, Key.D); break;
-            case 2: Keys(Key.Space, Key.D); break;
-            case 3: Keys(Key.Space, Key.S, Key.D); break;
-            case 4: Keys(Key.Space, Key.S); break;
-            case 5: Keys(Key.Space, Key.S, Key.A); break;
-            case 6: Keys(Key.Space, Key.A); break;
-            default: Keys(Key.Space, Key.W, Key.A); break;
-        }
+        steerYaw = bestYaw; // looking along the velocity adds nothing
+        viewYaw = bestYaw;
+        SetYaw(bestYaw);
+        // Too slow to strafe up to speed: land without jumping and run up again (to 240, or to the edge).
+        if (vp.magnitude < 120f && vel.y < 0f) runOnLanding = true;
+        if (runOnLanding) Keys(Key.W); else Keys(Key.Space, Key.W);
+    }
+
+    float steerYaw;
+    bool runOnLanding;
+
+    static Vector2 PushAt(Vector2 v, float yaw)
+    {
+        Vector2 w = Dir(yaw);
+        float add = AirCap - Vector2.Dot(v, w);
+        return add > 0f ? v + w * add : v;
+    }
+
+    const int Directions = 120;
+
+    /// <summary>Velocity after one air tick wishing in direction i (unchanged if that adds nothing).</summary>
+    static Vector2 Push(Vector2 v, int i)
+    {
+        Vector2 w = Dir(i * 360f / Directions);
+        float add = AirCap - Vector2.Dot(v, w);
+        return add > 0f ? v + w * add : v;
+    }
+
+    /// <summary>Smallest error to `want` after one more tick (any direction, or none).</summary>
+    static float Best2(Vector2 v, Vector2 want)
+    {
+        float best = (want - v).magnitude;
+        for (int i = 0; i < Directions; i++) best = Mathf.Min(best, (want - Push(v, i)).magnitude);
+        return best;
     }
 
     /// <summary>
@@ -248,20 +316,73 @@ public class RouteRunner : MonoBehaviour
         Vector2 here = Flat(pos);
         float speed = new Vector2(vel.x, vel.z).magnitude;
         var options = new List<(float score, Spot spot, float need, float time)>();
+        for (int pass = 0; pass < 2 && options.Count == 0; pass++)
         foreach (var s in list)
         {
             if (s.s < progress + 24f || s.s > progress + 700f) continue;
             float time = FallTime(pos.y - s.p.y, vel.y);
             if (float.IsNaN(time) || time < 0.2f) continue;
             float need = (new Vector2(s.p.x, s.p.z) - here).magnitude / time;
-            if (need > speed + 20f) continue;
-            float score = s.s - 0.5f * Mathf.Abs(s.lat) - (need < 0.6f * speed ? 300f : 0f);
+            // Can't get there, or (first pass) would land too slow to go on from there.
+            if (need > Reach(speed, time) || (pass == 0 && need < s.need)) continue;
+            // Furthest along, near the middle of the lane, well inside a surface, and without braking (speed lost
+            // braking has to be strafed back).
+            float score = s.s - 0.5f * Mathf.Abs(s.lat) - (s.deep ? 0f : s.edge ? 400f : 250f) - 3f * Mathf.Max(0f, 0.9f * speed - need)
+                + 1.5f * Mathf.Clamp(need - speed, 0f, 60f); // and building speed for the long gaps
             options.Add((score, s, need, time));
         }
         options.Sort((x, y) => y.score.CompareTo(x.score));
         foreach (var o in options)
-            if (ClearFlight(pos, vel.y, new Vector2(o.spot.p.x, o.spot.p.z), o.time)) { best = o.spot; return true; }
+            if (ClearFlight(pos, vel.y, new Vector2(o.spot.p.x, o.spot.p.z), o.time))
+            {
+                best = o.spot;
+                Log($"hop {hops} s {progress:F0} -> {o.spot.s:F0} speed {speed:F0} need {o.need:F0} deep {o.spot.deep} of {options.Count}");
+                return true;
+            }
+        // Nothing: say why, for the nearest spots ahead.
+        int shown = 0;
+        foreach (var sp in list)
+        {
+            if (sp.s < progress + 24f || shown >= 12) continue;
+            float time = FallTime(pos.y - sp.p.y, vel.y);
+            if (float.IsNaN(time)) continue;
+            float need = (new Vector2(sp.p.x, sp.p.z) - here).magnitude / time;
+            Log($"  rejected {sp.p:F0} s {sp.s:F0} edge {sp.edge}: need {need:F0} reach {Reach(speed, time):F0} plan {sp.need:F0} time {time:F2} clear {ClearFlight(pos, vel.y, new Vector2(sp.p.x, sp.p.z), time)}");
+            shown++;
+        }
         return false;
+    }
+
+    /// <summary>
+    /// Whether the run can go on from `a`, leaving at `speed`: hop to the furthest spot in reach (landing at the
+    /// speed that hop needs), `depth` times, or until near the end of the section.
+    /// </summary>
+    bool CanContinue(List<Spot> list, Spot a, float speed, int depth, float lastS)
+    {
+        if (a.s >= lastS - 64f || depth == 0) return true;
+        float jump = (float)movement.GetProgramVariable("jumpImpulse");
+        int lo = 0, hi = list.Count;
+        while (lo < hi) { int mid = (lo + hi) / 2; if (list[mid].s < a.s + 24f) lo = mid + 1; else hi = mid; }
+        Spot best = default;
+        float bestNeed = 0f;
+        bool any = false;
+        for (int i = lo; i < list.Count && list[i].s <= a.s + 700f; i++)
+        {
+            var b = list[i];
+            float time = FallTime(a.p.y - b.p.y, jump);
+            if (float.IsNaN(time) || time < 0.2f) continue;
+            float need = (new Vector2(b.p.x - a.p.x, b.p.z - a.p.z)).magnitude / time;
+            if (need > Reach(speed, time)) continue;
+            if (!any || b.s > best.s) { best = b; bestNeed = need; any = true; }
+        }
+        return any && CanContinue(list, best, bestNeed, depth - 1, lastS);
+    }
+
+    /// <summary>Average speed reachable over a hop of `time` s from `speed`: strafing adds 30 u/s sideways per tick,
+    /// so the speed grows to about sqrt(v^2 + 900 * ticks). Counts on most of it.</summary>
+    static float Reach(float speed, float time)
+    {
+        return 0.5f * (speed + Mathf.Sqrt(speed * speed + 900f * 100f * time)) * 0.9f;
     }
 
     /// <summary>The hull along a straight flight to `to`: no solid in the way (before landing), no teleport touched.</summary>
@@ -280,6 +401,52 @@ public class RouteRunner : MonoBehaviour
         return true;
     }
 
+    /// <summary>
+    /// Works backwards from the end of the section: for each spot, the slowest arrival that still lets the run go
+    /// on (hop to a later spot in the same or the next segment, arriving there fast enough for it). Spots near the
+    /// end need nothing; unreachable ones get infinity.
+    /// </summary>
+    void Plan(List<Spot> list)
+    {
+        if (list.Count == 0) return;
+        float jump = (float)movement.GetProgramVariable("jumpImpulse");
+        float lastS = list[list.Count - 1].s;
+        for (int a = list.Count - 1; a >= 0; a--)
+        {
+            var A = list[a];
+            if (A.s >= lastS - 64f) { A.need = 0f; list[a] = A; continue; }
+            hopsFrom.Clear();
+            for (int b = a + 1; b < list.Count && list[b].s <= A.s + 600f; b++)
+            {
+                var B = list[b];
+                if (B.s < A.s + 24f || B.seg > A.seg + 1 || float.IsInfinity(B.need)) continue;
+                float time = FallTime(A.p.y - B.p.y, jump);
+                if (float.IsNaN(time) || time < 0.2f) continue;
+                float need = new Vector2(B.p.x - A.p.x, B.p.z - A.p.z).magnitude / time;
+                if (need < B.need) continue; // we'd land there too slow to go on
+                hopsFrom.Add((MinSpeed(need, time), b, time));
+            }
+            // The easiest hop whose flight path is clear (glass panels and walls across lanes).
+            hopsFrom.Sort((x, y) => x.v.CompareTo(y.v));
+            A.need = float.PositiveInfinity;
+            for (int h = 0; h < hopsFrom.Count && h < 40; h++)
+            {
+                var B = list[hopsFrom[h].b];
+                if (ClearFlight(A.p, jump, new Vector2(B.p.x, B.p.z), hopsFrom[h].time)) { A.need = hopsFrom[h].v; break; }
+            }
+            list[a] = A;
+        }
+    }
+
+    readonly List<(float v, int b, float time)> hopsFrom = new List<(float v, int b, float time)>();
+
+    /// <summary>The slowest takeoff whose Reach covers an average of `need` over `time` (inverse of Reach).</summary>
+    static float MinSpeed(float need, float time)
+    {
+        float k = need / 0.45f, c = 90000f * time;
+        return Mathf.Max(0f, (k * k - c) / (2f * k));
+    }
+
     /// <summary>Landing spots along a section: raycast a grid in the corridor of each segment.</summary>
     List<Spot> FindSpots(Vector2[] line)
     {
@@ -289,12 +456,14 @@ public class RouteRunner : MonoBehaviour
         {
             Vector2 a = line[i], b = line[i + 1], d = (b - a).normalized, side = new Vector2(d.y, -d.x);
             float len = (b - a).magnitude;
-            for (float along = 0f; along <= len; along += 8f)
-                for (float lat = -176f; lat <= 176f; lat += 16f)
+            for (float along = 0f; along <= len; along += 16f)
+                for (float lat = -176f; lat <= 176f; lat += 8f)
                 {
                     Vector2 p = a + d * along + side * lat;
                     if (Safe(new Vector3(p.x, 300f, p.y), out float top))
-                        list.Add(new Spot { p = new Vector3(p.x, top, p.y), s = s0 + along, lat = lat });
+                        list.Add(new Spot { p = new Vector3(p.x, top, p.y), s = s0 + along, lat = lat, deep = Deep(p, top), seg = i });
+                    else if (Overhang(p, out top))
+                        list.Add(new Spot { p = new Vector3(p.x, top, p.y), s = s0 + along, lat = lat, edge = true, seg = i });
                 }
             s0 += len;
         }
@@ -317,6 +486,74 @@ public class RouteRunner : MonoBehaviour
         var center = new Vector3(p.x, top + 37f, p.z) * U;
         return !Physics.CheckBox(center, new Vector3(15.5f, 35.5f, 15.5f) * U, Quaternion.identity, layers, QueryTriggerInteraction.Ignore)
             && !TouchesTeleport(center);
+    }
+
+    /// <summary>
+    /// The hull hanging over the edge of a surface: floor 10 units to one side (the hull still stands on it), the
+    /// hull clear of walls and teleports. For squeezing past obstacles beside a block (bhop_eazy_v2's glass panels).
+    /// </summary>
+    bool Overhang(Vector2 p, out float top)
+    {
+        top = 0f;
+        for (int k = 0; k < 4; k++)
+        {
+            Vector2 o = p + Dir(k * 90f) * 10f;
+            if (!Physics.Raycast(new Vector3(o.x, 300f, o.y) * U, Vector3.down, out RaycastHit hit, 600f * U, layers, QueryTriggerInteraction.Ignore)
+                || hit.normal.y < 0.7f) continue;
+            top = hit.point.y / U;
+            var center = new Vector3(p.x, top + 37f, p.y) * U;
+            if (!Physics.CheckBox(center, new Vector3(15.5f, 35.5f, 15.5f) * U, Quaternion.identity, layers, QueryTriggerInteraction.Ignore)
+                && !TouchesTeleport(center)) return true;
+        }
+        return false;
+    }
+
+    /// <summary>Same floor at least 28 units out in 8 directions: a block centre or well inside a platform.</summary>
+    bool Deep(Vector2 p, float top)
+    {
+        for (int k = 0; k < 8; k++)
+        {
+            Vector2 o = p + Dir(k * 45f) * 28f;
+            if (!Physics.Raycast(new Vector3(o.x, 300f, o.y) * U, Vector3.down, out RaycastHit hit, 600f * U, layers, QueryTriggerInteraction.Ignore)
+                || Mathf.Abs(hit.point.y / U - top) > 1f) return false;
+        }
+        return true;
+    }
+
+    /// <summary>What the movement's ground trace sees under the hull at `pos` (debugging a stuck player).</summary>
+    void Probe(Vector3 pos)
+    {
+        var half = new Vector3(16f, 36f, 16f) * U;
+        var center = (pos + new Vector3(0, 36f + 2f, 0)) * U;
+        if (Physics.BoxCast(center, half, Vector3.down, out RaycastHit hit, Quaternion.identity, 4f * U, layers, QueryTriggerInteraction.Ignore))
+        {
+            Log($"probe: box cast down hits {hit.collider.name} ({hit.collider.GetType().Name}) at {hit.point / U:F2} normal {hit.normal:F3} distance {hit.distance / U:F2}");
+            float back = 0.25f * U;
+            if (Physics.Raycast(hit.point + hit.normal * back, -hit.normal, out RaycastHit f1, back * 2f, layers, QueryTriggerInteraction.Ignore))
+                Log($"probe: ray along reported normal -> {f1.normal:F3}");
+            else Log("probe: ray along reported normal misses");
+            Vector3 c = center + Vector3.down * hit.distance, to = hit.point - c;
+            if (Physics.Raycast(c, to.normalized, out RaycastHit f2, to.magnitude + back, layers, QueryTriggerInteraction.Ignore))
+                Log($"probe: ray from hull centre -> {f2.normal:F3} at {f2.point / U:F2}");
+            else Log("probe: ray from hull centre misses");
+        }
+        else Log("probe: box cast down hits nothing");
+        Log($"probe: real player at {player.GetPosition() / U:F3}, velocity {player.GetVelocity() / U:F2}, sim lastTarget {(Vector3)movement.GetProgramVariable("lastTarget"):F3}");
+        var cc = playerBody.GetComponent<CharacterController>();
+        if (cc != null) Log($"probe: CharacterController grounded {cc.isGrounded}, radius {cc.radius / U:F1} u, height {cc.height / U:F1} u, center {cc.center / U:F1}, skin {cc.skinWidth / U:F2} u, step {cc.stepOffset / U:F1} u");
+        var hh = (Vector3)movement.GetProgramVariable("hullHalf");
+        var hc = (Vector3)movement.GetProgramVariable("hullCenter");
+        Log($"probe: sim hullHalf {hh:F3} hullCenter {hc:F3}, last trace fraction {movement.GetProgramVariable("trFraction")} normal {(Vector3)movement.GetProgramVariable("trNormal"):F3}");
+        var o = Origin();
+        foreach (var hit2 in Physics.BoxCastAll((o + hc) * U, hh * U, Vector3.down, Quaternion.identity, 2.25f * U, layers, QueryTriggerInteraction.Ignore))
+            Log($"probe: sim-style cast hits {hit2.collider.name} at {hit2.point / U:F2} normal {hit2.normal:F3} distance {hit2.distance / U:F3}");
+        foreach (var c in Physics.OverlapBox((o + hc) * U, hh * U, Quaternion.identity, layers, QueryTriggerInteraction.Ignore))
+            Log($"probe: hull overlaps {c.name} ({c.GetType().Name}) bounds {c.bounds.min / U:F1}..{c.bounds.max / U:F1}");
+        foreach (var d in new[] { Vector3.forward, Vector3.back, Vector3.left, Vector3.right })
+            if (Physics.BoxCast((o + hc) * U, hh * U * 0.999f, d, out RaycastHit side, Quaternion.identity, 4f * U, layers, QueryTriggerInteraction.Ignore))
+                Log($"probe: sideways {d} hits {side.collider.name} at {side.point / U:F2} normal {side.normal:F3} distance {side.distance / U:F2}");
+        Log($"probe: pushVelocity {(Vector3)movement.GetProgramVariable("pushVelocity"):F1} onLadder {movement.GetProgramVariable("onLadder")} waterLevel {movement.GetProgramVariable("waterLevel")}");
+        Log($"probe: movement onGround {movement.GetProgramVariable("onGround")} origin {Origin():F3} velocity {(Vector3)movement.GetProgramVariable("velocity"):F2}");
     }
 
     static bool TouchesTeleport(Vector3 center)
@@ -408,7 +645,23 @@ public class RouteRunner : MonoBehaviour
     static Vector2 Dir(float yaw) { return new Vector2(Mathf.Sin(yaw * Mathf.Deg2Rad), Mathf.Cos(yaw * Mathf.Deg2Rad)); }
     static float Yaw(Vector2 d) { return Mathf.Atan2(d.x, d.y) * Mathf.Rad2Deg; }
     void SetYaw(float yaw) { playerBody.rotation = Quaternion.Euler(0, yaw, 0); }
-    void Keys(params Key[] keys) { InputSystem.QueueStateEvent(keyboard, new KeyboardState(keys)); }
+    void Keys(params Key[] keys)
+    {
+        InputSystem.QueueStateEvent(keyboard, new KeyboardState(keys));
+        lastKeys = string.Join("+", keys);
+    }
+
+    readonly string[] recent = new string[120];
+
+    /// <summary>The last frames of the bot's state, oldest first (after a fail).</summary>
+    void DumpRecent()
+    {
+        for (int i = 1; i <= recent.Length; i++)
+        {
+            string line = recent[(frame + i) % recent.Length];
+            if (line != null && (frame + i) % 3 == 0) Log("  " + line);
+        }
+    }
 
     static UdonBehaviour FindUdon(string objectName)
     {
