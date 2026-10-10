@@ -63,6 +63,16 @@ static class Program
         Check(Math.Abs(v.Z - 1500) < 0.5f && Math.Abs(v.X) < 0.5f && Math.Abs(v.Y) < 0.5f, $"trigger_push pushdir -90 0 0 speed 1500 -> straight up ({v})");
         var fwd = BspMechanics.Push(Parse("{\n\"classname\" \"trigger_push\"\n\"speed\" \"100\"\n\"pushdir\" \"0 90 0\"\n}"));
         Check(Math.Abs(fwd.Y - 100) < 0.5f, $"trigger_push yaw 90 -> +y ({fwd})");
+
+        Console.WriteLine("\n== breakable glass (breaks within knife reach when one knife hit breaks it in CS:S)");
+        Entity Breakable(string keys) => Parse("{\n\"classname\" \"func_breakable\"\n\"model\" \"*1\"\n" + keys + "}");
+        Check(BspMechanics.BreaksOnApproach(Breakable("\"material\" \"0\"\n\"health\" \"1\"\n")), "glass, health 1 -> breaks");
+        Check(!BspMechanics.BreaksOnApproach(Breakable("\"material\" \"7\"\n\"health\" \"1\"\n")), "unbreakable glass (material 7) -> stays");
+        Check(!BspMechanics.BreaksOnApproach(Breakable("\"material\" \"0\"\n\"health\" \"0\"\n")), "health 0 (takes no damage) -> stays");
+        Check(!BspMechanics.BreaksOnApproach(Breakable("\"material\" \"0\"\n\"health\" \"1\"\n\"spawnflags\" \"1\"\n")), "Only Break on Trigger -> stays");
+        Check(!BspMechanics.BreaksOnApproach(Breakable("\"material\" \"1\"\n\"health\" \"100\"\n")), "tougher than one knife hit (health 100) -> stays");
+        Check(!BspMechanics.BreaksOnApproach(Breakable("\"material\" \"0\"\n\"health\" \"1\"\n\"minhealthdmg\" \"50\"\n")), "needs more damage than a knife hit -> stays");
+        Check(!BspMechanics.BreaksOnApproach(Parse("{\n\"classname\" \"func_wall\"\n\"model\" \"*1\"\n\"health\" \"1\"\n}")), "not a breakable -> stays");
     }
 
     static string CacheDir => Path.Combine(AppContext.BaseDirectory, "../../../.cache/maps");
@@ -187,6 +197,15 @@ static class Program
             Check(doors.Count == 259 && Math.Abs(move.Z + 9) < 0.01f && Math.Abs(move.X) < 0.01f && Math.Abs(move.Y) < 0.01f,
                 $"259 touch-door blocks, the first sinks 9 units (8 thick + lip 1): {move}");
         }
+        // Breakable glass: on eazy, the four health-1 glass panes (red lanes 3 and 4, the bonus) break; glass_to_m249
+        // (Only Break on Trigger, health 0) and the health-170 plate under a spawn stay. Arcane's wood crate stays too.
+        var glass = bsp.Entities.Where(BspMechanics.BreaksOnApproach).Select(e => e.Get("hammerid")).OrderBy(h => h).ToList();
+        int breakables = bsp.Entities.Count(e => e.ClassName.StartsWith("func_breakable"));
+        Console.WriteLine($"  breakables: {glass.Count} of {breakables} break within knife reach");
+        if (name == "bhop_eazy_v2")
+            Check(string.Join(",", glass) == "20789,21469,21523,30925" && breakables == 6,
+                $"4 of 6 breakables break (red lanes 3 and 4, bonus); glass_to_m249 and the spawn plate stay ({string.Join(",", glass)})");
+        if (name == "bhop_arcane_v1") Check(glass.Count == 0 && breakables == 1, "the wood crate (health 100) stays");
         if (name == "bhop_japan")
         {
             var t = bsp.Entities.First(e => BspMechanics.NameSets(e).Any(n => n.Name == "activator"));

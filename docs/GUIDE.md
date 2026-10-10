@@ -4,7 +4,7 @@ Step by step, from nothing to an uploaded VRChat world with Source movement, a t
 players vote between imported CS:S bhop maps. Kept up to date as features are finished.
 
 > **Status (2026-10-10).** Done and tested: movement, timer, map import (visuals with uSource and the maps' own
-> lightmaps, collision, prop collision, markers, teleports, boosters, water, ladders), bhop and surf runs on every map, timer zones from zones-cstrike, map rotation (vote, rock the
+> lightmaps, collision, prop collision, markers, teleports, boosters, water, ladders, breakable glass), bhop and surf runs on every map, timer zones from zones-cstrike, map rotation (vote, rock the
 > vote, time limit, owner controls), lobby practice courses, saved records per map. The quickest way to a full world is
 > the **sample world builder** (step 5b). Pictures come from Unity itself; editor windows can't be screenshotted on the
 > build machine, so menus are described in words.
@@ -103,6 +103,12 @@ atlas).
      (bhop_japan, arcane, badges), and `func_door` blocks that sink when touched (bhop_eazy_v2). To make every block a
      plain platform, select the map's **Bhop Blocks** object and untick **On**. Each player's blocks are their own
      (someone else standing on a block doesn't move it for you), as on most bhop servers.
+   - **Breakable glass**: `func_breakable` that one knife hit breaks in CS:S (the glass doors in bhop_eazy_v2's red
+     lanes 3 and 4 and its bonus) breaks when you come within knife reach (48 units), so you hop straight through.
+     VRChat has no knife, so coming close counts as the hit. It breaks only for you and stays broken until you
+     leave the instance (in CS:S it's gone for everyone until the next round). Tougher breakables and ones only an
+     output breaks stay solid. The doors need the map in SourceMovement's **Hull Only** (Create Lobby does that):
+     VRChat's own capsule is too tall to fit through them.
 2. Move the map's object to a free spot: every map needs its own place in the world (maps are up to ~620 m across;
    the sample world puts them 700 m apart along X). Do this before adding visuals and zones.
 3. **Visuals**: with uSource installed, the sample world builder imports them automatically
@@ -190,6 +196,8 @@ owner, so you also see the owner buttons.
 - **In a map**: the panel next to the spawn shows the time left and the rock-the-vote count. **Rock the vote**
   (press again to take it back): at 60% of players a new vote starts in the lobby. **Back to lobby** takes only
   you back; **Rejoin map** on the lobby board takes you back in.
+- **Glass doors** (bhop_eazy_v2's red lanes): hop at the glass and it breaks as you get close, as if you'd knifed
+  it. Only for you; it stays broken until you leave the instance.
 - **Time limit**: when it runs out everyone goes to the lobby for a vote that also offers "Extend".
 - **Instance owner** (the master in public/group instances, which have no owner) sees red buttons: **Lock / unlock
   vote** (stops the timer; only Start ends it), **Start now**, **Force a map** (then press a map), **Everyone to
