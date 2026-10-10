@@ -70,21 +70,20 @@ on it in the Inspector. It's off in the prefab and on in the test scene.
   **Category Source** to your SourceMovement (the test scene does this). If auto bhop is on at any
   moment during a run, the run counts as auto bhop.
 
-### Source maps (`Assets/SourceMaps`, independent of the movement and timer) — work in progress
-Imports the gameplay side of a CS:S map, for visuals from a converter (uSource/USource, step 2 of
-[the plan](docs/MAPVOTE_PLAN.md)). **Tools > Source Maps > Import BSP...** reads the `.bsp` directly and builds:
-- **Collision**: every player-solid world brush, including invisible `playerclip`/`clip` brushes, plus
-  displacements, as one MeshCollider. Solid brush entities (`func_wall`, `func_door`, ...) get their own.
-- **Entity markers**: one `SourceEntity` per BSP entity (triggers, boosters, buttons, props, lights...) keeping
-  classname, targetname, every keyvalue and output, and the brush volume. They do nothing by themselves.
-- **Teleports**: `trigger_teleport`s work right away (`SourceMapTeleport`, like Source: you face the
-  destination's direction and stop). Teleports with a filter (on bhop maps usually "bhop block" teleports that
-  fire when you stand on a platform too long) stay markers for now; the movement script will implement them.
-  Teleport triggers are made 8 units thicker on top: Source touches them with a flat-bottomed box, VRChat's
-  player is a rounded capsule hovering a few cm above the floor, so thin "don't touch the floor" triggers
-  would otherwise never fire.
-Same axes and scale as uSource (1 unit = 0.01905 m), so the converter's visuals line up. Meshes are saved to
-`Assets/SourceMapsImported/<map>/`. Not imported yet: static prop collision (comes with the converter step).
+### Source maps (`Assets/SourceMaps`, independent of the movement and timer)
+A CS:S bhop-server style world: imported maps, a lobby with a map vote, rock the vote and a time limit.
+Step-by-step setup: **[docs/GUIDE.md](docs/GUIDE.md)**; design and test history: [docs/MAPVOTE_PLAN.md](docs/MAPVOTE_PLAN.md).
+- **Import** (**Tools > Source Maps > Import BSP...**, our own BSP reader): collision from every player-solid brush
+  (incl. invisible clips) and displacement, without the faces where two brushes touch (Source never collides with
+  those; in a mesh their edges stop surfers); one `SourceEntity` marker per entity with all its keyvalues and outputs;
+  working teleports, pushes, boosters, gravity, water and ladders for SourceMovement.
+- **Visuals** with [uSource](https://github.com/DeadZoneLuna/uSource) (installed by you, not included): the map's own
+  Source **lightmaps** on a small `SourceMaps/Lightmapped` shader (nothing to bake), tool surfaces removed, solid
+  props get colliders.
+- **Timer zones** from [zones-cstrike](https://github.com/srcwr/zones-cstrike) (what CS:S bhop servers use).
+- **Map rotation** (`SourceMapManager`): 5 random maps per vote, 60 s timer, owner controls, rock the vote, time
+  limit with extend, saved records per map. **Build Sample World** makes all of it from a folder of `.bsp` files.
+Same axes and scale as uSource (1 unit = 0.01905 m).
 
 ### Crouching
 Not built yet. The design is in [docs/CROUCH.md](docs/CROUCH.md).
@@ -119,7 +118,10 @@ Source maps:
 ```
 Tests/Bsp/get_maps.sh                          # downloads the test maps from GameBanana (git-ignored)
 dotnet run --project Tests/Bsp                 # BSP reader + collision checks on the real maps
-Tests/UnityPlay/run.sh map Tests/Bsp/.cache/maps/bhop_japan.bsp   # import in Unity, play-test with ClientSim
+Tests/UnityPlay/run.sh map Tests/Bsp/.cache/maps/bhop_japan.bsp   # import in Unity, play-test with ClientSim:
+                                               # stand at every destination, teleports, bhop and surf runs (no stalls)
+Tests/UnityPlay/run.sh vote                    # map rotation (vote, owner changes, practice courses)
+Tests/UnityPlay/run.sh sample                  # the whole sample world with uSource visuals and zones
 ```
 
 What this can't cover: Unity's real PhysX collision and how the player controller responds to

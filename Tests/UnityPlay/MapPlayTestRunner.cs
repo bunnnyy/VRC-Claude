@@ -12,7 +12,8 @@ using VRC.Udon;
 /// Play mode tests on an imported Source map with ClientSim and SourceMovement (real PhysX on the generated
 /// collision). Started by PlayTestBootstrap.RunMap. Results are logged with a [SMTEST] prefix.
 ///   stand     - at every teleport destination and a few spawns the player lands on a floor and stays there
-///   teleports - falling into every working trigger_teleport brings the player to its destination
+///   teleports - falling into every reachable working trigger_teleport (best of 3 spots) brings the player to its
+///               destination (followed through relay teleports at the destination)
 ///   runs      - bhop (hold W + jump, strafe with A/D and turning) along the longest open floors from the destinations,
 ///               and surf along the map's biggest surfable slopes: no stalls (sudden speed loss with no wall ahead,
 ///               e.g. a fake wall at a seam between collision mesh triangles)
@@ -93,21 +94,30 @@ public class MapPlayTestRunner : MonoBehaviour
             total++;
             // Drop in from above like a falling player: the first spot on a 5x5 grid over the trigger where there's
             // room above it and no ground above the trigger's top.
-            Vector3? drop = DropPoint(t);
-            if (drop == null) { unreachable.Add(t.name + " " + t.GetComponent<SourceEntity>().GetValue("hammerid")); total--; continue; }
-            Vector3 start = drop.Value;
-            Vector3 dest = t.destination.position;
-            yield return Teleport(points[0].transform.position, Quaternion.identity);
-            yield return Frames(0.3f);
-            yield return Teleport(start, Quaternion.identity);
+            var drops = DropPoints(t, 3);
+            if (drops.Count == 0) { unreachable.Add(t.name + " " + t.GetComponent<SourceEntity>().GetValue("hammerid")); total--; continue; }
+            Vector3 dest = Relayed(t);
+            Vector3 start = drops[0];
             bool reached = false;
             var trace = new StringBuilder();
-            for (int i = 0; i < frameRate && !reached; i++)
+            // Like a player who can come from anywhere: the trigger works if dropping in at one of its best spots
+            // (ground lowest under it) gets there. Some spots are covered by other volumes, e.g. bhop_arcane_v1's
+            // out-of-bounds teleport 423175 shares its box with an updraft (trigger_push up at 1250 u/s).
+            foreach (var spot in drops)
             {
-                yield return null;
-                if (i % 10 == 0) trace.Append($" f{i} {player.GetPosition():F1}");
-                Vector3 d = player.GetPosition() - dest;
-                reached = new Vector2(d.x, d.z).magnitude < 0.5f && Mathf.Abs(d.y) < 1.5f;
+                start = spot;
+                trace.Clear();
+                yield return Teleport(points[0].transform.position, Quaternion.identity);
+                yield return Frames(0.3f);
+                yield return Teleport(start, Quaternion.identity);
+                for (int i = 0; i < frameRate && !reached; i++)
+                {
+                    yield return null;
+                    if (i % 10 == 0) trace.Append($" f{i} {player.GetPosition():F1}");
+                    Vector3 d = player.GetPosition() - dest;
+                    reached = new Vector2(d.x, d.z).magnitude < 0.5f && Mathf.Abs(d.y) < 1.5f;
+                }
+                if (reached) break;
             }
             if (reached) arrived++;
             else
@@ -351,15 +361,13 @@ public class MapPlayTestRunner : MonoBehaviour
     static Vector3 Flat(Vector3 v) { return new Vector3(v.x, 0, v.z); }
 
     /// <summary>
-    /// Where to drop the player into a teleport: on a 5x5 grid over each brush, the spot with room above it whose
-    /// ground (cast with the 32 x 32 unit hull, which rests on the rim of dips narrower than itself) is lowest.
-    /// Null if the ground is above the trigger's original top everywhere (the importer raised it by 8 units).
+    /// Where to drop the player into a teleport: on a 5x5 grid over each brush, the spots with room above them whose
+    /// ground (cast with the 32 x 32 unit hull, which rests on the rim of dips narrower than itself) is lowest, best
+    /// first. Empty if the ground is above the trigger's original top everywhere (the importer raised it by 8 units).
     /// </summary>
-    static Vector3? DropPoint(SourceMapTeleport t)
+    static List<Vector3> DropPoints(SourceMapTeleport t, int count)
     {
-        const int Solid = 1 << 0; // world collision is on Default
-        Vector3? best = null;
-        float bestDepth = 0.3f + 9 * U;
+        var found = new List<KeyValuePair<float, Vector3>>();
         foreach (var col in t.GetComponents<MeshCollider>())
         {
             if (!col.enabled) continue;
@@ -376,10 +384,34 @@ public class MapPlayTestRunner : MonoBehaviour
                 float depth = b.size.y + 0.3f;
                 if (Physics.BoxCast(above, new Vector3(16, 0.5f, 16) * U, Vector3.down, out var hit, Quaternion.identity, depth, Solid, QueryTriggerInteraction.Ignore))
                     depth = hit.distance;
-                if (depth > bestDepth) { bestDepth = depth; best = above; }
+                if (depth > 0.3f + 9 * U) found.Add(new KeyValuePair<float, Vector3>(depth, above));
             }
         }
-        return best;
+        found.Sort((a, b) => b.Key.CompareTo(a.Key));
+        var result = new List<Vector3>();
+        foreach (var f in found) if (result.Count < count) result.Add(f.Value);
+        return result;
+    }
+
+    /// <summary>
+    /// Where the teleport really puts the player: a destination inside another working teleport forwards them (in
+    /// Source too, e.g. bhop_arcane_v1's *_stop relays), up to 3 hops (as SampleWorldTestRunner).
+    /// </summary>
+    static Vector3 Relayed(SourceMapTeleport t)
+    {
+        var all = FindObjectsOfType<SourceMapTeleport>();
+        Vector3 dest = t.destination.position;
+        for (int hop = 0; hop < 3; hop++)
+        {
+            SourceMapTeleport next = null;
+            foreach (var other in all)
+                foreach (var c in other.GetComponents<MeshCollider>())
+                    for (float h = 0.1f; h < 1.7f; h += 0.4f) // anywhere the player's body would be
+                        if (c.enabled && (c.ClosestPoint(dest + Vector3.up * h) - (dest + Vector3.up * h)).sqrMagnitude < 1e-6f) next = other;
+            if (next == null || next == t) break;
+            dest = next.destination.position;
+        }
+        return dest;
     }
 
     /// <summary>
