@@ -48,6 +48,8 @@ public static class PlayTestBootstrap
             "Packages/com.vrchat.worlds/Samples/UdonExampleScene/Prefabs/VRCWorld.prefab"));
         foreach (var m in map.GetComponentsInChildren<SourceEntity>())
             if (m.className == "info_player_counterterrorist") { world.transform.position = m.transform.position; break; }
+        // Like Create Lobby: VRChat respawns players below this (default -100 m), deep maps go to about -312 m.
+        world.GetComponent<VRC.SDKBase.VRC_SceneDescriptor>().RespawnHeightY = -1000f;
         PrefabUtility.InstantiatePrefab(AssetDatabase.LoadAssetAtPath<GameObject>("Assets/SourceMovement/SourceMovement.prefab"));
         EditorSceneManager.SaveScene(scene, "Assets/MapTest.unity");
         Debug.Log("[SMTEST] imported " + bsp);
