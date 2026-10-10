@@ -107,12 +107,23 @@ public class RouteRunner : MonoBehaviour
             Plan(list);
             spots.Add(list);
             total += list.Count;
-            // Where the plan finds no way on (log): the furthest stretches of spots it can't go on from.
+            // Where the plan finds no way on (log): stretches of the section where none of the spots can go on.
             var dead = new List<string>();
-            for (int i = list.Count - 1; i >= 0 && dead.Count < 6; i--)
-                if (float.IsInfinity(list[i].need) && (dead.Count == 0 || !dead[dead.Count - 1].StartsWith("s " + Mathf.RoundToInt(list[i].s / 64f) * 64)))
-                    dead.Add("s " + Mathf.RoundToInt(list[i].s / 64f) * 64 + " " + Flat(list[i].p));
-            Log($"plan section {spots.Count}: {list.Count} spots, no way on near: {string.Join("; ", dead)}");
+            float deadFrom = -1f, deadTo = 0f;
+            for (int i = 0; i < list.Count;)
+            {
+                float s = Mathf.Floor(list[i].s / 32f) * 32f;
+                bool alive = false;
+                for (; i < list.Count && list[i].s < s + 32f; i++) alive |= !float.IsInfinity(list[i].need);
+                if (!alive) { if (deadFrom < 0f) deadFrom = s; deadTo = s + 32f; }
+                else if (deadFrom >= 0f) { dead.Add($"s {deadFrom:F0}..{deadTo:F0}"); deadFrom = -1f; }
+            }
+            if (deadFrom >= 0f) dead.Add($"s {deadFrom:F0}..{deadTo:F0}");
+            string dump = System.Environment.GetEnvironmentVariable("ROUTE_DUMP"); // debugging: a section's spots as CSV
+            if (!string.IsNullOrEmpty(dump) && dump.StartsWith(spots.Count + ":"))
+                System.IO.File.WriteAllLines(dump.Substring(dump.IndexOf(':') + 1), list.ConvertAll(sp =>
+                    $"{sp.s:F0},{sp.p.z:F1},{-sp.p.x:F1},{sp.p.y:F1},{sp.need:F0},{(sp.block != null ? 1 : 0)},{(sp.edge ? 1 : 0)},{sp.seg}"));
+            Log($"plan section {spots.Count}: {list.Count} spots, no way on: {(dead.Count > 0 ? string.Join(", ", dead) : "none")}");
         }
         int onBlocks = 0, visualColliders = 0;
         foreach (var go in FindObjectsOfType<Transform>()) if (go.name == "Visuals") visualColliders += go.GetComponentsInChildren<Collider>(true).Length;
@@ -121,6 +132,7 @@ public class RouteRunner : MonoBehaviour
         Log($"{total} landing spots in {Route.Length} sections, {onBlocks} on bhop blocks ({Time.realtimeSinceStartup - t0:F1} s)");
 
         // Start in the start zone facing down the first lane.
+        if (startSection < 0 || startSection >= Route.Length) { Log($"FAIL no section {startSection} (0 to {Route.Length - 1})"); Finish(1); yield break; }
         section = startSection;
         Vector2 a = Route[section][0], b = Route[section][1];
         viewYaw = camYaw = Yaw(b - a);
