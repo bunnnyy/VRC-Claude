@@ -89,6 +89,7 @@ public class PlayTestRunner : MonoBehaviour
         yield return Run("surf", Surf());
         yield return Run("surf", SurfFullRamp());
         yield return Run("wall", SeamedWall());
+        yield return Run("edge", BlockEdge());
         yield return Run("teleport", Teleports());
         yield return Run("ladder", Ladder());
         yield return Run("water", Water());
@@ -250,6 +251,29 @@ public class PlayTestRunner : MonoBehaviour
         Log($"full ramp: reached z {Real().z:F0} (ramp ends at 10300), lowest speed {minSpeed:F0} u/s");
         Check("surf", Real().z > 9500f && minSpeed > 950f, "surfs the whole mesh ramp across its triangle seam");
         yield return Teleport(new Vector3(0, 0, 100), 0f, false); // out of the air before the next test
+    }
+
+    IEnumerator BlockEdge()
+    {
+        // Land with the hull hanging over the edge of a mesh block (x 1468..1532, z 668..732, top 48), its side
+        // nearly flush with the block's side, like coming down on the corner of a bhop block. Source stands there.
+        // A ray exactly along the block's edge used to report its side face as the ground normal, holding the
+        // player in the air (bhop_eazy_v2). Checks the simulated hull: ClientSim's capsule rests a little higher on
+        // a corner.
+        float[] xs = { 1484.54f, 1484.25f, 1484.75f, 1515.46f, 1500f };
+        float[] zs = { 735f, 733.5f, 736f, 735f, 745f };
+        int stood = 0;
+        string bad = "";
+        for (int i = 0; i < xs.Length; i++)
+        {
+            yield return Teleport(new Vector3(xs[i], 60, zs[i]), 0f, false);
+            yield return Frames(0.4f, null);
+            Vector3 o = SimOrigin();
+            if (OnGround() && o.y > 47.5f && o.y < 50f) stood++; // can rest up to 2 u high, with ClientSim's capsule
+            else bad += $" ({xs[i]}, {zs[i]}): y {o.y:F2} ground {OnGround()};";
+        }
+        Log($"block edges: stood on {stood} of {xs.Length}{bad}");
+        Check("edge", stood == xs.Length, "stands on the edges of a mesh block");
     }
 
     IEnumerator SeamedWall()

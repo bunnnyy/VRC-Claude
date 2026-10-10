@@ -161,6 +161,8 @@ public static class SourceMovementSetup
         // built from several brushes in a converted map (the seams can report an edge normal along the wall).
         Solid(map, "WallFloor", new Vector3(1600, -32, 1000), new Vector3(512, 64, 1200));
         SeamedWall(map, "SeamedWall", 1856, 256, 400, 600, 800, 1000, 1200, 1400, 1600);
+        // A 64 unit bhop block as a mesh (like a converted func_door) on the same floor, to stand on its edge.
+        MeshBlock(map, "EdgeBlock", new Vector3(1500, 24, 700), new Vector3(64, 48, 64));
 
         // Surf ramp: two 60 degree faces meeting at a ridge, running along Z below the end of the lane.
         Vector3 ridge = new Vector3(400, -256, 0);
@@ -222,6 +224,19 @@ public static class SourceMovementSetup
         Object.DestroyImmediate(go.GetComponent<BoxCollider>());
         go.GetComponent<MeshFilter>().sharedMesh = mesh;
         go.AddComponent<MeshCollider>().sharedMesh = mesh;
+        go.isStatic = true;
+    }
+
+    /// <summary>A box as a mesh collider (8 corners, 12 triangles), centre and size in Source units.</summary>
+    static void MeshBlock(Transform parent, string name, Vector3 center, Vector3 size)
+    {
+        var go = GameObject.CreatePrimitive(PrimitiveType.Cube);
+        go.name = name;
+        go.transform.SetParent(parent, false);
+        go.transform.localPosition = center * U;
+        go.transform.localScale = size * U;
+        Object.DestroyImmediate(go.GetComponent<BoxCollider>());
+        go.AddComponent<MeshCollider>().sharedMesh = go.GetComponent<MeshFilter>().sharedMesh;
         go.isStatic = true;
     }
 
