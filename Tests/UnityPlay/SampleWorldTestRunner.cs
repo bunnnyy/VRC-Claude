@@ -1,0 +1,244 @@
+using System.Collections;
+using System.Collections.Generic;
+using System.IO;
+using System.Text;
+using UnityEngine;
+using VRC.SDK3.ClientSim;
+using VRC.SDKBase;
+using VRC.Udon;
+
+/// <summary>
+/// Play mode test of the sample world (Assets/SourceMapsSample.unity, every test map imported with visuals, collision,
+/// markers and timer zones, plus the lobby) with ClientSim and SourceMovement. For each map: the owner forces it,
+/// the player arrives at the spawn and stands, up to 15 working teleports send the player to their destination, a run
+/// through the start and end zones lands on that map's saved board, solid props have colliders and no tool texture is
+/// drawn; plus a screenshot from the spawn. Started by PlayTestBootstrap.RunSample; results with a [SMTEST] prefix.
+/// </summary>
+public class SampleWorldTestRunner : MonoBehaviour
+{
+    const float U = 0.01905f;
+    readonly List<string> report = new List<string>();
+    int failures;
+    bool finished;
+    UdonBehaviour manager, movement, timer;
+    VRCPlayerApi player;
+
+    IEnumerator Start()
+    {
+        for (int i = 0; i < 900 && (player == null || manager == null || movement == null); i++)
+        {
+            yield return null;
+            player = Networking.LocalPlayer;
+            manager = Loaded(Find("SourceMapManager"), "round");
+            movement = Loaded(Find("SourceMovement"), "active");
+        }
+        if (player == null || manager == null || movement == null) { Check(false, "setup: player, SourceMapManager and SourceMovement loaded"); Finish(); yield break; }
+        timer = Loaded(Find("RunTimer"), "running");
+        for (int i = 0; i < 30; i++) yield return null;
+        foreach (var menu in Resources.FindObjectsOfTypeAll<ClientSimMenu>())
+            if (menu.gameObject.scene.IsValid()) { menu.WarningAccepted(); menu.CloseMenu(); }
+        yield return Seconds(1f);
+        movement.SetProgramVariable("autoBhop", false);
+
+        var maps = (Component[])manager.GetProgramVariable("maps");
+        Log($"{maps.Length} maps in the rotation");
+        for (int m = 0; m < maps.Length; m++) yield return TestMap(m, maps[m]);
+        Finish();
+    }
+
+    IEnumerator TestMap(int index, Component info)
+    {
+        var infoUdon = info.GetComponent<UdonBehaviour>();
+        string name = (string)infoUdon.GetProgramVariable("mapName");
+        var root = info.gameObject;
+
+        // Force this map (owner controls), like pressing "Force a map" and its slot on the board.
+        Press("forcelobby", -1);
+        yield return Seconds(0.3f);
+        int slot = System.Array.IndexOf((int[])manager.GetProgramVariable("candidates"), index);
+        Check(slot >= 0, $"{name}: offered on the vote board");
+        if (slot < 0) yield break;
+        Press("force", -1);
+        Press("map", slot);
+        yield return Seconds(2.5f);
+        var spawn = (Transform)infoUdon.GetProgramVariable("spawn");
+        Check(root.activeSelf && (bool)movement.GetProgramVariable("onGround") && player.GetPosition().y > spawn.position.y - 10f,
+            $"{name}: forced, player arrives and stands near the spawn (at {player.GetPosition():F1}, spawn {spawn.position:F1})");
+
+        // Visuals: something is drawn, no tool texture is drawn, solid props have colliders.
+        var visuals = root.transform.Find("Visuals");
+        int renderers = 0, tools = 0, propColliders = 0;
+        if (visuals != null)
+        {
+            foreach (var r in visuals.GetComponentsInChildren<MeshRenderer>(true))
+            {
+                renderers++;
+                foreach (var mat in r.sharedMaterials)
+                    if (mat != null && mat.name.ToLower().Contains("tools/tools") && !mat.name.ToLower().Contains("toolsblack") && !mat.name.ToLower().Contains("toolsskybox")) tools++;
+            }
+            var props = visuals.Find("[StaticProps]");
+            if (props != null) propColliders = props.GetComponentsInChildren<MeshCollider>(true).Length;
+        }
+        Check(renderers > 0 && tools == 0, $"{name}: visuals imported ({renderers} renderers, {tools} tool surfaces drawn, {propColliders} prop colliders)");
+        yield return Shot(name, spawn);
+
+        // Teleports: up to 15, spread over the map.
+        var teleports = root.GetComponentsInChildren<SourceMapTeleport>(true);
+        int tested = 0, arrived = 0;
+        var missed = new List<string>();
+        for (int i = 0; i < teleports.Length && tested < 15; i += Mathf.Max(1, teleports.Length / 15))
+        {
+            var t = teleports[i];
+            Vector3? drop = DropPoint(t);
+            if (drop == null) continue;
+            tested++;
+            Vector3 dest = t.destination.position;
+            Teleport(spawn.position);
+            yield return Seconds(0.3f);
+            Teleport(drop.Value);
+            bool reached = false;
+            for (int f = 0; f < 90 && !reached; f++)
+            {
+                yield return null;
+                Vector3 d = player.GetPosition() - dest;
+                reached = new Vector2(d.x, d.z).magnitude < 0.5f && Mathf.Abs(d.y) < 1.5f;
+            }
+            if (reached) arrived++; else missed.Add($"{t.name} -> {dest:F1}, player at {player.GetPosition():F1}");
+        }
+        Check(tested > 0 && arrived == tested, $"{name}: {arrived}/{tested} sampled teleports send the player to their destination ({teleports.Length} working in total)");
+        foreach (var s in missed) Log("   missed: " + s);
+
+        // Timer: through the main start and end zones onto the map's saved legit board.
+        var zones = root.transform.Find("TimerZones");
+        var start = zones != null ? zones.Find("Start " + name) : null;
+        var end = zones != null ? zones.Find("End " + name) : null;
+        Check(start != null && end != null, $"{name}: start and end zones from zones-cstrike ({(zones != null ? zones.childCount : 0)} zones)");
+        if (start == null || end == null || timer == null) yield break;
+        var board = (UdonBehaviour)start.GetComponent<UdonBehaviour>().GetProgramVariable("leaderboard");
+        Check(board != null, $"{name}: the start zone has a saved board in the lobby");
+        if (board == null) yield break;
+        int before = (int)board.GetProgramVariable("count");
+        Teleport(start.position);
+        yield return Seconds(0.5f);
+        Teleport(start.position + Vector3.up * 8f);
+        yield return Seconds(0.25f);
+        Teleport(end.position);
+        yield return Seconds(0.5f);
+        float last = (float)timer.GetProgramVariable("lastTime");
+        float saved;
+        bool hasSaved = VRC.SDK3.Persistence.PlayerData.TryGetFloat(player, name + "_legit", out saved);
+        Check((int)board.GetProgramVariable("count") == before + 1 && hasSaved && Mathf.Abs(saved - last) < 0.001f,
+            $"{name}: a run start -> end is timed ({last:F2} s), on the map's board and saved as {name}_legit");
+    }
+
+    bool OnGround() { return (bool)movement.GetProgramVariable("onGround"); }
+
+    void Press(string action, int slot)
+    {
+        manager.SetProgramVariable("__0_action__param", action);
+        manager.SetProgramVariable("__0_slot__param", slot);
+        manager.SendCustomEvent("__0_Press");
+    }
+
+    void Teleport(Vector3 position)
+    {
+        movement.SetProgramVariable("__0_position__param", position);
+        movement.SetProgramVariable("__0_rotation__param", Quaternion.identity);
+        movement.SetProgramVariable("__0_keepVelocity__param", false);
+        movement.SendCustomEvent("__0_TeleportPlayer");
+    }
+
+    /// <summary>Like MapPlayTestRunner: the spot over the trigger with headroom whose ground (hull cast) is lowest.</summary>
+    static Vector3? DropPoint(SourceMapTeleport t)
+    {
+        const int Solid = 1 << 0;
+        Vector3? best = null;
+        float bestDepth = 0.3f + 9 * U;
+        foreach (var col in t.GetComponents<MeshCollider>())
+        {
+            if (!col.enabled) continue;
+            Bounds b = col.bounds;
+            for (int i = 0; i < 25; i++)
+            {
+                float x = Mathf.Lerp(b.min.x, b.max.x, (i % 5 + 0.5f) / 5f), z = Mathf.Lerp(b.min.z, b.max.z, (i / 5 + 0.5f) / 5f);
+                var above = new Vector3(x, b.max.y + 0.3f, z);
+                var inside = new Vector3(x, b.center.y, z);
+                if ((col.ClosestPoint(inside) - inside).sqrMagnitude > 1e-6f) continue;
+                if (Physics.Raycast(above, Vector3.up, 1.5f, Solid, QueryTriggerInteraction.Ignore)) continue;
+                if (Physics.CheckBox(above + new Vector3(0, 37, 0) * U, new Vector3(17, 37, 17) * U, Quaternion.identity, Solid, QueryTriggerInteraction.Ignore)) continue;
+                float depth = b.size.y + 0.3f;
+                if (Physics.BoxCast(above, new Vector3(16, 0.5f, 16) * U, Vector3.down, out var hit, Quaternion.identity, depth, Solid, QueryTriggerInteraction.Ignore))
+                    depth = hit.distance;
+                if (depth > bestDepth) { bestDepth = depth; best = above; }
+            }
+        }
+        return best;
+    }
+
+    IEnumerator Shot(string name, Transform spawn)
+    {
+        yield return null;
+        var cam = new GameObject("ShotCamera").AddComponent<Camera>();
+        cam.transform.SetPositionAndRotation(spawn.position + Vector3.up * 1.4f, Quaternion.Euler(8, spawn.eulerAngles.y, 0));
+        cam.fieldOfView = 80;
+        cam.nearClipPlane = 0.05f;
+        cam.farClipPlane = 2000;
+        var rt = new RenderTexture(1280, 720, 24);
+        cam.targetTexture = rt;
+        cam.Render();
+        RenderTexture.active = rt;
+        var tex = new Texture2D(1280, 720, TextureFormat.RGB24, false);
+        tex.ReadPixels(new Rect(0, 0, 1280, 720), 0, 0);
+        string dir = Path.GetFullPath("Assets/SourcePlayTests/.cache/shots");
+        Directory.CreateDirectory(dir);
+        File.WriteAllBytes($"{dir}/sample_{name}.png", tex.EncodeToPNG());
+        RenderTexture.active = null;
+        Destroy(cam.gameObject);
+    }
+
+    IEnumerator Seconds(float s)
+    {
+        float t = Time.time + s;
+        while (Time.time < t) yield return null;
+    }
+
+    static UdonBehaviour Find(string objectName)
+    {
+        foreach (var udon in FindObjectsOfType<UdonBehaviour>())
+            if (udon.gameObject.name == objectName) return udon;
+        return null;
+    }
+
+    static UdonBehaviour Loaded(UdonBehaviour udon, string variable)
+    {
+        try { return udon != null && udon.GetProgramVariable(variable) != null ? udon : null; }
+        catch (System.NullReferenceException) { return null; }
+    }
+
+    void Update()
+    {
+        if (!finished && Time.realtimeSinceStartup > 1500f) { Check(false, "watchdog: tests did not finish within 25 minutes"); Finish(); }
+    }
+
+    void Check(bool ok, string what)
+    {
+        string line = (ok ? "PASS  " : "FAIL  ") + what;
+        if (!ok) failures++;
+        report.Add(line);
+        Log(line);
+    }
+
+    static void Log(string s) { Debug.Log("[SMTEST] " + s); }
+
+    void Finish()
+    {
+        finished = true;
+        var sb = new StringBuilder();
+        foreach (string line in report) sb.AppendLine(line);
+        sb.AppendLine(failures == 0 ? "ALL PASSED" : failures + " FAILED");
+        Log("\n" + sb);
+#if UNITY_EDITOR
+        UnityEditor.EditorApplication.Exit(failures == 0 ? 0 : 1);
+#endif
+    }
+}

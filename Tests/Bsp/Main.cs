@@ -96,8 +96,9 @@ static class Program
         foreach (var e in bsp.Entities)
             if (e.TargetName != "" && !byName.ContainsKey(e.TargetName)) byName[e.TargetName] = e;
         var teleports = bsp.Entities.Where(e => e.ClassName == "trigger_teleport").ToList();
-        int missing = teleports.Count(t => !byName.ContainsKey(t.Get("target")));
-        Check(missing == 0, $"all {teleports.Count} trigger_teleport targets exist ({missing} missing)");
+        int noTarget = teleports.Count(t => t.Get("target") == ""); // do nothing in Source either (bhop_kitsune has 7)
+        int missing = teleports.Count(t => t.Get("target") != "" && !byName.ContainsKey(t.Get("target")));
+        Check(missing == 0, $"all {teleports.Count - noTarget} trigger_teleport targets exist ({missing} missing; {noTarget} have no target)");
         Check(bsp.Entities.Where(e => e.BrushModel > 0).All(e => e.BrushModel < bsp.Models.Length), "brush entity models are in range");
 
         // Collision
@@ -125,9 +126,14 @@ static class Program
         var tris = new Tri[mesh.Triangles.Count / 3];
         for (int i = 0; i < tris.Length; i++)
             tris[i] = new Tri(mesh.Vertices[mesh.Triangles[i * 3]], mesh.Vertices[mesh.Triangles[i * 3 + 1]], mesh.Vertices[mesh.Triangles[i * 3 + 2]]);
+        int jailed = 0;
         foreach (var e in standPoints)
         {
             Vector3 feet = e.GetVector("origin");
+            // Destinations inside a player clip brush trap the player in Source too: map design ("jails", e.g.
+            // bhop_arcane_v1's *_stop destinations for skipping). Counted, not checked.
+            if (world.Any(i => bsp.Brushes[i].Contents == (bsp.Brushes[i].Contents & ~BspFile.ContentsSolid) &&
+                               (bsp.Brushes[i].Contents & BspFile.ContentsPlayerClip) != 0 && HullInBrush(bsp, i, feet))) { jailed++; continue; }
             // A floor (front face up) below the feet, through the generated mesh. Spawns often float in a spawn
             // room (bhop_japan: 128 units above a floor that teleports you to the start), so allow 512 units.
             var hit = Raycast(tris, BspGeometry.ToUnity(feet + new Vector3(0, 0, 1), BspGeometry.DefaultScale), new Vector3(0, -1, 0), 512 * BspGeometry.DefaultScale);
@@ -138,7 +144,8 @@ static class Program
             int inside = solid.FirstOrDefault(i => HullInBrush(bsp, i, feet), -1);
             if (inside >= 0) { stuck++; problems.Add($"inside brush {inside}: " + label); }
         }
-        Check(noFloor == 0, $"{standPoints.Count} spawns/teleport destinations have a floor below ({noFloor} without)");
+        if (jailed > 0) Console.WriteLine($"  {jailed} destinations are inside player clips (jails by map design), skipped below");
+        Check(noFloor == 0, $"{standPoints.Count - jailed} spawns/teleport destinations have a floor below ({noFloor} without)");
         Check(floorFacesDown == 0, $"floors under them face up (winding), {floorFacesDown} face down");
         Check(stuck == 0, $"no spawn/destination puts the player hull inside a brush ({stuck} stuck)");
         foreach (var p in problems.Take(8)) Console.WriteLine("         " + p);

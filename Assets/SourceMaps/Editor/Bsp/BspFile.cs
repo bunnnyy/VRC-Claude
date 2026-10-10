@@ -40,6 +40,8 @@ namespace SourceMaps.Bsp
         public struct Face { public int Plane, Side, FirstEdge, NumEdges, TexInfo, DispInfo; }
         public struct DispInfo { public Vector3 StartPosition; public int DispVertStart, Power, Contents, MapFace; }
         public struct DispVert { public Vector3 Vec; public float Dist; }
+        /// <summary>A static prop (prop_static, compiled into the game lump): model path, placement, solidity.</summary>
+        public struct StaticProp { public string Model; public Vector3 Origin, Angles; public int Solid; }
 
         public int Version;
         public List<Entity> Entities = new List<Entity>();
@@ -58,6 +60,7 @@ namespace SourceMaps.Bsp
         public Face[] Faces;
         public DispInfo[] DispInfos;
         public DispVert[] DispVerts;
+        public List<StaticProp> StaticProps = new List<StaticProp>();
 
         public static BspFile Load(string path)
         {
@@ -257,7 +260,52 @@ namespace SourceMaps.Bsp
                 }
             }
 
+            ReadStaticProps(bsp, r, offsets[35]);
             return bsp;
+        }
+
+        /// <summary>
+        /// Static props from the game lump's "sprp" entry: model names, leaf list, then one record per prop whose size
+        /// depends on the version. All versions start with origin, angles, prop type (model index), first leaf, leaf
+        /// count, solid (0 = not solid, 2 = bounding box, 6 = vphysics).
+        /// </summary>
+        static void ReadStaticProps(BspFile bsp, BinaryReader r, int gameLumpOffset)
+        {
+            var stream = r.BaseStream;
+            stream.Position = gameLumpOffset;
+            int count = r.ReadInt32();
+            for (int i = 0; i < count; i++)
+            {
+                int id = r.ReadInt32();
+                r.ReadUInt16(); // flags
+                r.ReadUInt16(); // version
+                int offset = r.ReadInt32(), length = r.ReadInt32();
+                if (id != ('s' << 24 | 'p' << 16 | 'r' << 8 | 'p')) continue;
+                long save = stream.Position;
+                if (offset <= 0 || offset + length > stream.Length) continue;
+                stream.Position = offset;
+                int nameCount = r.ReadInt32();
+                if (nameCount < 0 || nameCount * 128L > length) { stream.Position = save; continue; }
+                var names = new string[nameCount];
+                for (int n = 0; n < names.Length; n++) names[n] = Encoding.ASCII.GetString(r.ReadBytes(128)).TrimEnd('\0');
+                int leaves = r.ReadInt32(); // (not "Position += ReadInt32()": that reads Position before the read moves it)
+                stream.Position += leaves * 2L;
+                int props = r.ReadInt32();
+                if (props <= 0 || props > length / 40) { stream.Position = save; continue; }
+                long start = stream.Position;
+                int size = (int)((offset + length - start) / props);
+                for (int p = 0; p < props; p++)
+                {
+                    stream.Position = start + (long)p * size;
+                    var prop = new StaticProp { Origin = ReadVector(r), Angles = ReadVector(r) };
+                    int type = r.ReadUInt16();
+                    r.ReadUInt16(); r.ReadUInt16(); // first leaf, leaf count
+                    prop.Solid = r.ReadByte();
+                    prop.Model = type < names.Length ? names[type] : "";
+                    bsp.StaticProps.Add(prop);
+                }
+                stream.Position = save;
+            }
         }
 
         static Vector3 ReadVector(BinaryReader br) { return new Vector3(br.ReadSingle(), br.ReadSingle(), br.ReadSingle()); }

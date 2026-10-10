@@ -91,6 +91,33 @@ for guid, parts in names.items():
 PY
 }
 
+# Sample mode: run.sh sample builds the sample world from every map in Tests/Bsp/.cache/maps (get_maps.sh), with
+# uSource (Tests/Converters/compare.sh fetches it) for the visuals and zones-cstrike zone files, and play-tests it.
+if [ "${1:-}" = "sample" ]; then
+  copy_assets
+  tmp_essentials
+  rm -rf "$proj/ClientSimStorage"
+  src=$repo/Tests/Converters/.cache/src/uSource
+  [ -d "$src" ] || { echo "Run Tests/Converters/compare.sh once (downloads uSource)"; exit 1; }
+  if [ ! -d "$proj/Assets/uSource" ]; then
+    cp -r "$src" "$proj/Assets/uSource"; rm -rf "$proj/Assets/uSource/.git"
+    sed -i 's|"references": \[\],|"references": [], "allowUnsafeCode": true,|' "$proj/Assets/uSource/uSource.asmdef"
+  fi
+  zones=$here/.cache/zones; mkdir -p "$zones"
+  for bsp in "$repo"/Tests/Bsp/.cache/maps/*.bsp; do
+    m=$(basename "$bsp" .bsp)
+    [ -f "$zones/$m.json" ] || curl -fsSL -o "$zones/$m.json" "https://srcwr.github.io/zones-cstrike/z/$m.json" || rm -f "$zones/$m.json"
+  done
+  run program_assets -quit -executeMethod SourceMapImporter.EnsureProgramAssets
+  status=0
+  if run build_sample -quit -executeMethod PlayTestBootstrap.BuildSample -bspDir "$(realpath "$repo/Tests/Bsp/.cache/maps")" -zonesDir "$zones" &&
+     run sample -executeMethod PlayTestBootstrap.RunSample; then r="ALL PASSED"; else r="FAILED"; status=1; fi
+  echo "== sample world: $r"
+  grep -h "\[Source Maps\]" "$logs/build_sample.log" | sed 's/^/  /'
+  grep -ho "\[SMTEST\] .*" "$logs/sample.log" 2>/dev/null | grep -vE "^\[SMTEST\] $|ALL PASSED|FAILED$" | sed 's/^\[SMTEST\] /  /' | awk '!seen[$0]++'
+  exit $status
+fi
+
 # Vote mode: run.sh vote builds the SourceMaps test scene (6 box maps + lobby) and play-tests the map rotation.
 if [ "${1:-}" = "vote" ]; then
   copy_assets

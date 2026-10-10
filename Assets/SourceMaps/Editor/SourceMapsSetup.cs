@@ -92,8 +92,11 @@ public static class SourceMapsSetup
 
         // Practice bhop and surf courses with their own records, from SourceTimer if it's in the project
         // (looked up by name so SourceMaps doesn't need SourceTimer).
-        var practice = System.AppDomain.CurrentDomain.GetAssemblies().Select(a => a.GetType("PracticeCourses")).FirstOrDefault(t => t != null);
+        var practice = FindType("PracticeCourses");
         if (practice != null) practice.GetMethod("Build").Invoke(null, new object[] { root.transform, Vector3.zero });
+        // Saved boards for every map course with timer zones, on a wall behind the spawn (always active, unlike maps).
+        var boards = FindType("CourseBoards");
+        if (boards != null) boards.GetMethod("Build").Invoke(null, new object[] { root.transform, new Vector3(0, 0, -6.5f), Quaternion.Euler(0, 180, 0) });
 
         var descriptor = Object.FindObjectOfType<VRC.SDKBase.VRC_SceneDescriptor>();
         if (descriptor != null) descriptor.transform.SetPositionAndRotation(spawn.position, spawn.rotation);
@@ -177,6 +180,82 @@ public static class SourceMapsSetup
         return screen;
     }
 
+    // The sample world's maps (GameBanana pages in Tests/Bsp/get_maps.sh): author credits for the vote screen.
+    static readonly Dictionary<string, string> Authors = new Dictionary<string, string>
+    {
+        ["bhop_japan"] = "Tony Montana", ["bhop_kitsune"] = "Ghost1447951", ["bhop_eazy_v2"] = "31K4L",
+        ["bhop_arcane_v1"] = "Panzerhandschuh", ["bhop_badges"] = "Badges & fission",
+    };
+    const float MapSpacing = 700f; // metres between map origins (Source maps are up to ~620 m across)
+
+    [MenuItem("Tools/Source Maps/Build Sample World...")]
+    public static void BuildSampleWorldMenu()
+    {
+        string folder = EditorUtility.OpenFolderPanel("Folder with the maps' .bsp files", "", "");
+        if (string.IsNullOrEmpty(folder)) return;
+        if (SourceMapVisuals.CssFolder == "")
+            SourceMapVisuals.CssFolder = EditorUtility.OpenFolderPanel("Your Counter-Strike Source folder (with cstrike and hl2)", "", "");
+        BuildSampleWorld(folder, null);
+    }
+
+    /// <summary>
+    /// A world with every .bsp in `bspFolder`: each map imported (visuals with uSource if installed, collision, markers,
+    /// timer zones from zones-cstrike), 700 m apart along +x, added to the rotation with a rendered thumbnail; then the
+    /// lobby. `zonesFolder` (optional) holds &lt;map&gt;.json zone files instead of downloading them.
+    /// </summary>
+    public static void BuildSampleWorld(string bspFolder, string zonesFolder)
+    {
+        SourceMapImporter.EnsureProgramAssets();
+        var scene = EditorSceneManager.NewScene(NewSceneSetup.DefaultGameObjects, NewSceneMode.Single);
+        var world = AssetDatabase.LoadAssetAtPath<GameObject>("Packages/com.vrchat.worlds/Samples/UdonExampleScene/Prefabs/VRCWorld.prefab");
+        if (world != null) PrefabUtility.InstantiatePrefab(world);
+        var movement = AssetDatabase.LoadAssetAtPath<GameObject>("Assets/SourceMovement/SourceMovement.prefab");
+        if (movement != null) PrefabUtility.InstantiatePrefab(movement);
+
+        var files = System.IO.Directory.GetFiles(bspFolder, "*.bsp").OrderBy(f => f).ToArray();
+        for (int i = 0; i < files.Length; i++)
+        {
+            string map = System.IO.Path.GetFileNameWithoutExtension(files[i]);
+            var root = SourceMapImporter.Import(files[i], SourceMaps.Bsp.BspGeometry.DefaultScale);
+            root.transform.position = new Vector3(MapSpacing * (i + 1), 0, 0);
+            SourceMapVisuals.Import(files[i], root.transform, SourceMaps.Bsp.BspGeometry.DefaultScale);
+            string zoneFile = zonesFolder != null ? System.IO.Path.Combine(zonesFolder, map + ".json") : null;
+            string json = zoneFile != null ? (System.IO.File.Exists(zoneFile) ? System.IO.File.ReadAllText(zoneFile) : null) : SourceMapZones.Download(map);
+            SourceMapZones.Import(root, map, json, SourceMaps.Bsp.BspGeometry.DefaultScale);
+            var info = AddMap(root);
+            info.author = Authors.TryGetValue(map, out var author) ? author : "";
+            if (info.thumbnail == null) info.thumbnail = RenderThumbnail(root, info.spawn, map);
+            UdonSharpEditorUtility.CopyProxyToUdon(info);
+        }
+        CreateLobby(Vector3.zero);
+        EditorSceneManager.SaveScene(scene, "Assets/SourceMapsSample.unity");
+    }
+
+    /// <summary>A 512 x 288 picture from the spawn, saved next to the map's meshes.</summary>
+    public static Texture2D RenderThumbnail(GameObject mapRoot, Transform spawn, string map)
+    {
+        if (spawn == null) return null;
+        var cam = new GameObject("ThumbnailCamera").AddComponent<Camera>();
+        cam.transform.SetPositionAndRotation(spawn.position + Vector3.up * 1.4f, Quaternion.Euler(8, spawn.eulerAngles.y, 0));
+        cam.fieldOfView = 80;
+        cam.nearClipPlane = 0.05f;
+        cam.farClipPlane = 2000;
+        var rt = new RenderTexture(512, 288, 24);
+        cam.targetTexture = rt;
+        cam.Render();
+        RenderTexture.active = rt;
+        var tex = new Texture2D(512, 288, TextureFormat.RGB24, false);
+        tex.ReadPixels(new Rect(0, 0, 512, 288), 0, 0);
+        RenderTexture.active = null;
+        Object.DestroyImmediate(cam.gameObject);
+        rt.Release();
+        string path = "Assets/SourceMapsImported/" + map + "/" + map + "_thumbnail.png";
+        System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(path));
+        System.IO.File.WriteAllBytes(path, tex.EncodeToPNG());
+        AssetDatabase.ImportAsset(path);
+        return AssetDatabase.LoadAssetAtPath<Texture2D>(path);
+    }
+
     [MenuItem("Tools/Source Maps/Build Test Scene")]
     public static void BuildTestScene()
     {
@@ -211,6 +290,11 @@ public static class SourceMapsSetup
     }
 
     // ------------------------------------------------------------------ helpers
+
+    static System.Type FindType(string name)
+    {
+        return System.AppDomain.CurrentDomain.GetAssemblies().Select(a => a.GetType(name)).FirstOrDefault(t => t != null);
+    }
 
     /// <summary>TextMeshPro needs its "Essential Resources" (default font) or every text is invisible.</summary>
     static void EnsureTextMeshPro()

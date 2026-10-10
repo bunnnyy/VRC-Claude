@@ -53,6 +53,34 @@ public static class PlayTestBootstrap
         Debug.Log("[SMTEST] imported " + bsp);
     }
 
+    /// <summary>
+    /// -executeMethod PlayTestBootstrap.BuildSample -bspDir dir -zonesDir dir: the sample world from every map in bspDir
+    /// (no CS:S folder here, so stock textures are missing), saved as Assets/SourceMapsSample.unity.
+    /// </summary>
+    public static void BuildSample()
+    {
+        string[] args = System.Environment.GetCommandLineArgs();
+        string bsps = args[System.Array.IndexOf(args, "-bspDir") + 1];
+        string zones = args[System.Array.IndexOf(args, "-zonesDir") + 1];
+        SourceMapVisuals.CssFolder = "";
+        SourceMapsSetup.BuildSampleWorld(bsps, zones);
+        Debug.Log("[SMTEST] sample world built");
+    }
+
+    /// <summary>-executeMethod PlayTestBootstrap.RunSample: play-tests Assets/SourceMapsSample.unity.</summary>
+    public static void RunSample()
+    {
+        var settings = ClientSimSettings.Instance;
+        settings.enableClientSim = true;
+        settings.hideMenuOnLaunch = true;
+        settings.setTargetFrameRate = false;
+        settings.initializationDelay = 0f;
+        ClientSimSettings.SaveSettings(settings);
+        EditorSceneManager.OpenScene("Assets/SourceMapsSample.unity");
+        new GameObject("SampleWorldTestRunner").AddComponent<SampleWorldTestRunner>();
+        EditorApplication.isPlaying = true;
+    }
+
     /// <summary>-executeMethod PlayTestBootstrap.RunVote: play-tests the map rotation in Assets/SourceMaps/SourceMapsTest.unity.</summary>
     public static void RunVote()
     {
