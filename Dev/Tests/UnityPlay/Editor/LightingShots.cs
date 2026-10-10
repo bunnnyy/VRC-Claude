@@ -18,7 +18,7 @@ public static class LightingShots
         string mode = args[System.Array.IndexOf(args, "-smLightmaps") + 1];
         string map = Path.GetFileNameWithoutExtension(bsp);
         EditorSceneManager.NewScene(NewSceneSetup.DefaultGameObjects, NewSceneMode.Single); // like the sample world
-        SourceMapVisuals.CssFolder = "";
+        SourceMapVisuals.CssFolder = System.Environment.GetEnvironmentVariable("SM_CSS") ?? ""; // a CS:S folder (cstrike/materials...) for stock textures
         SourceMapVisuals.UseLightmaps = mode == "on";
         var root = SourceMapImporter.Import(bsp, 0.01905f);
         var visuals = SourceMapVisuals.Import(bsp, root.transform, 0.01905f);

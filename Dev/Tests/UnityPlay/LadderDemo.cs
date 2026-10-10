@@ -8,10 +8,9 @@ using VRC.SDKBase;
 using VRC.Udon;
 
 /// <summary>
-/// A short showcase clip of SourceMovement's ladders on the test map (real Unity + ClientSim, real input): walk into
-/// the ladder, climb up, hang on, climb down, move sideways, jump off. A fixed wide camera and a CS:S-sized stand-in
-/// for the player (ClientSim's avatar hidden); the ladder is widened so sideways moves show. Frames at 50 fps to recordDir/f#####.jpg plus hud.txt (speed, caption,
-/// keys) for make_video.sh. Started by LadderDemoBootstrap.Run.
+/// A short first-person clip of SourceMovement's ladder on its test map (real Unity + ClientSim, real input): walk
+/// into it, climb up, hang on, climb down, sideways, jump off. Frames at 50 fps to recordDir/f#####.jpg
+/// plus hud.txt (speed, caption, keys) for make_video.sh. Started by LadderDemoBootstrap.Run.
 /// </summary>
 public class LadderDemo : MonoBehaviour
 {
@@ -22,13 +21,11 @@ public class LadderDemo : MonoBehaviour
     Transform playerBody;
     Keyboard keyboard;
     Camera cam;
-    Transform standIn;
     RenderTexture rt;
     Texture2D shot;
     int frameNumber;
     string caption = "", keys = "";
     readonly StringBuilder hud = new StringBuilder();
-    Vector3 camAim;
 
     IEnumerator Start()
     {
@@ -48,39 +45,54 @@ public class LadderDemo : MonoBehaviour
         for (int i = 0; i < 30; i++) yield return null;
         foreach (var menu in Resources.FindObjectsOfTypeAll<ClientSimMenu>())
             if (menu.gameObject.scene.IsValid()) { menu.WarningAccepted(); menu.CloseMenu(); }
-        for (int i = 0; i < 10; i++) yield return null;
-        SetUpScene();
+        cam = new GameObject("LadderDemoCamera").AddComponent<Camera>();
+        cam.fieldOfView = 74f; // CS:S 106 degree horizontal fov at 16:9
+        cam.nearClipPlane = 0.03f;
+        cam.farClipPlane = 3000f;
+        cam.enabled = false;
+        rt = new RenderTexture(1280, 720, 24);
+        shot = new Texture2D(1280, 720, TextureFormat.RGB24, false);
 
-        // The test map's ladder: its face at x 144 on a tower, facing -x; the player starts in front of it facing +x.
+        // SourceMovement's test map: the ladder's face at x 144 on a tower, facing -x. With a CS:S folder (env SM_CSS),
+        // the game's own ladder model is drawn on it.
+        var grid = new Material(Shader.Find("SourceDemo/Grid"));
+        foreach (var r in GameObject.Find("TestMap").GetComponentsInChildren<MeshRenderer>())
+        {
+            var c = r.GetComponent<Collider>();
+            if (c != null && c.isTrigger) r.enabled = false;
+            else r.sharedMaterial = grid;
+        }
+        string css = System.Environment.GetEnvironmentVariable("SM_CSS");
+        if (!string.IsNullOrEmpty(css)) AddLadderModel(css);
         yield return Teleport(new Vector3(40, 0, 500), 90f);
-        yield return Seconds(0.3f, null, false);
+        yield return Seconds(0.3f, false);
 
         caption = "Walk into the ladder";
-        yield return Seconds(0.8f, null, true);
+        yield return Seconds(0.5f, true);
         Keys("W");
-        for (int i = 0; i < 100 && !(bool)movement.GetProgramVariable("onLadder"); i++) yield return Seconds(1f / 50f, null, true);
+        for (int i = 0; i < 100 && !(bool)movement.GetProgramVariable("onLadder"); i++) yield return Seconds(1f / 50f, true);
         caption = "Climb up (W)";
-        yield return Seconds(1.6f, null, true);
+        yield return Seconds(1.2f, true);
         caption = "Let go: hang on";
         Keys();
-        yield return Seconds(0.8f, null, true);
+        yield return Seconds(0.6f, true);
         caption = "Climb down (S)";
         Keys("S");
-        yield return Seconds(1.0f, null, true);
+        yield return Seconds(0.8f, true);
         caption = "Sideways (A)";
         Keys("A");
-        yield return Seconds(0.6f, null, true);
+        yield return Seconds(0.2f, true);
         caption = "Sideways (D)";
         Keys("D");
-        yield return Seconds(1.2f, null, true);
+        yield return Seconds(0.4f, true);
         caption = "Hang on";
         Keys();
-        yield return Seconds(0.5f, null, true);
+        yield return Seconds(0.4f, true);
         caption = "Jump off (Space)";
         Keys("Space");
-        yield return Seconds(0.2f, null, true);
+        yield return Seconds(0.2f, true);
         Keys();
-        yield return Seconds(1.6f, null, true);
+        yield return Seconds(1.2f, true);
         System.IO.File.WriteAllText(System.IO.Path.Combine(recordDir, "hud.txt"), hud.ToString());
         Debug.Log($"[LADDERDEMO] done: {frameNumber} frames in {recordDir}");
 #if UNITY_EDITOR
@@ -88,80 +100,60 @@ public class LadderDemo : MonoBehaviour
 #endif
     }
 
-    void SetUpScene()
+    /// <summary>CS:S's 128-unit aluminium ladder model (through uSource), stacked up the test ladder's 512 units.</summary>
+    void AddLadderModel(string css)
     {
-        // Dev-texture grid so motion shows (as PlayTestRunner's demo); the ladder in its own colour.
-        var grid = new Material(Shader.Find("SourceDemo/Grid"));
-        var wood = new Material(grid) { color = new Color(0.85f, 0.55f, 0.25f) };
-        foreach (var r in GameObject.Find("TestMap").GetComponentsInChildren<MeshRenderer>())
+        var loader = System.Type.GetType("uSource.uLoader, uSource");
+        var resources = System.Type.GetType("uSource.uResourceManager, uSource");
+        loader.GetField("RootPath").SetValue(null, css);
+        loader.GetField("UnitScale").SetValue(null, U);
+        loader.GetField("SaveAssetsToUnity").SetValue(null, false);
+        resources.GetMethod("Init", new[] { typeof(int), System.Type.GetType("uSource.IResourceProvider, uSource") }).Invoke(null, new object[] { 0, null });
+        var ladder = GameObject.Find("Ladder");
+        ladder.GetComponent<MeshRenderer>().enabled = false;
+        float y = 0f;
+        for (int i = 0; i < 20 && y < 512f * U; i++)
         {
-            var c = r.GetComponent<Collider>();
-            if (r.name == "Ladder") r.sharedMaterial = wood;
-            else if (c != null && c.isTrigger) r.enabled = false;
-            else r.sharedMaterial = grid;
+            var model = (Transform)resources.GetMethod("LoadModel").Invoke(null, new object[] { "props/cs_assault/ladderaluminium128", false, false, false });
+            var b = WorldBounds(model);
+            if (b.size.x > b.size.z) { model.rotation = Quaternion.Euler(0, 90, 0) * model.rotation; b = WorldBounds(model); } // rungs across z
+            model.position += new Vector3(144f * U, y, 500f * U) - new Vector3(b.max.x, b.min.y, b.center.z); // against the wall
+            if (i == 0) Debug.Log($"[LADDERDEMO] ladder model: {b.size / U} units");
+            y += b.size.y;
         }
-        // A wider tower and ladder (64 units is too narrow to show moving sideways).
-        var tower = GameObject.Find("LadderTower").transform;
-        var ladder = GameObject.Find("Ladder").transform;
-        tower.localScale = new Vector3(tower.localScale.x, tower.localScale.y, tower.localScale.z * 4f);
-        ladder.localScale = new Vector3(ladder.localScale.x, ladder.localScale.y, ladder.localScale.z * 5f);
-        Physics.SyncTransforms();
-        // The map is static-batched, so scaling moved only the colliders: draw the wider boxes as new cubes.
-        foreach (var t in new[] { tower, ladder })
-        {
-            var b = t.GetComponent<Collider>().bounds;
-            var r = t.GetComponent<MeshRenderer>();
-            var cube = GameObject.CreatePrimitive(PrimitiveType.Cube);
-            Destroy(cube.GetComponent<Collider>());
-            cube.transform.SetPositionAndRotation(b.center, Quaternion.identity);
-            cube.transform.localScale = b.size;
-            cube.GetComponent<MeshRenderer>().sharedMaterial = r.sharedMaterial;
-            r.enabled = false;
-        }
-
-        var box = GameObject.CreatePrimitive(PrimitiveType.Cube); // the player: CS:S hull, 32 wide, 62 (ducked 45) tall
-        Destroy(box.GetComponent<Collider>());
-        box.GetComponent<MeshRenderer>().sharedMaterial = new Material(Shader.Find("Standard")) { color = new Color(0.2f, 0.55f, 0.95f) };
-        standIn = box.transform;
-        var nose = GameObject.CreatePrimitive(PrimitiveType.Cube); // shows which way the player faces
-        Destroy(nose.GetComponent<Collider>());
-        nose.GetComponent<MeshRenderer>().sharedMaterial = new Material(Shader.Find("Standard")) { color = Color.white };
-        nose.transform.SetParent(standIn, false);
-        nose.transform.localPosition = new Vector3(0, 0.3f, 0.5f);
-        nose.transform.localScale = new Vector3(0.5f, 0.15f, 0.2f);
-
-        cam = new GameObject("LadderDemoCamera").AddComponent<Camera>();
-        cam.fieldOfView = 60f;
-        cam.nearClipPlane = 0.05f;
-        rt = new RenderTexture(1280, 720, 24);
-        shot = new Texture2D(1280, 720, TextureFormat.RGB24, false);
     }
 
-    IEnumerator Seconds(float s, System.Action each, bool record)
+    static Bounds WorldBounds(Transform model)
+    {
+        var b = new Bounds();
+        bool first = true;
+        foreach (var r in model.GetComponentsInChildren<Renderer>())
+        {
+            var mesh = r is SkinnedMeshRenderer s ? new Mesh() : r.GetComponent<MeshFilter>().sharedMesh;
+            if (r is SkinnedMeshRenderer skinned) skinned.BakeMesh(mesh);
+            foreach (var v in mesh.vertices)
+            {
+                var w = r.transform.TransformPoint(v);
+                if (first) { b = new Bounds(w, Vector3.zero); first = false; } else b.Encapsulate(w);
+            }
+        }
+        return b;
+    }
+
+    IEnumerator Seconds(float s, bool record)
     {
         int n = Mathf.Max(1, Mathf.RoundToInt(s * 50f));
         for (int i = 0; i < n; i++)
         {
             yield return null;
-            each?.Invoke();
             if (record) Capture();
         }
     }
 
     void Capture()
     {
-        Vector3 feet = player.GetPosition();
-        bool ducked = (bool)movement.GetProgramVariable("ducked");
-        float height = (ducked ? 45f : 62f) * U;
-        standIn.SetPositionAndRotation(feet + Vector3.up * height * 0.5f, Quaternion.Euler(0, playerBody.eulerAngles.y, 0));
-        standIn.localScale = new Vector3(32f * U, height, 32f * U);
-        // ClientSim's own avatar would sit inside the stand-in: hide it.
-        foreach (var r in FindObjectsOfType<SkinnedMeshRenderer>()) r.enabled = false;
-        // A fixed wide shot from the side and in front of the ladder (so heights show), turning to follow the player.
-        Vector3 aim = feet + Vector3.up * 40f * U;
-        camAim = frameNumber == 0 ? aim : Vector3.Lerp(camAim, aim, 0.1f);
-        cam.transform.position = new Vector3(-420f, 230f, 260f) * U;
-        cam.transform.LookAt(new Vector3(camAim.x, Mathf.Max(camAim.y, 150f * U), camAim.z));
+        float eye = (bool)movement.GetProgramVariable("ducked") ? 47f : 64f; // CS:S eye heights
+        cam.transform.SetPositionAndRotation(player.GetPosition() + Vector3.up * eye * U, Quaternion.Euler(-10f, playerBody.eulerAngles.y, 0));
         cam.targetTexture = rt;
         cam.Render();
         RenderTexture.active = rt;

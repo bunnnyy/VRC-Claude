@@ -5,7 +5,7 @@ using VRC.SDK3.ClientSim;
 
 /// <summary>
 /// -executeMethod LadderDemoBootstrap.Run -smRecord dir: plays SourceMovement's test map with ClientSim and records the
-/// ladder showcase (LadderDemo) into dir. Then: make_video.sh dir out.mp4.
+/// ladder clip (LadderDemo) into dir; env SM_CSS (a CS:S folder) draws CS:S's ladder model. Then: make_video.sh dir out.mp4.
 /// </summary>
 public static class LadderDemoBootstrap
 {
