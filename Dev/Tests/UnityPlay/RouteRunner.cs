@@ -44,7 +44,7 @@ public class RouteRunner : MonoBehaviour
     /// <summary>Source x, y to flat Unity-axis coordinates (x = -y, z = x), Source units.</summary>
     static Vector2 V(float x, float y) { return new Vector2(-y, x); }
 
-    struct Spot { public Vector3 p; public float s, lat, ceil; public bool deep, edge, duck, duckSoon; public int seg; public float need; }
+    struct Spot { public Vector3 p; public float s, lat, ceil; public bool deep, edge, duck, duckSoon; public int seg; public float need; public SourceMapDoor block; }
 
     readonly List<List<Spot>> spots = new List<List<Spot>>();
     readonly List<float[]> lengths = new List<float[]>();
@@ -58,7 +58,7 @@ public class RouteRunner : MonoBehaviour
 
     int section;
     float progress;
-    bool hopping, hasTarget, wasOnGround;
+    bool hopping, hasTarget, wasOnGround, wasLanded;
     Spot target;
     int hops, fails, frame;
     float viewYaw, camYaw, camYawVel;
@@ -97,8 +97,24 @@ public class RouteRunner : MonoBehaviour
 
         float t0 = Time.realtimeSinceStartup;
         int total = 0;
-        foreach (var line in Route) { var list = FindSpots(line); Plan(list); spots.Add(list); total += list.Count; }
-        Log($"{total} landing spots in {Route.Length} sections ({Time.realtimeSinceStartup - t0:F1} s)");
+        foreach (var line in Route)
+        {
+            var list = FindSpots(line);
+            Plan(list);
+            spots.Add(list);
+            total += list.Count;
+            // Where the plan finds no way on (log): the furthest stretches of spots it can't go on from.
+            var dead = new List<string>();
+            for (int i = list.Count - 1; i >= 0 && dead.Count < 6; i--)
+                if (float.IsInfinity(list[i].need) && (dead.Count == 0 || !dead[dead.Count - 1].StartsWith("s " + Mathf.RoundToInt(list[i].s / 64f) * 64)))
+                    dead.Add("s " + Mathf.RoundToInt(list[i].s / 64f) * 64 + " " + Flat(list[i].p));
+            Log($"plan section {spots.Count}: {list.Count} spots, no way on near: {string.Join("; ", dead)}");
+        }
+        int onBlocks = 0, visualColliders = 0;
+        foreach (var go in FindObjectsOfType<Transform>()) if (go.name == "Visuals") visualColliders += go.GetComponentsInChildren<Collider>(true).Length;
+        Log($"{visualColliders} colliders under the map's Visuals (uSource's own: the movement collides with them too)");
+        foreach (var list in spots) foreach (var sp in list) if (sp.block != null) onBlocks++;
+        Log($"{total} landing spots in {Route.Length} sections, {onBlocks} on bhop blocks ({Time.realtimeSinceStartup - t0:F1} s)");
 
         // Start in the start zone facing down the first lane.
         section = startSection;
@@ -128,6 +144,8 @@ public class RouteRunner : MonoBehaviour
                     section = next;
                     sectionStart = Time.time;
                     progress = 0f;
+                    ridge = 0;
+                    tabu.Clear();
                 }
                 else if (EndZone.Contains(Flat(pos)))
                 {
@@ -138,9 +156,12 @@ public class RouteRunner : MonoBehaviour
                 {
                     fails++;
                     Log($"FAIL section {section + 1}: teleported back from {Flat(last)} (s {progress:F0}) to {Flat(pos)}, target was {Flat(target.p)} s {target.s:F0}");
+                    // Next time try other spots than the last few that led here.
+                    foreach (var t in recentTargets) if (t != Vector3.zero) tabu.Add(t);
                     progress = Project(Flat(pos), -1f);
+                    ridge = 0;
                     DumpRecent();
-                    if (fails >= 5) { Log("FAIL: giving up after 5 fails"); break; }
+                    if (fails >= MaxFails) { Log($"FAIL: giving up after {MaxFails} fails"); break; }
                 }
                 hopping = false;
                 hasTarget = false;
@@ -185,6 +206,8 @@ public class RouteRunner : MonoBehaviour
         progress = Project(here, progress);
         var line = Route[section];
         float lookYaw = Yaw(PointAt(line, progress + 160f) - here);
+        if (section == RidgeSection && ridge == 0 && here.y < RidgeFrom.y - 300f && Mathf.Abs(here.x) < 200f) { ridge = 1; circleTurn = 0; } // on red's start platform
+        if (ridge > 0 && ridge < 5 && hopping && RidgeStep(pos, vel, onGround)) return;
 
         if (!hopping)
         {
@@ -203,11 +226,24 @@ public class RouteRunner : MonoBehaviour
         if (wasOnGround && !onGround)
         {
             hops++;
-            hasTarget = PickTarget(pos, vel, out target, out flight);
+            hasTarget = PickTarget(pos, vel, out target, out flight, ridge == 2 ? RidgeLaunch.y - RidgeLaunchS0 : float.MaxValue);
+            if (hasTarget) recentTargets[hops % recentTargets.Length] = target.p;
             if (hasTarget) Crouch(flight.duck);
             takeoffTime = Time.time;
         }
         wasOnGround = onGround;
+        if (onGround && !wasLanded && hasTarget)
+        {
+            // How far from the target we came down: along the flight (+ long) and across it.
+            Vector2 d = here - Flat(target.p), dir = (Flat(target.p) - flight.a).normalized;
+            Log($"landed {Vector2.Dot(d, dir):F1} long, {Vector2.Dot(d, new Vector2(dir.y, -dir.x)):F1} aside of s {target.s:F0} ({(target.deep ? "deep" : target.edge ? "edge" : "normal")}) at {v.magnitude:F0} u/s");
+        }
+        wasLanded = onGround;
+        if (onGround)
+        {
+            var under = BlockUnder(pos);
+            if (under != null) touched[under] = Time.time;
+        }
         if (onGround && runOnLanding)
         {
             runOnLanding = false; hopping = false; hasTarget = false;
@@ -225,6 +261,124 @@ public class RouteRunner : MonoBehaviour
         // Never on a bhop block: it sinks under whoever stays (SourceMapDoor).
         if (!onGround && v.magnitude < 120f && vel.y < 0f && !OnBlock(hasTarget ? target.p : new Vector3(here.x, pos.y, here.y))) runOnLanding = true;
         Strafe(v, want, coast, aim - here, !runOnLanding);
+    }
+
+    // bhop_eazy_v2's red lane 1: a ridge (Source x 5056..5440, y -56..56, 62 degree faces, a teleport along its crest
+    // at z 152, a wall across its far end) between blocks 576 apart, too far to jump. Surf its side: build speed on
+    // the start platform first (circle strafing; the exit needs about 400 u/s), hop to a block before it, jump onto
+    // its face beside the crest, climb the face holding A, and fly off it round the end wall onto the block after it.
+    const int RidgeSection = 4;
+    static readonly Vector2 RidgeFrom = V(5056, 0), Circle = V(4608, 0), RidgeLaunch = V(4880, 0); // launch from the first block (x 4800..4864)
+    const float RidgeLaunchS0 = 4608f; // Source x where the lane's route line starts (s 0)
+    const float RidgeSpeed = 400f, RidgeFeet = 140f;
+    int ridge; // 0 not there, 1 building speed, 2 hops to a block before the ridge, 3 jumping onto its face, 4 surfing, 5 off it
+    bool ridgeIn; // jumping onto the face: past its front, moving in
+    int circleTurn; // circling: 1 turning right (D), -1 left (A)
+    float circleSince;
+
+    /// <summary>Red lane 1's ridge (see above); false when the usual hopping should handle this frame.</summary>
+    bool RidgeStep(Vector3 pos, Vector3 vel, bool onGround)
+    {
+        Vector2 here = Flat(pos), v = Flat(vel);
+        bool takeoff = wasOnGround && !onGround;
+        if (ridge == 1)
+        {
+            if (takeoff) hops++;
+            wasOnGround = onGround;
+            // The velocity the keys and view sent now will act on: after the pushes already on their way.
+            Vector2 vp = v;
+            for (int k = Mathf.Max(keyLag, yawLag) - 1; k >= 1; k--)
+                if (frame - k >= 0 && keyQueue[(frame - k) % 32] != 0) vp = PushAt(vp, yawQueue[(frame - k) % 32] + 90f * keyQueue[(frame - k) % 32]);
+            float travel = vp.magnitude > 30f ? Yaw(vp) : viewYaw;
+            if (circleTurn == 0)
+            {
+                Vector2 r0 = here - Circle;
+                circleTurn = Mathf.DeltaAngle(travel, Yaw(r0.magnitude < 1f ? -v : -r0)) < 0f ? -1 : 1;
+                circleSince = Time.time;
+            }
+            // Wide enough to hold at this speed: strafing turns the velocity atan(30 / v) a tick, a radius of v^2 / 3000.
+            // Its side where it heads down the lane lies on the lane's middle line.
+            float radius = Mathf.Max(70f, v.sqrMagnitude / 2500f);
+            Vector2 centre = Circle + new Vector2(radius * circleTurn, 0f);
+            // Fast enough (or after 20 s, as fast as it got) and heading down the lane: leave at a takeoff from which the
+            // model lands on the first block (at this speed a hop is ~375 units: from most places it would overshoot).
+            bool down = Mathf.Abs(Mathf.DeltaAngle(Yaw(v), Yaw(RidgeFrom - Circle))) < 60f;
+            if (takeoff && down && (v.magnitude >= RidgeSpeed || Time.time - circleSince > 20f))
+            {
+                var from = new Takeoff { pos = pos, vel = vel, yaw = viewYaw, held = heldKey, heldFor = heldFrames, ducked = (bool)movement.GetProgramVariable("ducked") };
+                if (Search(from, progress, false, out Spot spot, out Flight f, out float miss, out _, RidgeLaunch.y - RidgeLaunchS0) == 2)
+                {
+                    ridge = 2;
+                    circleTurn = 0;
+                    target = spot; flight = f; hasTarget = true; takeoffTime = Time.time;
+                    Log($"ridge: {v.magnitude:F0} u/s after circling {Time.time - circleSince:F1} s on the start platform, to the first block at {Flat(spot.p)} miss {miss:F1}");
+                    return false;
+                }
+            }
+            if (frame % 200 == 0) Log($"ridge: circling at {v.magnitude:F0} u/s");
+            // Circle strafing: looking where we go, A or D pushes square to the velocity, which turns it and adds speed
+            // every tick; let go while already heading inside the circle.
+            progressTime = Time.time; // circling isn't being stuck
+            Vector2 r = here - centre;
+            if (r.magnitude < 1f) r = Vector2.right;
+            // The heading of the circle here (the way round we're going), bent inwards when outside it.
+            float round = Yaw(-r) - 90f * circleTurn + Mathf.Clamp((r.magnitude - radius) * 1.5f, -40f, 40f) * circleTurn;
+            bool turn = Mathf.DeltaAngle(travel, round) * circleTurn > 0f;
+            // The view along that velocity: a view even a few degrees behind it makes the push add nothing (Source caps
+            // the speed along the push at 30), one ahead of it pushes a little backwards.
+            Act(turn ? circleTurn : 0, Mathf.MoveTowardsAngle(viewYaw, travel, MaxTurn), true);
+            return true;
+        }
+        if (ridge == 2)
+        {
+            // Taking off from the first block before the ridge (the one after it leaves too little room to get beside the
+            // ridge's front): onto its face.
+            if (!(takeoff && here.y > RidgeLaunch.y - 100f && here.y < RidgeLaunch.y + 20f && Mathf.Abs(here.x) < 60f)) return false;
+            ridge = 3;
+            ridgeIn = false;
+            hops++;
+            hasTarget = false;
+            Log($"ridge: jumping onto its side at {v.magnitude:F0} u/s from {here}");
+        }
+        wasOnGround = onGround;
+        if (onGround) { ridge = 5; return false; } // came down somewhere: back to hopping
+        if (ridge == 3)
+        {
+            // Past the ridge's triangular front and the seam behind it well beside it (Source y -72), keeping the speed
+            // along the lane, then in towards its face until the hull touches it (pressing into the face from the side
+            // only adds 30 u/s, so come in moving).
+            bool clear = here.y >= RidgeFrom.y + 16f && here.x >= 60f; // past the front and its seam, well beside it
+            if (clear) ridgeIn = true;
+            float side = !ridgeIn ? Mathf.Clamp((72f - here.x) * 5f, -250f, 250f) : -150f;
+            Vector2 want = new Vector2(side, Mathf.Sqrt(Mathf.Max(v.sqrMagnitude - side * side, 0f)));
+            Strafe(v, want, false, want, true);
+            if (ridgeIn && OnFace(pos)) { ridge = 4; Log($"ridge: on the face, feet {pos.y:F0}, {v.magnitude:F0} u/s"); }
+            return true;
+        }
+        // Surfing: look along the ridge, A pushes into the face (it lifts us), let go near the top or rising fast.
+        bool push = (vel.y < 0f || pos.y < RidgeFeet - 8f) && pos.y < RidgeFeet + 4f;
+        Act(push ? -1 : 0, Mathf.MoveTowardsAngle(viewYaw, Yaw(RidgeFrom - Circle), MaxTurn), true);
+        // From the middle on, fly off it as soon as the model finds a way round the end wall onto what follows.
+        if (here.y > RidgeFrom.y + 230f && frame % 2 == 0)
+        {
+            var from = new Takeoff { pos = pos, vel = vel, yaw = viewYaw, held = heldKey, heldFor = heldFrames, ducked = (bool)movement.GetProgramVariable("ducked") };
+            int found = Search(from, progress, true, out Spot spot, out Flight f, out float miss, out _);
+            if (found == 2 || (found == 1 && here.y > RidgeFrom.y + 330f))
+            {
+                target = spot; flight = f; hasTarget = true; takeoffTime = Time.time; ridge = 5;
+                Log($"ridge: off the face at feet {pos.y:F0}, {v.magnitude:F0} u/s, to s {spot.s:F0} at {Flat(spot.p)}{(f.curved ? " curved" : "")} miss {miss:F1}");
+                return false;
+            }
+        }
+        if (here.y > RidgeFrom.y + 360f) { ridge = 5; Log("ridge: no way off the face found"); return false; }
+        return true;
+    }
+
+    /// <summary>The hull touching the ridge's face (Source y < 0 side): its inner bottom edge at or under the face.</summary>
+    static bool OnFace(Vector3 pos)
+    {
+        float inner = pos.x - 16f; // flat x is Source -y: the hull's edge nearest the crest
+        return inner < 52f && pos.y <= 56f + (52f - Mathf.Max(inner, 0f)) * (96f / 52f) + 1.5f;
     }
 
     /// <summary>
@@ -271,13 +425,19 @@ public class RouteRunner : MonoBehaviour
         if (coast) want = vp;
         float look = vp.magnitude > 50f ? Yaw(vp) : toAim.magnitude > 1f ? Yaw(toAim) : viewYaw;
         var d = Decide(vp, want, coast, look, heldKey, heldFrames, viewYaw, Directions);
-        if (d.key != heldKey) { heldKey = d.key; heldFrames = 0; } else heldFrames++;
-        Record(d.key, d.yaw);
+        Act(d.key, d.yaw, jump);
+    }
 
-        // Send this frame's share: the key and the view of the decisions that should arrive together.
+    /// <summary>This frame's decision (key -1 A, 0 none, 1 D, and the view) into the queues, and this frame's share
+    /// sent: the key and the view of the decisions that should arrive together.</summary>
+    void Act(int key, float yaw, bool jump)
+    {
+        if (key != heldKey) { heldKey = key; heldFrames = 0; } else heldFrames++;
+        Record(key, yaw);
+        int lag = Mathf.Max(keyLag, yawLag);
         int keyFrame = frame - (lag - keyLag), yawFrame = frame - (lag - yawLag);
         int key2 = keyFrame >= 0 ? keyQueue[keyFrame % 32] : 0;
-        float yaw2 = yawFrame >= 0 ? yawQueue[yawFrame % 32] : d.yaw;
+        float yaw2 = yawFrame >= 0 ? yawQueue[yawFrame % 32] : yaw;
         SetYaw(yaw2);
         if (key2 < 0) { if (jump) Keys(Key.Space, Key.A); else Keys(Key.A); }
         else if (key2 > 0) { if (jump) Keys(Key.Space, Key.D); else Keys(Key.D); }
@@ -381,21 +541,38 @@ public class RouteRunner : MonoBehaviour
     }
 
     string nextHop = ""; // the hop after the one picked, as the model sees it (log)
+    const int MaxFails = 30;
+    readonly Vector3[] recentTargets = new Vector3[3]; // the last few hops' targets
+    readonly List<Vector3> tabu = new List<Vector3>(); // targets that led to a fall in this section
+    Takeoff bestLand;    // where the model lands on the best target found (log)
+
+    /// <summary>A takeoff as the bot sees it: two ticks into the jump (it notices a frame late), the speed scaled.</summary>
+    static Takeoff Seen(Takeoff t, float faster)
+    {
+        const float dt = 0.02f;
+        var v = new Vector3(t.vel.x * faster, t.vel.y, t.vel.z * faster);
+        t.pos += new Vector3(v.x * dt, v.y * dt - 0.5f * Gravity * dt * dt, v.z * dt);
+        t.vel = new Vector3(v.x, v.y - Gravity * dt, v.z);
+        return t;
+    }
 
     /// <summary>A hop's start: feet and velocity at takeoff, the view, the strafe key held (and for how many frames),
     /// ducked or not.</summary>
     struct Takeoff { public Vector3 pos, vel; public float yaw; public int held, heldFor; public bool ducked; }
 
     /// <summary>The landing spot for this takeoff, logged.</summary>
-    bool PickTarget(Vector3 pos, Vector3 vel, out Spot best, out Flight path)
+    bool PickTarget(Vector3 pos, Vector3 vel, out Spot best, out Flight path, float maxS = float.MaxValue)
     {
         var from = new Takeoff { pos = pos, vel = vel, yaw = viewYaw, held = heldKey, heldFor = heldFrames, ducked = (bool)movement.GetProgramVariable("ducked") };
         float speed = Flat(vel).magnitude;
-        int found = Search(from, progress, true, out best, out path, out float miss, out int count);
+        int found = Search(from, progress, true, out best, out path, out float miss, out int count, maxS);
         if (found == 2)
             Log($"hop {hops} s {progress:F0} -> {best.s:F0} speed {speed:F0} need {path.length / path.time:F0} deep {best.deep}{(path.curved ? " curved" : "")}{(path.duck ? " ducked" : "")} miss {miss:F1} of {count}, then {nextHop}");
         else if (found == 1)
-            Log($"hop {hops} s {progress:F0} -> {best.s:F0} speed {speed:F0}: nothing lands within its margin with a way on from there, taking the best (misses by {miss:F1} more)");
+        {
+            Log($"hop {hops} s {progress:F0} -> {best.s:F0} speed {speed:F0}: nothing lands within its margin with a way on from there, taking the best (misses by {miss:F1} more); from there:");
+            Explain(Seen(bestLand, 1f), best.s, 64f);
+        }
         else
             Log($"no landing spot from {Flat(pos)} at {speed:F0} u/s (s {progress:F0}), following the route line");
         return found > 0;
@@ -408,7 +585,7 @@ public class RouteRunner : MonoBehaviour
     /// and how fast the model lands there: a block reached too fast or heading the wrong way can leave no way past
     /// the wall after it. 2: found, 1: only one that misses its margin or leads nowhere, 0: nothing.
     /// </summary>
-    int Search(Takeoff from, float at, bool ahead, out Spot best, out Flight path, out float bestMiss, out int count)
+    int Search(Takeoff from, float at, bool ahead, out Spot best, out Flight path, out float bestMiss, out int count, float maxS = float.MaxValue, SourceMapDoor avoid = null)
     {
         best = default;
         path = default;
@@ -421,13 +598,16 @@ public class RouteRunner : MonoBehaviour
         // Under a low ceiling now, or going under one: duck (in the air the feet pull up, see SimulateHop).
         float standRoof = Headroom(here, from.pos.y, hull), duckRoof = Headroom(here, from.pos.y, duckHull);
         bool lowHere = standRoof - from.pos.y < LowRoof;
-        int maxSims = ahead ? 16 : 6;
+        int maxSims = ahead ? 40 : 8; // stops at the first that works: only costs where it's hard
         for (int pass = 0; pass < 2; pass++)
         {
             var options = new List<(float score, Spot spot, float time)>();
             foreach (var s in list)
             {
-                if (s.s < at + 24f || s.s > at + 700f) continue;
+                // The hop after (the lookahead) has to leave the block: a hop to the far corner of the same block is no
+                // way on.
+                if (s.s < at + (ahead ? 24f : 64f) || s.s > Mathf.Min(at + 700f, maxS)) continue;
+                if (s.block != null && (s.block == avoid || Sinking(s.block))) continue; // low by the time we come down
                 float roof = s.duck || lowHere ? duckRoof : standRoof;
                 float time = FlightTime(from.pos.y, from.vel.y, s.p.y, Mathf.Min(roof, s.ceil));
                 if (float.IsNaN(time) || time < 0.2f) continue;
@@ -439,10 +619,21 @@ public class RouteRunner : MonoBehaviour
                 // the doorway to the next one.
                 float score = s.s - (s.s > endS - 300f ? 2f : 0.5f) * Mathf.Abs(s.lat) - (s.deep ? 0f : s.edge ? 400f : 250f) - 3f * Mathf.Max(0f, 0.9f * speed - need)
                     + 1.5f * Mathf.Clamp(need - speed, 0f, 60f); // and building speed for the long gaps
+                if (maxS == float.MaxValue) // (not the ridge's launch block: there's no other)
+                    foreach (var t in tabu) if ((t - s.p).sqrMagnitude < 24f * 24f) { score -= 1000f; break; } // led to a fall before
                 options.Add((score, s, time));
             }
             options.Sort((x, y) => y.score.CompareTo(x.score));
             count = options.Count;
+            // Spread the few flights we can afford over different places: none within 20 units of a better one.
+            var spread = new List<(float score, Spot spot, float time)>();
+            foreach (var o in options)
+            {
+                bool near = false;
+                foreach (var q in spread) if ((Flat(q.spot.p) - Flat(o.spot.p)).sqrMagnitude < 400f) { near = true; break; }
+                if (!near) spread.Add(o);
+            }
+            options = spread;
             // Fly the best few in the model (our own steering, input lag, the map's collision) and take the first
             // that lands well inside its spot's margin.
             int simulated = 0;
@@ -460,12 +651,16 @@ public class RouteRunner : MonoBehaviour
                     float margin = o.spot.deep ? 20f : o.spot.edge ? 5f : 12f;
                     Spot then = default;
                     Flight thenPath = default;
-                    bool onward = !ahead || o.spot.s > endS - 64f || Search(land, o.spot.s, false, out then, out thenPath, out _, out _) == 2;
+                    // From the takeoff as the bot will see it, at the model's speed and a little faster (it tends to
+                    // land a little fast): a way on that only just works in the model isn't one.
+                    bool onward = !ahead || o.spot.s > endS - 64f || maxS < float.MaxValue
+                        || (Search(Seen(land, 1f), o.spot.s, false, out then, out thenPath, out _, out _, float.MaxValue, o.spot.block) == 2
+                            && Search(Seen(land, 1.05f), o.spot.s, false, out _, out _, out _, out _, float.MaxValue, o.spot.block) == 2);
                     if (ahead && onward) nextHop = o.spot.s > endS - 64f ? "the end" : $"s {then.s:F0} at {Flat(then.p)}{(thenPath.curved ? " curved" : "")} from {Flat(land.pos)} at {Flat(land.vel).magnitude:F0} u/s";
                     if (miss <= margin && onward) { best = o.spot; path = f; bestMiss = miss; return 2; }
                     // Otherwise the best of the rest: landing inside the margin first, then the smallest miss.
                     float over = Mathf.Max(0f, miss - margin) + (onward ? 0f : 1000f);
-                    if (over < bestMiss) { bestMiss = over; best = o.spot; path = f; }
+                    if (over < bestMiss) { bestMiss = over; best = o.spot; path = f; if (ahead) bestLand = land; }
                 }
             }
         }
@@ -474,30 +669,8 @@ public class RouteRunner : MonoBehaviour
             if (bestMiss >= 1000f) bestMiss -= 1000f;
             return 1;
         }
-        if (!ahead) return 0;
-        // Nothing: say why, for the nearest spots ahead.
-        int shown = 0;
-        foreach (var sp in list)
-        {
-            if (sp.s < at + 24f || shown >= 12) continue;
-            float time = FlightTime(from.pos.y, from.vel.y, sp.p.y, Mathf.Min(sp.duck || lowHere ? duckRoof : standRoof, sp.ceil));
-            if (float.IsNaN(time)) continue;
-            float need = (new Vector2(sp.p.x, sp.p.z) - here).magnitude / time;
-            Log($"  rejected {sp.p:F0} s {sp.s:F0} edge {sp.edge}: need {need:F0} reach {Reach(speed, time):F0} plan {sp.need:F0} time {time:F2}");
-            shown++;
-        }
+        if (ahead) Explain(from, at, 24f);
         return 0;
-    }
-
-    /// <summary>
-    /// Half the time strafing takes to swing the velocity round to `dir` (each tick turns it by about atan(30/v)):
-    /// roughly the flight time lost to a turn.
-    /// </summary>
-    static float TurnTime(Vector2 v, Vector2 dir)
-    {
-        if (v.magnitude < 30f || dir.magnitude < 1f) return 0f;
-        float angle = Vector2.Angle(v, dir) * Mathf.Deg2Rad, perTick = Mathf.Atan(AirCap / v.magnitude);
-        return 0.5f * angle / perTick * 0.01f;
     }
 
     /// <summary>Average speed reachable over a hop of `time` s from `speed`: strafing adds 30 u/s sideways per tick,
@@ -574,6 +747,7 @@ public class RouteRunner : MonoBehaviour
                 else if (!HullHits(p, y - shift, hull)) { y -= shift; ducked = false; }
             }
             float h = ducked ? duckHull : hull;
+            Vector2 p0 = p;
             p += v * Dt;
             float y0 = y;
             y += (vy - 0.5f * Gravity * Dt) * Dt;
@@ -587,14 +761,100 @@ public class RouteRunner : MonoBehaviour
             }
             if (y > tgt.p.y + 2f && HullHits(p, y, h))
             {
-                // Rising into something overhead: Source stops the head there (vertical speed to zero). Anything
-                // else in the way (a wall, a beam's side) ends the hop.
-                if (y > y0 && !HullHits(p, y0, h)) { y = y0; vy = 0f; }
-                else return false;
+                // A face too steep to stand on (a surf ramp): slide along it. Rising into something overhead: Source
+                // stops the head there (vertical speed to zero). Anything else in the way (a wall, a beam's side)
+                // ends the hop.
+                if (SlideAlong(p0, y0, ref p, ref y, ref v, ref vy, h)) { }
+                else if (y > y0 && !HullHits(p, y0, h)) { y = y0; vy = 0f; }
+                else { simHit = $"{HitName(p, y, h)} at {p:F0} feet {y:F0}"; return false; }
             }
-            if (tick % 3 == 0 && TouchesTeleport(p, y, h)) return false;
+            // (Not in the first ticks: we're taking off from where we stand, e.g. a block already sinking a little.)
+            if (tick >= 4 && tick % 3 == 0 && TouchesTeleport(p, y, h)) { simHit = $"a teleport at {p:F0} feet {y:F0}"; return false; }
         }
         return false;
+    }
+
+    /// <summary>
+    /// A surf face (too steep to stand on) in the way of this tick's move from (p0, y0): the hull goes up to it and the
+    /// velocity is clipped to it like Source's ClipVelocity, the rest of the tick sliding along it. False if what's in
+    /// the way isn't one.
+    /// </summary>
+    bool SlideAlong(Vector2 p0, float y0, ref Vector2 p, ref float y, ref Vector2 v, ref float vy, float h)
+    {
+        const float Dt = 0.01f;
+        Vector3 a = HullCenter(p0, y0, h), move = HullCenter(p, y, h) - a;
+        if (move.sqrMagnitude < 1e-10f || !Physics.BoxCast(a, HullHalf(0.25f, h), move.normalized, out RaycastHit hit, Quaternion.identity,
+            move.magnitude, layers, QueryTriggerInteraction.Ignore)) return false;
+        if (hit.normal.y < 0.05f || hit.normal.y >= 0.7f) return false;
+        var vel = new Vector3(v.x, vy, v.y);
+        vel -= hit.normal * Vector3.Dot(vel, hit.normal);
+        float f = Mathf.Max(0f, hit.distance - 0.05f * U) / move.magnitude; // stop just short of the face
+        Vector2 at = Vector2.Lerp(p0, p, f);
+        float atY = Mathf.Lerp(y0, y, f);
+        Vector2 p2 = at + new Vector2(vel.x, vel.z) * (Dt * (1f - f));
+        float y2 = atY + vel.y * Dt * (1f - f);
+        if (HullHits(p2, y2, h)) { p2 = at; y2 = atY; }
+        p = p2; y = y2; v = new Vector2(vel.x, vel.z); vy = vel.y;
+        return true;
+    }
+
+    string simHit = ""; // what SimulateHop ran into last (log)
+
+    string HitName(Vector2 p, float y, float h)
+    {
+        foreach (var c in Physics.OverlapBox(HullCenter(p, y, h), HullHalf(0.25f, h), Quaternion.identity, layers, QueryTriggerInteraction.Ignore)) return c.name;
+        return "?";
+    }
+
+    /// <summary>Why the nearest spots ahead of a takeoff (from `minAhead` on) can't be reached (log).</summary>
+    void Explain(Takeoff from, float at, float minAhead)
+    {
+        var list = spots[section];
+        Vector2 here = Flat(from.pos);
+        float speed = Flat(from.vel).magnitude;
+        float standRoof = Headroom(here, from.pos.y, hull), duckRoof = Headroom(here, from.pos.y, duckHull);
+        bool lowHere = standRoof - from.pos.y < LowRoof;
+        int shown = 0;
+        foreach (var sp in list)
+        {
+            if (sp.s < at + minAhead || shown >= 12) continue;
+            float time = FlightTime(from.pos.y, from.vel.y, sp.p.y, Mathf.Min(sp.duck || lowHere ? duckRoof : standRoof, sp.ceil));
+            if (float.IsNaN(time)) continue;
+            float need = (new Vector2(sp.p.x, sp.p.z) - here).magnitude / time;
+            string why = "";
+            if (shown < 4) // what the straight flight there runs into
+            {
+                bool duck = sp.duck || sp.duckSoon || lowHere;
+                var straight = new Flight { a = here, b = Flat(sp.p), c = (here + Flat(sp.p)) * 0.5f, time = time, ceil = Mathf.Min(duck ? duckRoof : standRoof, sp.ceil), duck = duck };
+                straight.length = (straight.b - straight.a).magnitude;
+                why = ClearFlight(from.pos.y, from.vel.y, straight) ? (SimulateHop(from, sp, straight, out float m, out _) ? $", flies, miss {m:F1}" : $", the model's hop hits {simHit}")
+                    : $", path blocked: {ClearFlightWhy(from.pos.y, from.vel.y, straight)}";
+                if (Sinking(sp.block)) why += ", block sinking";
+            }
+            Log($"  rejected {sp.p:F0} s {sp.s:F0} edge {sp.edge}: need {need:F0} reach {Reach(speed, time):F0} plan {sp.need:F0} time {time:F2}{why}");
+            shown++;
+        }
+    }
+
+    /// <summary>What ClearFlight runs into first (log).</summary>
+    string ClearFlightWhy(float y0, float vy, Flight f)
+    {
+        float half = f.curved ? 17.5f : 15.5f, h = f.duck ? duckHull : hull;
+        int n = Mathf.Max(12, Mathf.CeilToInt(f.length / 8f));
+        for (int i = 1; i <= n; i++)
+        {
+            float t = f.time * i / n;
+            Vector2 p = Curve(f, (float)i / n);
+            float y = HeightAt(y0, vy, t, f.ceil);
+            foreach (var c in Physics.OverlapBox(HullCenter(p, y, h), new Vector3(half, h * 0.5f - 0.5f, half) * U, Quaternion.identity, layers, QueryTriggerInteraction.Ignore))
+                if (i < n) return $"{c.name} at sample {i}/{n} feet {y:F0}";
+            foreach (var c in Physics.OverlapBox(HullCenter(p, y, h), HullHalf(0f, h), Quaternion.identity, ~0, QueryTriggerInteraction.Collide))
+                if (c.isTrigger && c.GetComponent<SourceMapTeleport>() != null) return $"teleport {c.name} (hull) at sample {i}/{n} feet {y:F0}";
+            Vector3 bottom = new Vector3(p.x, y + 1f + CapsuleRadius, p.y) * U, top = new Vector3(p.x, y + 1f + CapsuleHeight - CapsuleRadius, p.y) * U;
+            foreach (var c in Physics.OverlapCapsule(bottom, top, CapsuleRadius * U, ~0, QueryTriggerInteraction.Collide))
+                if (c.isTrigger && c.GetComponent<SourceMapTeleport>() != null) return $"teleport {c.name} (capsule) at sample {i}/{n} feet {y:F0}";
+        }
+        return "nothing?";
     }
 
     /// <summary>The hull along a flight: no solid in the way (before landing), no teleport touched. Curved flights keep
@@ -703,6 +963,7 @@ public class RouteRunner : MonoBehaviour
     Spot Roofed(Spot s)
     {
         Vector2 p = Flat(s.p);
+        s.block = BlockUnder(s.p);
         s.ceil = Headroom(p, s.p.y, hull);
         s.duck = s.ceil - s.p.y < LowRoof;
         if (s.duck) s.ceil = Headroom(p, s.p.y, duckHull);
@@ -813,11 +1074,33 @@ public class RouteRunner : MonoBehaviour
     }
 
     /// <summary>Whether the floor below `p` (feet, possibly mid-jump) is a bhop block that sinks when stood on.</summary>
-    bool OnBlock(Vector3 p)
+    bool OnBlock(Vector3 p) { return BlockUnder(p) != null; }
+
+    /// <summary>The bhop block (a sinking func_door) below `p`, or null.</summary>
+    SourceMapDoor BlockUnder(Vector3 p)
     {
-        return Physics.Raycast(new Vector3(p.x, p.y + 8f, p.z) * U, Vector3.down, out RaycastHit hit, 200f * U, layers, QueryTriggerInteraction.Ignore)
-            && hit.collider.GetComponentInParent<SourceMapDoor>() != null;
+        if (!Physics.Raycast(new Vector3(p.x, p.y + 8f, p.z) * U, Vector3.down, out RaycastHit hit, 200f * U, layers, QueryTriggerInteraction.Ignore)) return null;
+        if (doorOf == null)
+        {
+            // Every collider of a door: its solid, and the visuals moved with it (uSource's meshes have colliders too).
+            doorOf = new Dictionary<Collider, SourceMapDoor>();
+            foreach (var d in FindObjectsOfType<SourceMapDoor>())
+            {
+                if (d.solid != null) doorOf[d.solid] = d;
+                if (d.visuals != null) foreach (var c in d.visuals.GetComponentsInChildren<Collider>(true)) doorOf[c] = d;
+            }
+        }
+        return doorOf.TryGetValue(hit.collider, out SourceMapDoor door) ? door : null;
     }
+
+    Dictionary<Collider, SourceMapDoor> doorOf;
+
+    // Blocks we landed on and when: one sinks 9 units in 0.45 s, waits 0.5 s and takes 0.45 s to come back, and coming
+    // down on it while it's low drops you into the teleport under it (bhop_eazy_v2's red rails: hop between the three).
+    readonly Dictionary<SourceMapDoor, float> touched = new Dictionary<SourceMapDoor, float>();
+    const float BlockCycle = 1.5f;
+
+    bool Sinking(SourceMapDoor block) { return block != null && touched.TryGetValue(block, out float when) && Time.time - when < BlockCycle; }
 
     /// <summary>Whether a teleport is touched with the feet at `feet`: by the hull (`h` tall), or by VRChat's player
     /// capsule following it, which is what fires the map's triggers (taller, narrower).</summary>
