@@ -85,7 +85,7 @@ if [ "${1:-}" = "route" ]; then
   rm -f "$proj/Assets/RouteTest.unity"
   if run build_route -quit -executeMethod PlayTestBootstrap.BuildRoute -bsp "$bsp" -zones "$zones" &&
      grep -q "route scene built" "$logs/build_route.log" &&
-     ! grep -m3 "error CS" "$logs/build_route.log" &&
+     [ "$(grep -o "Tundra build [a-z]*" "$logs/build_route.log" | tail -1)" != "Tundra build failed" ] &&
      run route -executeMethod PlayTestBootstrap.RunRoute -smFrameRate 100 -smRouteSection "${ROUTE_SECTION:-0}" "${record[@]}"; then r="FINISHED"; else r="FAILED"; status=1; fi
   echo "== $(basename "$bsp" .bsp) route: $r"
   grep -ho "\[SMTEST\] .*" "$logs/route.log" 2>/dev/null | sed 's/^\[SMTEST\] /  /'
