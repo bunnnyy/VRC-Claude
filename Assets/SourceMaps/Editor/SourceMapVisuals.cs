@@ -71,6 +71,7 @@ public static class SourceMapVisuals
 
         var visuals = (GameObject)vbsp.GetField("BSP_WorldSpawn").GetValue(null);
         if (visuals == null) return null;
+        vbsp.GetField("BSP_WorldSpawn").SetValue(null, null); // or uSource destroys it when it loads the next map
         visuals.name = "Visuals";
         visuals.transform.SetParent(parent, false);
 

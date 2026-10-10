@@ -99,7 +99,15 @@ public static class SourceMapsSetup
         if (boards != null) boards.GetMethod("Build").Invoke(null, new object[] { root.transform, new Vector3(0, 0, -6.5f), Quaternion.Euler(0, 180, 0) });
 
         var descriptor = Object.FindObjectOfType<VRC.SDKBase.VRC_SceneDescriptor>();
-        if (descriptor != null) descriptor.transform.SetPositionAndRotation(spawn.position, spawn.rotation);
+        if (descriptor != null)
+        {
+            descriptor.transform.SetPositionAndRotation(spawn.position, spawn.rotation);
+            // VRChat respawns players who fall below this (default -100 m); Source maps go down to about -312 m.
+            float lowest = -100f;
+            foreach (var c in Object.FindObjectsOfType<MeshCollider>(true)) lowest = Mathf.Min(lowest, c.bounds.min.y);
+            descriptor.RespawnHeightY = Mathf.Min(descriptor.RespawnHeightY, lowest - 50f);
+            EditorUtility.SetDirty(descriptor);
+        }
         return manager;
     }
 

@@ -25,6 +25,7 @@ public class SampleWorldTestRunner : MonoBehaviour
 
     IEnumerator Start()
     {
+        Time.captureDeltaTime = 1f / 90f; // fixed 90 fps like the other play tests: time-based waits stay meaningful
         for (int i = 0; i < 900 && (player == null || manager == null || movement == null); i++)
         {
             yield return null;
@@ -101,7 +102,7 @@ public class SampleWorldTestRunner : MonoBehaviour
             yield return Seconds(0.3f);
             Teleport(drop.Value);
             bool reached = false;
-            for (int f = 0; f < 90 && !reached; f++)
+            for (float until = Time.time + 2f; Time.time < until && !reached;)
             {
                 yield return null;
                 Vector3 d = player.GetPosition() - dest;
