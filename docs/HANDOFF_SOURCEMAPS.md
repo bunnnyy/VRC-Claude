@@ -12,16 +12,12 @@ For the next session working on SourceMaps (map import, rotation, sample world).
 - Unity license: activations share one machine id across containers. Don't return it (`--return-ulf`) while the
   other session may use Unity; the last session to finish returns it, and tell the user.
 
-## Next (step 5, user approved)
-1. Lighting: try uSource's `ParseLightmaps` (the maps' own Source lightmaps) in `SourceMapVisuals`; compare
-   screenshots (bhop_arcane_v1's start room is black without lighting). If it doesn't work, document baking.
-2. A real bhop and surf stretch on the imported maps with SourceMovement in ClientSim (hold W + jump, strafe),
-   checking no stalls on the collision mesh (the movement session fixed mesh triangle-seam stops: verify on maps).
-3. The open arcane miss: in the sample world one sampled teleport (huge 54x88x47 m out-of-bounds trigger to
-   `bonus_stop`, hammerid 423175 area) doesn't fire when the player falls through it. Single-map arcane test:
-   stand 185/185, teleports 20/27 tested, 118 not reachable by the test's drop-in probe. Find out why.
-4. Final docs (guide, README section, plan), rebuild `SourceMovement.unitypackage` if SourceTimer changed
-   (`PlayTestBootstrap.ExportPackage`, then check every entry matches the repo file), return the license if last.
+## Step 5 done (2026-10-10, see the plan's Progress)
+Lightmaps from the BSP (`SourceMaps/Lightmapped`), collision without faces where brushes touch, bhop/surf runs in
+`run.sh map`, the arcane updraft teleport explained. Open: arcane's 3 out-of-bounds `*_stop` teleports in the single-map
+test, kitsune's 2 u diagonal lip stop (movement session, step-up), lightmap atlas edge lines.
+Scratch tool used for geometry questions (not in the repo): a console project compiling `Assets/SourceMaps/Editor/Bsp/*.cs`
+that prints brush faces/entities near a point (remember brush entities are stored relative to their origin).
 
 ## Setting up a fresh container
 ```
@@ -38,12 +34,12 @@ Tests/Converters/compare.sh Tests/Bsp/.cache/maps/bhop_japan.bsp   # downloads u
 ## Tests
 | Command | What | Last result |
 |---|---|---|
-| `dotnet run --project Tests/Bsp` | BSP reader/collision on all 5 maps + booster parsing | 56/56 |
+| `dotnet run --project Tests/Bsp` | BSP reader/collision on all 5 maps + booster parsing | 57/57 |
 | `dotnet run --project Tests/Sim` | movement + timer simulation (incl. course boards, saved bests) | all passed |
 | `Tests/UdonCompile/compile.sh` | real UdonSharp compile + editor scripts | OK |
 | `Tests/UnityPlay/run.sh vote` | rotation, owner changes, practice courses (ClientSim) | 44/44 |
-| `Tests/UnityPlay/run.sh map <bsp>` | one map: stand + every reachable teleport | japan 40/40 + 55/55 |
-| `Tests/UnityPlay/run.sh sample` | whole sample world, per map (needs uSource, zones downloaded) | 34/35 |
+| `Tests/UnityPlay/run.sh map <bsp>` | one map: stand, reachable teleports, bhop/surf runs (SM_ONLY=runs: runs only) | japan/eazy/badges all passed |
+| `Tests/UnityPlay/run.sh sample` | whole sample world, per map (needs uSource, zones downloaded) | all passed |
 | `Tests/UnityPlay/run.sh 90` | movement suite (movement session's) | all passed |
 
 ## Lessons
@@ -53,5 +49,8 @@ Tests/Converters/compare.sh Tests/Bsp/.cache/maps/bhop_japan.bsp   # downloads u
 - Boards inside switched-off maps can't sync: course boards live in the lobby.
 - ClientSim persistence needs the `VRC_ENABLE_PLAYER_PERSISTENCE` define (SDK sets it only in an interactive editor).
 - `stream.Position += r.ReadInt32()` reads Position before the read: split it.
+- Collision is a hollow mesh: overlap tests (CheckBox) don't see a point inside a solid block; use a ray with back
+  faces on (`InsideSolid` in the runners). BoxCasts ignore a mesh they start touching.
+- `pgrep -f "run.sh map"` in a wait loop matches its own shell: wait on the background task instead.
 - How the user works: iPhone, short check-ins with numbers at every stage, simplest code, Source/CS:S behaviour,
   honest about real Unity vs simulated, ask before big design changes, keep GUIDE.md updated (photos welcome).
