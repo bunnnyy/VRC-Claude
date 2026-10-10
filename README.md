@@ -7,6 +7,9 @@ Status: **work in progress**. Play-tested in Unity 2022.3.22f1 with VRChat's Cli
 air strafing, surfing on real PhysX colliders, teleports, HUD; see Tests). Not yet tested in the VRChat
 client itself.
 
+- **Step-by-step setup guide: [docs/GUIDE.md](docs/GUIDE.md)** (from an empty VRChat project to an uploaded world)
+- **All settings: [docs/SETTINGS.md](docs/SETTINGS.md)**
+
 ## Using it
 
 1. In a VRChat world project (VRChat Creator Companion, Worlds SDK 3.10.5+, Unity 2022.3.22f1), import
