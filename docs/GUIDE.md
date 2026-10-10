@@ -3,12 +3,11 @@
 Step by step, from nothing to an uploaded VRChat world with Source movement, a timer and a lobby where
 players vote between imported CS:S bhop maps. Kept up to date as features are finished.
 
-> **Status (2026-10-09).** Done and tested: movement, timer, map import (collision, markers, teleports),
-> map rotation (vote, rock the vote, time limit, owner controls), lobby practice courses with saved records. Still being built: the one-click
-> visual import with uSource (step 6a is manual for now), placing timer zones on maps, per-map leaderboards,
-> thumbnails rendered in the editor. Those steps say "coming soon".
-> Pictures come from Unity itself; editor windows can't be screenshotted on the build machine, so menus are
-> described in words.
+> **Status (2026-10-10).** Done and tested: movement, timer, map import (visuals with uSource, collision, prop
+> collision, markers, teleports, boosters, water, ladders), timer zones from zones-cstrike, map rotation (vote, rock the
+> vote, time limit, owner controls), lobby practice courses, saved records per map. The quickest way to a full world is
+> the **sample world builder** (step 5b). Pictures come from Unity itself; editor windows can't be screenshotted on the
+> build machine, so menus are described in words.
 
 ## 1. What you need
 
@@ -54,45 +53,57 @@ USource; uSource works with VRChat's render pipeline and lines up with our colli
 
 ## 5. Get the maps
 
-Download the maps from GameBanana and unzip them; you need the `.bsp` files.
+Download the maps from GameBanana and unzip them (7-Zip opens .zip, .rar and .7z); you need the `.bsp` files.
+Put them all in one folder.
 
-| Map | Where |
-|---|---|
-| bhop_japan (tmontana) | [gamebanana.com/mods/125304](https://gamebanana.com/mods/125304) |
-| bhop_kitsune | [gamebanana.com/mods/126424](https://gamebanana.com/mods/126424) |
-| bhop_eazy_v2, bhop_arcane_v1, bhop_badges | links added when they're imported (step 4 of the plan) |
+| Map | Author | GameBanana |
+|---|---|---|
+| bhop_japan | Tony Montana | [mods/125304](https://gamebanana.com/mods/125304) |
+| bhop_kitsune | Ghost1447951 | [mods/126424](https://gamebanana.com/mods/126424) |
+| bhop_eazy_v2 | 31K4L | [mods/124915](https://gamebanana.com/mods/124915) |
+| bhop_arcane_v1 | Panzerhandschuh | [mods/124461](https://gamebanana.com/mods/124461) |
+| bhop_badges | Badges & fission | [mods/124524](https://gamebanana.com/mods/124524) |
 
 The maps belong to their authors. For a **public** world, ask each author for permission first and credit them
 (the vote screen shows the author's name).
 
-## 6. Import a map
+### 5b. The quick way: build the sample world
 
-Each map needs two parts: the visuals (uSource) and the gameplay part (SourceMaps).
+**Tools > Source Maps > Build Sample World...**, pick the folder with the `.bsp` files, then your
+**Counter-Strike Source** folder (e.g. `C:\Program Files (x86)\Steam\steamapps\common\Counter-Strike Source`,
+the one with `cstrike` and `hl2` in it; asked once). It does steps 6-8 for every map in the folder: visuals,
+collision, markers, timer zones, a thumbnail from the spawn, the lobby with practice courses and a records wall, and
+saves the scene as `Assets/SourceMapsSample.unity`. Then continue at step 10. Steps 6-8 are for adding maps one by one.
 
-### 6a. Visuals with uSource (coming soon: a one-click version)
-For now, by hand: open uSource's window (its menu in Unity), set **Root path** to your CS:S folder
-(e.g. `C:\Program Files (x86)\Steam\steamapps\common\Counter-Strike Source`), mods `cstrike` and `hl2`,
-**Unit scale 0.01905** (important: the same scale as the movement), tick saving assets to the project, put the
-`.bsp` into `cstrike\maps` and load it by name.
+## 6. Import a map (one by one)
+
+1. **Tools > Source Maps > Import BSP...** and pick the `.bsp`. You get an object named after the map with:
+   - **Collision**: every solid surface, including invisible walls (clip brushes).
+   - **Entities**: one marker per map entity (triggers, buttons, ...) keeping all its settings.
+   - Working **fall teleports**, **boosters/push triggers**, **water** and **ladders** (for SourceMovement).
+   Teleports and boosters with a name filter (on bhop maps usually "bhop block" teleports that fire when you stand
+   on a platform too long) stay markers for now. `func_door` bhop blocks are solid platforms.
+2. Move the map's object to a free spot: every map needs its own place in the world (maps are up to ~620 m across;
+   the sample world puts them 700 m apart along X). Do this before adding visuals and zones.
+3. **Visuals**: with uSource installed, the sample world builder imports them automatically
+   (`SourceMapVisuals.Import`, using your CS:S folder): it removes the tool surfaces Source never draws, gives solid
+   props collision and saves the meshes. Doing it by hand: uSource's window with **Unit scale 0.01905**, then drag
+   its map object under the map's object.
 
 ![bhop_japan converted with uSource (white: stock textures missing on the build machine, which has no CS:S)](images/usource_bhop_japan.png)
 
-### 6b. Gameplay with SourceMaps
-1. **Tools > Source Maps > Import BSP...** and pick the same `.bsp`.
-2. You get a new object named after the map with:
-   - **Collision**: every solid surface of the map, including invisible walls (clip brushes).
-   - **Entities**: one marker per map entity (triggers, boosters, buttons, ...) that keeps all its settings.
-   - Working **fall teleports** (`trigger_teleport`).
-3. Put the uSource visuals under the same object (drag uSource's map object onto it) so they move together.
-4. Every map must sit somewhere else in the world: move each map object far apart (e.g. 1000 m along X).
-   Maps are up to ~600 m across.
+4. **Timer zones**: select the map object, **Tools > Source Maps > Import Timer Zones (srcwr) For Selected Map**.
+   It downloads the zones CS:S bhop servers use for that map ([zones-cstrike](https://github.com/srcwr/zones-cstrike)):
+   start, end, stages as checkpoints, and bonus tracks as separate courses. For a map without zones there, add
+   TimerZone boxes by hand (a Box Collider set to Is Trigger + Timer Zone, type Start/End; name the start zone
+   "Start <map name>" so it gets boards).
 
 ## 7. Add the map to the rotation
 
 1. Select the map object, **Tools > Source Maps > Add Selected Map To Rotation**. This adds **Source Map Info**
    and a **Spawn** at the map's first player start.
-2. On **Source Map Info**, fill in **Author** and drag a **Thumbnail** image (any texture; coming soon: rendered
-   automatically). **Time Limit Minutes** overrides the lobby's setting for this map (0 = use the lobby's).
+2. On **Source Map Info**, fill in **Author** and drag a **Thumbnail** image (the sample world builder renders one
+   from the spawn; drag your own over it to replace it). **Time Limit Minutes** overrides the lobby's setting for this map (0 = use the lobby's).
 3. Check the **Spawn** child: it's where players arrive. Move/rotate it if needed.
 
 ## 8. Create the lobby
@@ -124,7 +135,8 @@ Settings on **SourceMapManager** (under "SourceMaps Lobby"):
 
 1. Drag `Assets/SourceMovement/SourceMovement.prefab` into the scene (Source movement, auto bhop button).
 2. The run timer (`SourceTimer.prefab`) is added by the lobby tool if it isn't in the scene yet.
-3. Timer zones per map: coming soon (bhop maps usually have no start/end zones in the file, they're placed by hand).
+3. Records: Create Lobby puts a **records wall** behind the lobby spawn with a legit and an auto-bhop board for
+   every course (each map, each bonus track) that has a start zone named "Start <course>".
 
 **Saved records.** Boards with a **Save Key** (the practice boards have one) keep each player's best with VRChat
 Persistence. VRChat saves data per player, not per world, so a board shows the bests of everyone who has been in
