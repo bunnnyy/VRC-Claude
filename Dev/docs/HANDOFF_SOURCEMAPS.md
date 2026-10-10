@@ -50,6 +50,8 @@ Dev/Tests/Converters/compare.sh Dev/Tests/Bsp/.cache/maps/bhop_japan.bsp   # dow
 | `Dev/Tests/UnityPlay/run.sh 90` | movement suite (movement session's) | all passed |
 
 ## Lessons
+- uSource adds MeshColliders to every brush/displacement mesh: SourceMapVisuals removes them (the importer's
+  collision is the map's; only solid props get colliders back).
 - uSource: needs `allowUnsafeCode` in its asmdef; clears the previous map on load (detach `BSP_WorldSpawn`);
   saves materials without folder names; skinned props need baked colliders; no lights imported.
 - VRChat respawns below `RespawnHeightY` (default -100 m): Create Lobby lowers it below the deepest map.
