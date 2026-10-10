@@ -43,6 +43,10 @@ apt-get install -y 7zip unar            # map archives (rar needs unar)
 /opt/unity/Editor/Data/Resources/Licensing/Client/Unity.Licensing.Client --activate-ulf --username "$UNITY_EMAIL" --password "$UNITY_PASSWORD"
 Dev/Tests/Bsp/get_maps.sh                   # the 5 maps from GameBanana
 Dev/Tests/Converters/compare.sh Dev/Tests/Bsp/.cache/maps/bhop_japan.bsp   # downloads uSource (needed by run.sh sample)
+# Optional: CS:S stock materials/models (1.9 GB, git-ignored cache) as a "CS:S folder" for tests (env SM_CSS)
+c=Dev/Tests/UnityPlay/.cache; git clone --depth 1 --filter=blob:none --no-checkout https://github.com/bouletmarc/css_content $c/css_content
+git -C $c/css_content sparse-checkout set --no-cone /materials/ /models/ && git -C $c/css_content checkout master
+mkdir -p $c/css && ln -sfn ../css_content $c/css/cstrike    # SM_CSS=$PWD/$c/css
 ```
 
 ## Tests
@@ -54,6 +58,8 @@ Dev/Tests/Converters/compare.sh Dev/Tests/Bsp/.cache/maps/bhop_japan.bsp   # dow
 | `Dev/Tests/UnityPlay/run.sh vote` | rotation, owner changes, practice courses (ClientSim) | 44/44 |
 | `Dev/Tests/UnityPlay/run.sh map <bsp>` | one map: breakable glass, stand, reachable teleports, bhop/surf runs (SM_ONLY=runs or glass: only that) | japan/eazy/badges all passed |
 | `Dev/Tests/UnityPlay/run.sh sample` | whole sample world, per map (needs uSource, zones downloaded) | 38/40 (2 drop-probe teleports) |
+| `SM_CSS=... Unity -executeMethod LadderDemoBootstrap.Run -smRecord dir`, then `make_video.sh dir out.mp4` | first-person ladder clip on the test map (CS:S ladder model with SM_CSS) | recorded |
+| `SM_CSS=... Unity -executeMethod LightingShots.Run -bsp map -smLightmaps on` | screenshots of an imported map (stock textures with SM_CSS) | eazy textured |
 | `Dev/Tests/UnityPlay/run.sh 90` | movement suite (movement session's) | all passed |
 
 ## Lessons
