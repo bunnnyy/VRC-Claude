@@ -291,3 +291,32 @@ the render meshes (needs a test). I did not dig into why USource's geometry does
   teleports 20/27 tested (118 not reachable by the test's drop-in probe). Not fully explained yet.
 - Known gaps: stock CS:S textures/models aren't available here (white surfaces, missing stock props); no lighting
   is imported (indoor maps are dark until lighting is baked; uSource can read the maps' lightmaps, untried).
+
+### Step 5: lighting, bhop/surf runs, final checks (2026-10-10)
+- **Lighting: the maps' own Source lightmaps, nothing to bake.** uSource can read them (`ParseLightmaps`) but only into
+  Unity's runtime lightmap list, which isn't saved with the scene (so VRChat would never see it). `SourceMapVisuals` now
+  saves each lightmap as a texture and gives each lit surface a material with `SourceMaps/Lightmapped` (texture x
+  lightmap x 2, Source's overbright; unlit like CS:S world brushes). arcane: 329 surfaces lit, eazy_v2: 484. Props keep
+  Unity lighting (Source lights them per vertex). Screenshot in the guide.
+- **Collision: faces where brushes touch are dropped** (`BspGeometry.AddSolidBrushes`). Source collides with whole
+  brushes and never meets them; in a triangle mesh their edges sit in the surface (a ramp made of brushes side by side)
+  and stopped a surfer on bhop_eazy_v2. Also fewer triangles (kitsune 70.9k -> 41.9k brush triangles).
+- **Bhop and surf runs** in `run.sh map` (real Unity + ClientSim + SourceMovement): from up to 12 destinations, the
+  longest open floor, W for prespeed, then jump + air strafe (A/D while turning); surf on the map's largest slopes too
+  steep to stand on, holding into the ramp. A stall = speed falls > 100 u/s in a frame with no vertical wall ahead.
+  Two seam stalls (a seam across a ramp, a seam along a wall) were SourceMovement's; the movement session fixed both.
+- **The open arcane miss, explained:** trigger_teleport 423175 (out of bounds, to `bonus_stop`) shares its box with a
+  trigger_push straight up at 1250 u/s (hammerid 422061): an updraft, so a player there is pushed up and never falls
+  into the teleport's bottom slab, as in Source. Map design, not a bug. Also found: the test's drop point could start
+  inside a solid block (hollow collision mesh, no face to overlap); it now checks that (`InsideSolid`), tries the 3
+  best spots per teleport and follows relay teleports at the destination.
+- **Results (real Unity 2022.3.22f1 + ClientSim + SourceMovement):** `run.sh sample` all passed (5 maps, lightmaps,
+  sampled teleports 89/89). `run.sh map` per map: stand at every destination/spawn (japan 40/40, eazy 46/46, badges
+  55/55, kitsune 20/20, arcane 185/185); teleports japan 55/55, eazy 44/44, badges 134/134, kitsune 28/29, arcane 22/25;
+  bhop runs 0 stalls on 4 maps (top speeds 300-530 u/s), surf runs 0 stalls on all. `Tests/Bsp` 57/57 (incl. the trimmed
+  ramp seam), `Tests/Sim` all passed, `run.sh 90` all passed, UdonSharp compile OK.
+- **Still open:** arcane's 3 remaining misses are huge out-of-bounds `*_stop` volumes (326264, 326616, 326929) where
+  every drop spot the test finds ends up pushed out of geometry (was 7 misses before this step). kitsune: one tiny
+  trigger (0.6 m) the falling player slides off; one grounded stop at a 2 u diagonal lip near `restartred`, reported to
+  the movement session (step-up). Faint lines can show where two lightmapped faces meet (lightmap atlas edges).
+

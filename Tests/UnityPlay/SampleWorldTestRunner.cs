@@ -100,8 +100,8 @@ public class SampleWorldTestRunner : MonoBehaviour
         for (int i = 0; i < teleports.Length && tested < 15; i += Mathf.Max(1, teleports.Length / 15))
         {
             var t = teleports[i];
-            Vector3? drop = DropPoint(t);
-            if (drop == null) continue;
+            var drops = DropPoints(t, 3);
+            if (drops.Count == 0) continue;
             tested++;
             // Where the player really ends up: a destination inside another working teleport forwards them (in
             // Source too, e.g. bhop_arcane_v1's *_stop relay destinations), so follow up to 3 hops.
@@ -116,15 +116,19 @@ public class SampleWorldTestRunner : MonoBehaviour
                 if (next == null || next == t) break;
                 dest = next.destination.position;
             }
-            Teleport(spawn.position);
-            yield return Seconds(0.3f);
-            Teleport(drop.Value);
             bool reached = false;
-            for (float until = Time.time + 2f; Time.time < until && !reached;)
+            foreach (var drop in drops) // the trigger works if dropping in at one of its 3 best spots gets there
             {
-                yield return null;
-                Vector3 d = player.GetPosition() - dest;
-                reached = new Vector2(d.x, d.z).magnitude < 0.5f && Mathf.Abs(d.y) < 1.5f;
+                Teleport(spawn.position);
+                yield return Seconds(0.3f);
+                Teleport(drop);
+                for (float until = Time.time + 2f; Time.time < until && !reached;)
+                {
+                    yield return null;
+                    Vector3 d = player.GetPosition() - dest;
+                    reached = new Vector2(d.x, d.z).magnitude < 0.5f && Mathf.Abs(d.y) < 1.5f;
+                }
+                if (reached) break;
             }
             if (reached) arrived++; else missed.Add($"{t.name} -> {dest:F1}, player at {player.GetPosition():F1}");
         }
@@ -187,12 +191,11 @@ public class SampleWorldTestRunner : MonoBehaviour
         movement.SendCustomEvent("__0_TeleportPlayer");
     }
 
-    /// <summary>Like MapPlayTestRunner: the spot over the trigger with headroom whose ground (hull cast) is lowest.</summary>
-    static Vector3? DropPoint(SourceMapTeleport t)
+    /// <summary>Like MapPlayTestRunner: the spots over the trigger with headroom whose ground (hull cast) is lowest, best first.</summary>
+    static List<Vector3> DropPoints(SourceMapTeleport t, int count)
     {
         const int Solid = 1 << 0;
-        Vector3? best = null;
-        float bestDepth = 0.3f + 9 * U;
+        var found = new List<KeyValuePair<float, Vector3>>();
         foreach (var col in t.GetComponents<MeshCollider>())
         {
             if (!col.enabled) continue;
@@ -206,13 +209,27 @@ public class SampleWorldTestRunner : MonoBehaviour
                 if (Physics.Raycast(above, Vector3.up, 1.5f, Solid, QueryTriggerInteraction.Ignore)) continue;
                 if (Physics.CheckBox(above + new Vector3(0, 37, 0) * U, new Vector3(17, 37, 17) * U, Quaternion.identity, Solid, QueryTriggerInteraction.Ignore)) continue; // hull in a wall
                 if (InsideSolid(above)) continue; // in a solid block: no face to overlap, so CheckBox misses it
+                if (InPush(above)) continue; // a push (e.g. an updraft) decides where the player goes
                 float depth = b.size.y + 0.3f;
                 if (Physics.BoxCast(above, new Vector3(16, 0.5f, 16) * U, Vector3.down, out var hit, Quaternion.identity, depth, Solid, QueryTriggerInteraction.Ignore))
                     depth = hit.distance;
-                if (depth > bestDepth) { bestDepth = depth; best = above; }
+                if (depth > 0.3f + 9 * U) found.Add(new KeyValuePair<float, Vector3>(depth, above));
             }
         }
-        return best;
+        found.Sort((x, y) => y.Key.CompareTo(x.Key));
+        var result = new List<Vector3>();
+        foreach (var f in found) if (result.Count < count) result.Add(f.Value);
+        return result;
+    }
+
+    /// <summary>Inside a trigger_push volume: the push (e.g. an updraft) decides where the player goes, not the fall.</summary>
+    static bool InPush(Vector3 p)
+    {
+        foreach (var e in FindObjectsOfType<SourceEntity>())
+            if (e.className == "trigger_push")
+                foreach (var c in e.GetComponents<Collider>())
+                    if (c.enabled && (c.ClosestPoint(p) - p).sqrMagnitude < 1e-6f) return true;
+        return false;
     }
 
     IEnumerator Shot(string name, Transform spawn)

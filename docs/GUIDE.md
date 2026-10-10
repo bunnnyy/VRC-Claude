@@ -3,8 +3,8 @@
 Step by step, from nothing to an uploaded VRChat world with Source movement, a timer and a lobby where
 players vote between imported CS:S bhop maps. Kept up to date as features are finished.
 
-> **Status (2026-10-10).** Done and tested: movement, timer, map import (visuals with uSource, collision, prop
-> collision, markers, teleports, boosters, water, ladders), timer zones from zones-cstrike, map rotation (vote, rock the
+> **Status (2026-10-10).** Done and tested: movement, timer, map import (visuals with uSource and the maps' own
+> lightmaps, collision, prop collision, markers, teleports, boosters, water, ladders), bhop and surf runs on every map, timer zones from zones-cstrike, map rotation (vote, rock the
 > vote, time limit, owner controls), lobby practice courses, saved records per map. The quickest way to a full world is
 > the **sample world builder** (step 5b). Pictures come from Unity itself; editor windows can't be screenshotted on the
 > build machine, so menus are described in words.
@@ -81,14 +81,18 @@ saves the scene as `Assets/SourceMapsSample.unity`. Then continue at step 10. St
 the BSP): every map surface gets a material with the small `SourceMaps/Lightmapped` shader (texture x lightmap, like
 CS:S), and the lightmaps are saved as textures in `Assets/SourceMapsImported/<map>/Lightmaps`, so they are part of the
 uploaded world. Props are still lit by Unity's lights (Source lights them per vertex, not imported), and glass/glowing
-surfaces keep uSource's materials.
+surfaces keep uSource's materials. You may see a faint line where two lit faces meet (edges of the lightmap
+atlas).
+
+![bhop_arcane_v1's start room in the sample world, lit by its own lightmaps (it was black before)](images/sample_bhop_arcane_v1_lit.png)
 
 ![bhop_eazy_v2: left Unity's default light (before), right the map's own lightmaps (white walls: stock CS:S texture missing on the build machine)](images/lightmaps_bhop_eazy_v2.png)
 
 ## 6. Import a map (one by one)
 
 1. **Tools > Source Maps > Import BSP...** and pick the `.bsp`. You get an object named after the map with:
-   - **Collision**: every solid surface, including invisible walls (clip brushes).
+   - **Collision**: every solid surface, including invisible walls (clip brushes), without the hidden faces where
+     two brushes touch (like Source; those would stop surfers).
    - **Entities**: one marker per map entity (triggers, buttons, ...) keeping all its settings.
    - Working **fall teleports**, **boosters/push triggers**, **water** and **ladders** (for SourceMovement).
    Teleports and boosters with a name filter (on bhop maps usually "bhop block" teleports that fire when you stand

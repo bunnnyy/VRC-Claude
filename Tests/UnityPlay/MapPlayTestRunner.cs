@@ -101,8 +101,8 @@ public class MapPlayTestRunner : MonoBehaviour
             bool reached = false;
             var trace = new StringBuilder();
             // Like a player who can come from anywhere: the trigger works if dropping in at one of its best spots
-            // (ground lowest under it) gets there. Some spots are covered by other volumes, e.g. bhop_arcane_v1's
-            // out-of-bounds teleport 423175 shares its box with an updraft (trigger_push up at 1250 u/s).
+            // (ground lowest under it) gets there. Spots inside a push are skipped: bhop_arcane_v1's out-of-bounds
+            // teleport 423175 shares its box with an updraft (trigger_push up at 1250 u/s), so nobody falls into it.
             foreach (var spot in drops)
             {
                 start = spot;
@@ -381,6 +381,7 @@ public class MapPlayTestRunner : MonoBehaviour
                 if (Physics.Raycast(above, Vector3.up, 1.5f, Solid, QueryTriggerInteraction.Ignore)) continue; // no headroom
                 if (Physics.CheckBox(above + new Vector3(0, 37, 0) * U, new Vector3(17, 37, 17) * U, Quaternion.identity, Solid, QueryTriggerInteraction.Ignore)) continue; // hull in a wall
                 if (InsideSolid(above)) continue; // in a solid block: no face to overlap, so CheckBox misses it
+                if (InPush(above)) continue;
                 float depth = b.size.y + 0.3f;
                 if (Physics.BoxCast(above, new Vector3(16, 0.5f, 16) * U, Vector3.down, out var hit, Quaternion.identity, depth, Solid, QueryTriggerInteraction.Ignore))
                     depth = hit.distance;
@@ -412,6 +413,16 @@ public class MapPlayTestRunner : MonoBehaviour
             dest = next.destination.position;
         }
         return dest;
+    }
+
+    /// <summary>Inside a trigger_push volume: the push (e.g. an updraft) decides where the player goes, not the fall.</summary>
+    static bool InPush(Vector3 p)
+    {
+        foreach (var e in FindObjectsOfType<SourceEntity>())
+            if (e.className == "trigger_push")
+                foreach (var c in e.GetComponents<Collider>())
+                    if (c.enabled && (c.ClosestPoint(p) - p).sqrMagnitude < 1e-6f) return true;
+        return false;
     }
 
     /// <summary>
