@@ -403,8 +403,9 @@ the render meshes (needs a test). I did not dig into why USource's geometry does
   walking into a trigger plays its sound). eazy's built-in route: sections 1-4 done, red lanes (5) still open as before.
 - **Route bot on monster_jam** (each stage started at its teleport destination): r, o (2), b (3) and the tower push run
   to their exit; c runs from the start zone past c75 (first fall before c8), then from c8 falls before c10; the others fall early or stop: ch and
-  o (3) are surfs (not done by the bot), e falls past e2 in the dunes, en/oa/d/b (1)/b (2) on their first gaps, fl needs
-  its ladder climb, s (the moon) falls early. Video: `Dev/docs/media/bhop_monster_jam_bot.mp4` (2:09, the stages that
+  o (3) are surfs (not done by the bot), e (Egypt) runs its block chain round the pyramid to its last segment and then
+  stops at the exit wall, en stops at its first drop (en2), oa/d/b (1)/b (2) fall on their first gaps, fl needs
+  its ladder climb, s (the moon) falls early. Video: `Dev/docs/media/bhop_monster_jam_bot.mp4` (2:38, the stages that
   run, in Carmac's order, the map's music mixed in at the importer's volumes; the recorder has no audio).
 - Still open: one of the map test's pyramid surfs (Egypt) loses speed with nothing ahead and moving away from both
   faces (the other 3 surf fine); the bot stages above; the route bot doesn't press buttons (monster_jam's are side

@@ -74,6 +74,8 @@ file has the end zone and one `section z` per stage (from the teleport that star
 floors; the image mode draws a stage with its teleports), then check each stage with ROUTE_SECTION: the log's
 "plan section N: no way on" shows stretches the planner can't continue from, and "FAIL section N: teleported back from"
 where the bot falls. bhop_monster_jam's file has all 16 stages in Carmac's order; see the plan for what runs.
+`run.sh route` rebuilds `Assets/RouteTest.unity` for the map it is given: recordings made right after a route run on
+another map use that map's scene, so rebuild (or check the log's map name) before recording.
 
 ## Lessons
 - Physics.RaycastAll returns one hit per collider: the map's world is one MeshCollider, so a roof hides the floors
