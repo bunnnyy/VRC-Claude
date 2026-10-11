@@ -81,6 +81,13 @@ another map use that map's scene, so rebuild (or check the log's map name) befor
 - Physics.RaycastAll returns one hit per collider: the map's world is one MeshCollider, so a roof hides the floors
   under it. Cast again from under each hit (RouteRunner's Surfaces for route files).
 - Old vbsp maps (bhop_monster_jam) have no ambient index lumps: one light cube per leaf (BspFile reads both).
+- uSource's material shaders decide what gets the lightmaps (`LightmappedShaders`): `$detail` surfaces come as
+  USource/DetailGeneric, `$translucent` as TranslucentGeneric (both were left to Unity's lights: black, with Unity's
+  shadows). Water (Water shader or %compilewater) has no lightmap: SourceMaps/Water. Sky faces are uSource's hidden
+  TOOLS/TOOLSSKYBOX meshes: shown with SourceMaps/Sky (a cubemap of the map's sky). Check with
+  `SM_SHOT_DESTS=c1,r1,... LightingShots` (screenshots, no run) and `SM_SHOT_MATERIALS=<dest>` (what's drawn there).
+- VRChat's capsule (0.2 m) is thinner than Source's 32 unit hull: triggers are widened by the difference
+  (`TriggerGrow`), and hull checks against them (SourceMapBlocks, the route bot) take it off again.
 - uSource drops its file providers after LoadMap: SourceMapVisuals opens them again (CS:S folder, VPKs, the map's
   pakfile) to read sounds and the sky.
 - uSource adds MeshColliders to every brush/displacement mesh: SourceMapVisuals removes them (the importer's

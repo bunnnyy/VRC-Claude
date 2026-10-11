@@ -80,7 +80,12 @@ saves the scene as `Assets/SourceMapsSample.unity`. Then continue at step 10. St
 **Lighting:** nothing to bake. The importer uses each map's own Source lightmaps (the light the mapper compiled into
 the BSP): every map surface gets a material with the small `SourceMaps/Lightmapped` shader (texture x lightmap, like
 CS:S), and the lightmaps are saved as textures in `Assets/SourceMapsImported/<map>/Lightmaps`, so they are part of the
-uploaded world. Glass/glowing surfaces keep uSource's materials. Static props (trees, crates...) are lit like CS:S lights them: the map's ambient
+uploaded world. Surfaces with a detail texture and see-through ones (decals, tree cards) get the lightmaps too.
+Glowing surfaces keep uSource's materials. Like CS:S, the map has no real-time shadows: its renderers don't cast or
+get Unity's (the shadows are the ones in the lightmaps). **Water** gets the small `SourceMaps/Water` shader: the water's
+own colour (`$fogcolor`) with the sky reflected at low angles. The map's **sky faces** (the `toolsskybox` walls round
+each stage) draw the sky and hide whatever is behind them, so other stages don't show through the sky, as in CS:S.
+Static props (trees, crates...) are lit like CS:S lights them: the map's ambient
 light at the prop plus the strongest lights that reach it (the sun only where the sky is visible), baked into the
 model's vertex colours (`SourceMaps/Prop` shader). You may see a faint line where two lit faces meet (edges of the lightmap
 atlas).
@@ -224,6 +229,8 @@ is in **[SETTINGS.md](SETTINGS.md)**.
 | Players fall through a map | Was **Import BSP** run (step 6b)? The visuals from uSource have no collision |
 | Map looks white/pink | Set the CS:S folder (the one with `cstrike` and `hl2`; HL2 textures, skies and sounds are in `hl2`), then import the map again: materials saved without their texture are rebuilt. Pink = shader problem, re-import |
 | No music / sounds in a map | The map's `ambient_generic` sounds become Audio Sources under its entities; files the map doesn't pack come from your CS:S folder. You hear an area's sound only within its radius, like in CS:S |
+| Black walls/floors or black water in a map | Imported before 2026-10-11: import the map again (detail-textured surfaces and water weren't lit) |
+| Another stage shows through the sky | Import the map again: the sky faces now hide what's behind them |
 | Sky is the world's default | The map's sky textures weren't found (an HL2 sky needs the CS:S folder's `hl2`); import again after setting the folder |
 | Two maps overlap | Move the map objects apart (step 6b.4) |
 | Owner buttons don't show | Only the instance owner sees them; in public/group instances, the master |
