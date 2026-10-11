@@ -38,6 +38,9 @@ public class RunTimer : UdonSharpBehaviour
     public Vector3 headOffset = new Vector3(0f, 0.25f, 1f);
     [Tooltip("Desktop key that restarts the run")]
     public KeyCode restartKey = KeyCode.G;
+    [Tooltip("Most speed in a start zone, Source units/s, like a bhop server's prespeed limit (0 = no limit). " +
+        "Needs SourceMovement in the scene (found by name).")]
+    public float startZoneSpeedCap = 290f;
 
     private VRCPlayerApi localPlayer;
     private Transform checkpoint;
@@ -50,6 +53,7 @@ public class RunTimer : UdonSharpBehaviour
     private Transform courseStart;
     private UdonBehaviour movement; // SourceMovement, found by name: teleports through it keep its hull in step
     private bool lookedUp;
+    private bool inStartZone;
 
     private void Start()
     {
@@ -100,7 +104,9 @@ public class RunTimer : UdonSharpBehaviour
 
     public override void OnPlayerRespawn(VRCPlayerApi player)
     {
-        if (player.isLocal) running = false; // left the course (VRChat's respawn is the world spawn)
+        if (!player.isLocal) return;
+        running = false; // left the course (VRChat's respawn is the world spawn)
+        _ExitStartZone();
     }
 
     private Transform StartPoint() { return Usable(courseStart) ? courseStart : startPoint; }
@@ -111,10 +117,13 @@ public class RunTimer : UdonSharpBehaviour
     {
         running = false;
         checkpoint = StartPoint();
+        inStartZone = true;
+        SetSpeedCap(startZoneSpeedCap);
     }
 
     public void _LeaveStart()
     {
+        _ExitStartZone();
         running = true;
         startTime = Time.time;
         lastTime = -1f;
@@ -147,15 +156,36 @@ public class RunTimer : UdonSharpBehaviour
         TeleportTo(checkpoint);
     }
 
-    private void TeleportTo(Transform point)
+    /// <summary>Out of the start zone without starting a run (its map was switched off, a respawn): no speed cap.</summary>
+    public void _ExitStartZone()
     {
-        if (!Usable(point) || localPlayer == null) return;
+        if (!inStartZone) return;
+        inStartZone = false;
+        SetSpeedCap(0f);
+    }
+
+    private void SetSpeedCap(float cap)
+    {
+        UdonBehaviour m = Movement();
+        if (m != null) m.SetProgramVariable("speedCap", cap);
+    }
+
+    /// <summary>SourceMovement, found by name so the timer works without it (null then).</summary>
+    private UdonBehaviour Movement()
+    {
         if (!lookedUp)
         {
             lookedUp = true;
             GameObject go = GameObject.Find("SourceMovement");
             if (go != null) movement = (UdonBehaviour)go.GetComponent(typeof(UdonBehaviour));
         }
+        return movement;
+    }
+
+    private void TeleportTo(Transform point)
+    {
+        if (!Usable(point) || localPlayer == null) return;
+        Movement();
         if (movement != null)
         {
             movement.SetProgramVariable("teleportPosition", point.position);

@@ -51,6 +51,9 @@ public class SourceMovement : UdonSharpBehaviour
     public LayerMask ladderLayers = 1 << 22;
     [Tooltip("Layers of water volumes: trigger colliders filling the water. Layer 4 is Unity's Water layer.")]
     public LayerMask waterLayers = 1 << 4;
+    [Tooltip("Map teleports (trigger_teleport, SourceMapTeleport) keep the player's speed, like CS:S. Off: they stop " +
+        "the player (a clean reset). Landmark teleports (seamless level exits) always keep it.")]
+    public bool teleportsKeepSpeed;
 
     [Header("Controls")]
     [Tooltip("Start with Source movement on. Turn off if a SourceMovementZone switches it on.")]
@@ -257,6 +260,12 @@ public class SourceMovement : UdonSharpBehaviour
     [System.NonSerialized] public Quaternion teleportRotation = Quaternion.identity;
     [System.NonSerialized] public bool teleportKeepVelocity;
     public void _Teleport() { TeleportPlayer(teleportPosition, teleportRotation, teleportKeepVelocity); }
+
+    /// <summary>
+    /// Most horizontal speed allowed, Source units/s (0 = no limit): RunTimer sets it while the player is in a start
+    /// zone (like a bhop server's prespeed limit), so a run can't start with speed built up in the zone.
+    /// </summary>
+    [System.NonSerialized] public float speedCap;
 
     /// <summary>
     /// trigger_push (SourcePushTrigger): entering one adds its push velocity (Source units/s), leaving takes it off.
@@ -489,6 +498,12 @@ public class SourceMovement : UdonSharpBehaviour
         CategorizePosition();
         if (LadderMove()) MoveWithPush(dt); // FullLadderMove: no gravity, no friction
         else FullWalkMove(dt);
+        float flat = Mathf.Sqrt(velocity.x * velocity.x + velocity.z * velocity.z);
+        if (speedCap > 0f && flat > speedCap)
+        {
+            velocity.x *= speedCap / flat;
+            velocity.z *= speedCap / flat;
+        }
     }
 
     /// <summary>

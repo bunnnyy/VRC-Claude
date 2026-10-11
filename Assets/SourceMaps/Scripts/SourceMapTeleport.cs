@@ -6,9 +6,9 @@ using VRC.Udon;
 /// <summary>
 /// trigger_teleport: sends the local player to the destination when they touch a trigger collider on this
 /// object (Unity only sends trigger events to the collider's own object). Without a landmark the player faces the
-/// destination's direction and stops (CS:S keeps the velocity; here a teleport is a reset). With a landmark (seamless
-/// level exits) they keep their offset from the landmark, their view and their speed, like Source. Works with
-/// SourceMovement (through its _Teleport event, found by name) and without it. With a filter (bhop blocks) it fires
+/// destination's direction and stops: a clean reset (CS:S keeps the speed: tick SourceMovement's Teleports Keep Speed).
+/// With a landmark (seamless level exits) they keep their offset from the landmark, their view and their speed, like
+/// Source. Works with SourceMovement (through its _Teleport event, found by name) and without it. With a filter (bhop blocks) it fires
 /// only while the player's name matches, see SourceMapBlocks.
 /// </summary>
 [UdonBehaviourSyncMode(BehaviourSyncMode.None)]
@@ -60,9 +60,10 @@ public class SourceMapTeleport : UdonSharpBehaviour
         }
         if (movement != null)
         {
+            object keepSpeed = movement.GetProgramVariable("teleportsKeepSpeed");
             movement.SetProgramVariable("teleportPosition", position);
             movement.SetProgramVariable("teleportRotation", rotation);
-            movement.SetProgramVariable("teleportKeepVelocity", keep);
+            movement.SetProgramVariable("teleportKeepVelocity", keep || (keepSpeed != null && (bool)keepSpeed));
             movement.SendCustomEvent("_Teleport");
             return;
         }

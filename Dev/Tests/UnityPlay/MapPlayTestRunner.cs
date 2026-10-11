@@ -144,6 +144,39 @@ public class MapPlayTestRunner : MonoBehaviour
             }
         }
         Check(total > 0 && arrived == total, $"teleports: {arrived}/{total} working trigger_teleports send the player to their destination");
+
+        // SourceMovement's Teleports Keep Speed: off, a teleport stops the player; on, they keep their speed (CS:S).
+        SourceMapTeleport probe = null;
+        List<Vector3> probeDrops = null;
+        foreach (var t in FindObjectsOfType<SourceMapTeleport>())
+        {
+            if (t.filterName != "" || t.landmark != null) continue;
+            probeDrops = DropPoints(t, 1);
+            if (probeDrops.Count > 0) { probe = t; break; }
+        }
+        if (probe != null)
+        {
+            var speeds = new float[2];
+            for (int keep = 0; keep < 2; keep++)
+            {
+                movement.SetProgramVariable("teleportsKeepSpeed", keep == 1);
+                Vector3 dest = Relayed(probe);
+                yield return Teleport(points[0].transform.position, Quaternion.identity);
+                yield return Frames(0.3f);
+                yield return Teleport(probeDrops[0] - Vector3.up * 0.4f, Quaternion.identity); // just inside the trigger
+                movement.SetProgramVariable("velocity", new Vector3(150f, -100f, 0f));
+                speeds[keep] = -1f;
+                for (int i = 0; i < frameRate && speeds[keep] < 0f; i++)
+                {
+                    yield return null;
+                    Vector3 d = player.GetPosition() - dest;
+                    if (new Vector2(d.x, d.z).magnitude < 0.5f && Mathf.Abs(d.y) < 1.5f) speeds[keep] = Speed();
+                }
+            }
+            movement.SetProgramVariable("teleportsKeepSpeed", false);
+            Check(speeds[0] >= 0f && speeds[0] < 20f && speeds[1] > 100f,
+                $"teleports: stop the player ({speeds[0]:F0} u/s), or keep their speed with Teleports Keep Speed ({speeds[1]:F0} u/s, entered at 150)");
+        }
         foreach (var s in missed) Log("   missed: " + s);
         Log($"   {unreachable.Count} teleports not reachable from above (ground above the trigger), not tested: " + string.Join(", ", unreachable));
         yield return BhopBlocks(points);

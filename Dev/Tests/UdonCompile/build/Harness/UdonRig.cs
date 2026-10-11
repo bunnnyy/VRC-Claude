@@ -147,6 +147,7 @@ public class Rig
     public void SetPlayerWalk(float v) => walk = v; // another script (VRCWorld's settings) sets it
     public void AddVelocity(Vector3 units) { SetVar("__0_impulse__param", units); RunEvent("__0_AddVelocity"); }
     public void SetGravityScale(float scale) { SetVar("__0_scale__param", scale); RunEvent("__0_SetGravityScale"); }
+    public void SetSpeedCap(float cap) => SetVar("speedCap", cap); // what RunTimer sets by name in a start zone
     public void TeleportPlayer(Vector3 units, float yaw, bool keepVelocity)
     {
         SetVar("__0_position__param", units * U);

@@ -23,6 +23,8 @@ public class TimerZone : UdonSharpBehaviour
     public Leaderboard leaderboard;
     public Leaderboard autoLeaderboard;
 
+    private bool inside; // the local player is in this start zone
+
     public override void OnPlayerTriggerEnter(VRCPlayerApi player)
     {
         if (!player.isLocal || timer == null) return;
@@ -31,6 +33,7 @@ public class TimerZone : UdonSharpBehaviour
             // No point of its own: the timer's Start Point, or (none either, e.g. a map's zone made by hand) this zone.
             timer._SetCourse(leaderboard, autoLeaderboard, respawnPoint != null || timer.startPoint != null ? respawnPoint : transform);
             timer._EnterStart();
+            inside = true;
         }
         else if (zoneType == TimerZoneType.End) timer._EnterEndOf(leaderboard);
         else if (zoneType == TimerZoneType.Checkpoint) timer._SetCheckpoint(respawnPoint != null ? respawnPoint : transform);
@@ -40,6 +43,16 @@ public class TimerZone : UdonSharpBehaviour
 
     public override void OnPlayerTriggerExit(VRCPlayerApi player)
     {
-        if (player.isLocal && timer != null && zoneType == TimerZoneType.Start) timer._LeaveStart();
+        if (!player.isLocal || timer == null || zoneType != TimerZoneType.Start) return;
+        inside = false;
+        timer._LeaveStart();
+    }
+
+    // Switched off with the player inside (its map rotated away): Unity sends no exit, so lift the speed cap here.
+    private void OnDisable()
+    {
+        if (!inside || timer == null) return;
+        inside = false;
+        timer._ExitStartZone();
     }
 }

@@ -23,6 +23,7 @@ public static class MovementTests
         Test("Holding W while bhopping does not gain speed", StraightBhopNoGain);
         Test("Air strafing gains speed (v^2 grows ~900 per tick)", AirStrafeGain);
         Test("A/D + mouse zigzag bhop gains speed", ZigZagBhop);
+        Test("Speed cap (a start zone's prespeed limit) holds strafing at 290 u/s, lifting it lets you gain", SpeedCap);
         Test("Manual mode: holding jump only jumps once", ManualHoldJumpsOnce);
         Test("Manual mode: scroll wheel jumps on landing (no friction loss)", ScrollBhop);
         Test("Auto bhop toggles at runtime with the B key", ToggleKey);
@@ -226,6 +227,32 @@ public static class MovementTests
         });
         Note($"speed after 6 s {r.Speed:F0} u/s");
         Check(r.Speed > 650, "speed " + r.Speed);
+    }
+
+    static void SpeedCap()
+    {
+        var r = OnFloor();
+        r.SetSpeedCap(290f);
+        r.Move(1, 0);
+        r.Run(1f);
+        r.Jump(true);
+        float dir = 1, top = 0;
+        bool wasGround = true;
+        System.Action strafe = () =>
+        {
+            if (r.OnGround && !wasGround) dir = -dir;
+            wasGround = r.OnGround;
+            r.Move(0, dir);
+            r.Yaw = r.VelYaw;
+            top = Math.Max(top, r.Speed);
+        };
+        r.Run(4f, strafe);
+        float capped = top;
+        r.SetSpeedCap(0f); // left the start zone
+        r.Run(4f, strafe);
+        Note($"top speed with the cap {capped:F1} u/s, 4 s after lifting it {r.Speed:F0} u/s");
+        Check(capped <= 290.01f && capped > 280f, "capped speed " + capped);
+        Check(r.Speed > 450, "no gain after lifting the cap: " + r.Speed);
     }
 
     static void ManualHoldJumpsOnce()

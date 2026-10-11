@@ -55,6 +55,7 @@ Every changeable setting of SourceMovement, SourceTimer and SourceMaps. Building
 | Hull Only | prefab: empty; Create Lobby adds every map | Maps whose solid colliders only the Source hull hits: while Source movement is on they move to VRChat's **Walkthrough** layer (17), so VRChat's capsule (~84 units, doesn't shrink when crouching) can't snag in vents. Objects with a trigger collider keep their layer |
 | Ladder Layers | 22 | Ladder volumes (trigger boxes against the climbable face) |
 | Water Layers | 4 (Water) | Water volumes (trigger boxes filling the water) |
+| Teleports Keep Speed | off | Map teleports keep the player's speed, like CS:S. Off: they stop the player (a clean reset). Landmark teleports (seamless level exits) always keep it |
 
 ### 1.4 Controls
 
@@ -125,6 +126,7 @@ The map importer adds these; you can also place them by hand.
 | Label | set by the prefab | The timer text |
 | Head Offset | 0, 0.25, 1 m | Where the timer floats relative to your eyes |
 | Restart Key | G | Desktop key that restarts the run |
+| Start Zone Speed Cap | 290 | Most speed (u/s) while in a start zone, like a bhop server's prespeed limit, so runs can't start with speed built up there. 0 = no limit. Needs SourceMovement |
 
 ## 5. TimerZone
 

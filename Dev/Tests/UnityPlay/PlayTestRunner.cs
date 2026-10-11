@@ -570,11 +570,18 @@ public class PlayTestRunner : MonoBehaviour
         }
         yield return Spawn(new Vector3(0, 0, 100), 0f);
         Check("timer", !(bool)timer.GetProgramVariable("running"), "not running inside the start zone");
+        // Prespeed limit: in the start zone speed is capped (290 u/s), so a run can't start with speed built up there.
+        movement.SetProgramVariable("velocity", new Vector3(0f, 0f, 600f));
+        yield return Frames(0.05f, null); // a few ticks (above 100 fps a frame can pass without one)
+        float inZone = Speed();
+        Check("timer", inZone <= 290.5f && (float)movement.GetProgramVariable("speedCap") == 290f, $"start zone caps speed at 290 u/s ({inZone:F0})");
+        yield return Spawn(new Vector3(0, 0, 100), 0f);
         Keys(Key.W);
         yield return Frames(1.5f, null);
         Keys();
         yield return Frames(1f, null); // stop before teleporting on
         Check("timer", (bool)timer.GetProgramVariable("running"), "starts when leaving the start zone");
+        Check("timer", (float)movement.GetProgramVariable("speedCap") == 0f, "speed cap lifted after leaving the start zone");
 
         // Through the checkpoint zone, then fall into the reset zone: back to the checkpoint, timer keeps running.
         yield return Teleport(new Vector3(0, 0, 3900), 0f, false);

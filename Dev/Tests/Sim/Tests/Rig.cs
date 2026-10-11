@@ -116,6 +116,7 @@ public class Rig
     public void SetPlayerWalk(float v) => player.walk = v; // another script (VRCWorld's settings) sets it
     public void AddVelocity(Vector3 units) => move.AddVelocity(units);
     public void SetGravityScale(float scale) => move.SetGravityScale(scale);
+    public void SetSpeedCap(float cap) => move.speedCap = cap; // what RunTimer sets by name in a start zone
     public bool OnLadder => Get<bool>("onLadder");
     public float VelYaw => Mathf.Atan2(Vel.x, Vel.z) * Mathf.Rad2Deg;
     public Vector3 PlayerVelocity => player.velocity;
