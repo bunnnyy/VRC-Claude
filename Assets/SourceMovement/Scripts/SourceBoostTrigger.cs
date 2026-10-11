@@ -21,6 +21,8 @@ public class SourceBoostTrigger : UdonSharpBehaviour
     public float gravityScale = 1f;
     [Tooltip("Fire when the player leaves instead of enters (OnEndTouch)")]
     public bool onLeave;
+    [Tooltip("Seconds after the touch (the output's delay), e.g. a gravity reset half a second after a gravity boost")]
+    public float delay;
 
     private int contacts;
     private Collider[] colliders;
@@ -56,6 +58,12 @@ public class SourceBoostTrigger : UdonSharpBehaviour
     private void OnDisable() { contacts = 0; }
 
     private void Fire()
+    {
+        if (delay > 0f) SendCustomEventDelayedSeconds(nameof(_Boost), delay);
+        else _Boost();
+    }
+
+    public void _Boost()
     {
         if (movement == null) return;
         if (addVelocity != Vector3.zero) movement.AddVelocity(addVelocity);

@@ -179,6 +179,7 @@ public static class SourceMapImporter
             names.names = sets.Where(n => !n.OnLeave).Select(n => n.Name).ToArray();
             names.delays = sets.Where(n => !n.OnLeave).Select(n => n.Delay).ToArray();
             names.isClass = sets.Where(n => !n.OnLeave).Select(n => n.IsClass).ToArray();
+            names.onStart = sets.Where(n => !n.OnLeave).Select(n => n.OnStart).ToArray();
             names.leaveNames = sets.Where(n => n.OnLeave).Select(n => n.Name).ToArray();
             names.leaveDelays = sets.Where(n => n.OnLeave).Select(n => n.Delay).ToArray();
             names.leaveIsClass = sets.Where(n => n.OnLeave).Select(n => n.IsClass).ToArray();
@@ -234,6 +235,7 @@ public static class SourceMapImporter
                 boostType.GetField("setGravity").SetValue(c, b.SetGravity);
                 boostType.GetField("gravityScale").SetValue(c, b.Gravity);
                 boostType.GetField("onLeave").SetValue(c, b.OnLeave);
+                boostType.GetField("delay").SetValue(c, b.Delay);
                 UdonSharpEditorUtility.CopyProxyToUdon(c);
                 boosts++;
             }

@@ -30,6 +30,7 @@ namespace UdonSharp
         public int serializationRequests;
         public List<(string name, object[] args)> sentNetworkEvents = new List<(string, object[])>();
         public void RequestSerialization() => serializationRequests++;
+        public void SendCustomEventDelayedSeconds(string eventName, float delaySeconds) { }
         public object GetProgramVariable(string name) =>
             GetType().GetField(name, System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)?.GetValue(this);
         public void SendCustomNetworkEvent(VRC.Udon.Common.Interfaces.NetworkEventTarget target, string eventName, params object[] args)

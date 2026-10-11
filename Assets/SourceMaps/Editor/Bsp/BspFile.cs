@@ -452,7 +452,10 @@ namespace SourceMaps.Bsp
                 float dot = Vector3.Dot(-toLight, w.Normal);
                 if (dot <= w.StopDot2) return Vector3.Zero;
                 if (dot < w.StopDot && w.StopDot > w.StopDot2)
-                    ratio *= (float)Math.Pow((dot - w.StopDot2) / (w.StopDot - w.StopDot2), w.Exponent);
+                {
+                    float t = (dot - w.StopDot2) / (w.StopDot - w.StopDot2);
+                    ratio *= w.Exponent == 0f || w.Exponent == 1f ? t : (float)Math.Pow(t, w.Exponent); // linear for 0 and 1, as VRAD
+                }
             }
             return w.Intensity * ratio;
         }

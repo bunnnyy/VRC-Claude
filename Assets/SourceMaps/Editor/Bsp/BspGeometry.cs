@@ -14,11 +14,16 @@ namespace SourceMaps.Bsp
         /// <summary>Adds a triangle and makes its front face point along `outward` (Unity space).</summary>
         public void AddTriangle(Vector3 a, Vector3 b, Vector3 c, Vector3 outward)
         {
-            int i = Vertices.Count;
-            Vertices.Add(a);
             // Unity's face normal is cross(b - a, c - a); swap b and c if it points the wrong way.
-            if (Vector3.Dot(Vector3.Cross(b - a, c - a), outward) >= 0) { Vertices.Add(b); Vertices.Add(c); }
-            else { Vertices.Add(c); Vertices.Add(b); }
+            if (Vector3.Dot(Vector3.Cross(b - a, c - a), outward) >= 0) AddTriangle(a, b, c);
+            else AddTriangle(a, c, b);
+        }
+
+        /// <summary>Adds a triangle as wound (front face: cross(b - a, c - a)).</summary>
+        public void AddTriangle(Vector3 a, Vector3 b, Vector3 c)
+        {
+            int i = Vertices.Count;
+            Vertices.Add(a); Vertices.Add(b); Vertices.Add(c);
             Triangles.Add(i); Triangles.Add(i + 1); Triangles.Add(i + 2);
         }
     }
@@ -60,8 +65,13 @@ namespace SourceMaps.Bsp
                 for (int o = 0; o < brush.NumSides && poly.Count >= 3; o++)
                 {
                     if (o == s) continue;
-                    var other = bsp.Planes[bsp.BrushSides[brush.FirstSide + o].Plane];
-                    if (bsp.BrushSides[brush.FirstSide + o].Plane == side.Plane) continue;
+                    var otherSide = bsp.BrushSides[brush.FirstSide + o];
+                    if (otherSide.Plane == side.Plane) continue;
+                    // Bevels only touch the brush (VBSP adds them for box sweeps), but some lie a hair off a real
+                    // face and would clip it away, leaving a hole. Grown triggers keep them: there they cut the
+                    // corners of the bigger box like Source's expanded hull.
+                    if (otherSide.Bevel && raiseTop == 0f && grow == 0f) continue;
+                    var other = bsp.Planes[otherSide.Plane];
                     poly = Clip(poly, other.Normal, Dist(other, raiseTop, grow));
                 }
                 if (poly.Count >= 3) result.Add(new KeyValuePair<Vector3[], BspFile.Plane>(poly.ToArray(), new BspFile.Plane { Normal = plane.Normal, Dist = Dist(plane, raiseTop, grow) }));
@@ -225,14 +235,19 @@ namespace SourceMaps.Bsp
                 }
             }
 
+            // One winding for the whole surface, chosen on the flat face (every grid triangle below winds the same way
+            // there): folded or overhanging parts keep facing out of the terrain, as in Source.
             Vector3 outward = DirectionToUnity(up);
+            Vector3 f0 = ToUnity(p[0], scale);
+            bool flip = Vector3.Dot(Vector3.Cross(ToUnity(p[3], scale) - f0, ToUnity(p[1], scale) - f0), outward) < 0;
+            void Tri(int x, int y, int z) { if (flip) mesh.AddTriangle(grid[x], grid[z], grid[y]); else mesh.AddTriangle(grid[x], grid[y], grid[z]); }
             for (int i = 0; i < n - 1; i++)
                 for (int j = 0; j < n - 1; j++)
                 {
                     int a = i * n + j, b = a + 1, c = a + n, d = c + 1;
                     // Alternate the diagonal like Source does so the surface matches the game.
-                    if ((a % 2) == 1) { mesh.AddTriangle(grid[a], grid[b], grid[c], outward); mesh.AddTriangle(grid[b], grid[d], grid[c], outward); }
-                    else { mesh.AddTriangle(grid[a], grid[d], grid[c], outward); mesh.AddTriangle(grid[a], grid[b], grid[d], outward); }
+                    if ((a % 2) == 1) { Tri(a, b, c); Tri(b, d, c); }
+                    else { Tri(a, d, c); Tri(a, b, d); }
                 }
         }
 
@@ -247,7 +262,11 @@ namespace SourceMaps.Bsp
             return new List<Vector3> { c - u - v, c + u - v, c + u + v, c - u + v };
         }
 
-        /// <summary>Keeps the part of a polygon with dot(n, p) &lt;= dist (Sutherland-Hodgman).</summary>
+        /// <summary>
+        /// Keeps the part of a polygon with dot(n, p) &lt;= dist (Sutherland-Hodgman, like Quake's ClipWinding): points
+        /// within Epsilon of the plane count as on it and are kept; an edge is only split where its ends are clearly on
+        /// opposite sides, so the new point always lies between them (never extrapolated along a near-parallel edge).
+        /// </summary>
         static List<Vector3> Clip(List<Vector3> poly, Vector3 n, float dist)
         {
             const float Epsilon = 0.01f;
@@ -256,9 +275,9 @@ namespace SourceMaps.Bsp
             {
                 Vector3 a = poly[i], b = poly[(i + 1) % poly.Count];
                 float da = Vector3.Dot(n, a) - dist, db = Vector3.Dot(n, b) - dist;
-                bool inA = da <= Epsilon, inB = db <= Epsilon;
-                if (inA) result.Add(a);
-                if (inA != inB && Math.Abs(da - db) > 1e-6f) result.Add(Vector3.Lerp(a, b, da / (da - db)));
+                int sa = da > Epsilon ? 1 : da < -Epsilon ? -1 : 0, sb = db > Epsilon ? 1 : db < -Epsilon ? -1 : 0;
+                if (sa <= 0) result.Add(a);
+                if (sa * sb < 0) result.Add(Vector3.Lerp(a, b, da / (da - db)));
             }
             return result;
         }

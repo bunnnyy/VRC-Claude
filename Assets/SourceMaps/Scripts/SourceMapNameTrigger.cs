@@ -3,8 +3,8 @@ using UnityEngine;
 
 /// <summary>
 /// A trigger_multiple whose outputs rename the player ("!activator AddOutput targetname X" or "classname X", with
-/// delays): on touch,
-/// then again every "wait" seconds while touching (Source's trigger_multiple), and on leaving for OnEndTouch outputs.
+/// delays): OnStartTouch ones when a touch starts, OnTrigger ones then and again every "wait" seconds while touching
+/// (Source's trigger_multiple), and OnEndTouch ones on leaving.
 /// Part of SourceMapBlocks, which tests the touch with Source's player box (see there).
 /// </summary>
 [UdonBehaviourSyncMode(BehaviourSyncMode.None)]
@@ -16,6 +16,8 @@ public class SourceMapNameTrigger : UdonSharpBehaviour
     public float[] delays;
     [Tooltip("Per name: sets the player's class (AddOutput classname) instead of the name")]
     public bool[] isClass;
+    [Tooltip("Per name: OnStartTouch (once per touch) instead of OnTrigger (again every wait while touching)")]
+    public bool[] onStart;
     [Tooltip("Names set when the player leaves (OnEndTouch)")]
     public string[] leaveNames;
     public float[] leaveDelays;
@@ -35,7 +37,7 @@ public class SourceMapNameTrigger : UdonSharpBehaviour
     /// </summary>
     public void Touching(bool now, bool before)
     {
-        if (now) { if (!before) next = 0f; Fire(); return; }
+        if (now) { if (!before) next = 0f; Fire(!before); return; }
         if (!before || spent || blocks == null || leaveNames == null || !Allowed()) return; // a spent trigger_once is gone
         for (int i = 0; i < leaveNames.Length; i++) blocks.SetNameLater(leaveNames[i], leaveDelays[i], leaveIsClass[i]);
     }
@@ -47,10 +49,16 @@ public class SourceMapNameTrigger : UdonSharpBehaviour
         next = 0f;
     }
 
-    void Fire()
+    void Fire(bool start)
     {
-        if (blocks == null || spent || Time.time < next || !Allowed()) return;
-        for (int i = 0; i < names.Length; i++) blocks.SetNameLater(names[i], delays[i], isClass[i]);
+        if (blocks == null || spent || !Allowed()) return;
+        bool trigger = Time.time >= next;
+        for (int i = 0; i < names.Length; i++)
+        {
+            bool once = onStart != null && i < onStart.Length && onStart[i];
+            if (once ? start : trigger) blocks.SetNameLater(names[i], delays[i], isClass[i]);
+        }
+        if (!trigger) return;
         if (wait < 0f) spent = true;
         next = Time.time + wait;
     }

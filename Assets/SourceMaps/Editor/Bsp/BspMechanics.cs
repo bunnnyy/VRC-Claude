@@ -17,23 +17,27 @@ namespace SourceMaps.Bsp
             public bool SetGravity;
             public float Gravity;      // multiplier, 1 = normal
             public bool OnLeave;       // OnEndTouch instead of OnStartTouch / OnTrigger
+            public float Delay;        // seconds after the touch (the outputs' delay)
         }
 
         /// <summary>trigger_push: velocity in Source units/s (Source axes).</summary>
         public static Vector3 Push(Entity e)
         {
             float speed;
-            float.TryParse(e.Get("speed", "40"), NumberStyles.Float, CultureInfo.InvariantCulture, out speed);
+            float.TryParse(e.Get("speed", "0"), NumberStyles.Float, CultureInfo.InvariantCulture, out speed);
+            if (speed == 0f) speed = 100f; // CTriggerPush::Spawn
             return BspGeometry.RotateSource(Vector3.UnitX, e.GetVector("pushdir")) * speed;
         }
 
         /// <summary>
-        /// Boosters on a trigger: one entry for things done on entering and one for leaving (if any).
+        /// Boosters on a trigger: one entry per moment something is done (entering or leaving, and the outputs' delay),
+        /// e.g. gravity -2 on entering and gravity 1 half a second later. Each output sets the value (AddOutput sets a
+        /// keyvalue), so of two at the same moment the last one counts.
         /// trigger_multiple / trigger_once: outputs "!activator,AddOutput,basevelocity X Y Z" or "...,gravity G".
         /// trigger_gravity: its "gravity" keyvalue, on entering.
         /// </summary>
         /// <summary>"!activator AddOutput targetname X" on a trigger: the name, delay and whether it's on leaving.</summary>
-        public struct NameSet { public string Name; public float Delay; public bool OnLeave, IsClass; }
+        public struct NameSet { public string Name; public float Delay; public bool OnLeave, IsClass, OnStart; } // OnStart: OnStartTouch (once per touch), else OnTrigger (again every wait)
 
         /// <summary>The player renames of a trigger_multiple / trigger_once (bhop blocks, boost selectors).</summary>
         public static List<NameSet> NameSets(Entity e)
@@ -50,7 +54,8 @@ namespace SourceMaps.Bsp
                 bool onLeave = o.Event.StartsWith("OnEndTouch", StringComparison.OrdinalIgnoreCase);
                 bool onEnter = o.Event.StartsWith("OnStartTouch", StringComparison.OrdinalIgnoreCase) ||
                                o.Event.Equals("OnTrigger", StringComparison.OrdinalIgnoreCase);
-                if (onLeave || onEnter) list.Add(new NameSet { Name = parts.Length > 1 ? parts[1].Trim() : "", Delay = o.Delay, OnLeave = onLeave, IsClass = isClass });
+                if (onLeave || onEnter) list.Add(new NameSet { Name = parts.Length > 1 ? parts[1].Trim() : "", Delay = o.Delay, OnLeave = onLeave, IsClass = isClass,
+                    OnStart = o.Event.StartsWith("OnStartTouch", StringComparison.OrdinalIgnoreCase) });
             }
             return list;
         }
@@ -147,18 +152,19 @@ namespace SourceMaps.Bsp
 
         public static List<Boost> Boosts(Entity e)
         {
-            var enter = new Boost { Gravity = 1f };
-            var leave = new Boost { Gravity = 1f, OnLeave = true };
-            bool hasEnter = false, hasLeave = false;
+            var list = new List<Boost>();
+            int At(bool onLeave, float delay) // the entry for this moment, made if needed
+            {
+                int i = list.FindIndex(b => b.OnLeave == onLeave && b.Delay == delay);
+                if (i >= 0) return i;
+                list.Add(new Boost { Gravity = 1f, OnLeave = onLeave, Delay = delay });
+                return list.Count - 1;
+            }
             if (e.ClassName == "trigger_gravity")
             {
                 float g;
                 if (float.TryParse(e.Get("gravity", "1"), NumberStyles.Float, CultureInfo.InvariantCulture, out g))
-                {
-                    enter.SetGravity = true;
-                    enter.Gravity = g;
-                    hasEnter = true;
-                }
+                    list.Add(new Boost { SetGravity = true, Gravity = g });
             }
             else if (e.ClassName == "trigger_multiple" || e.ClassName == "trigger_once")
             {
@@ -178,19 +184,16 @@ namespace SourceMaps.Bsp
                     string what = parts[0].ToLowerInvariant();
                     if (what == "basevelocity" && parts.Length >= 4)
                     {
-                        if (onLeave) { leave.Velocity += new Vector3(f[0], f[1], f[2]); hasLeave = true; }
-                        else { enter.Velocity += new Vector3(f[0], f[1], f[2]); hasEnter = true; }
+                        int i = At(onLeave, o.Delay);
+                        var b = list[i]; b.Velocity = new Vector3(f[0], f[1], f[2]); list[i] = b;
                     }
                     else if (what == "gravity" && parts.Length >= 2)
                     {
-                        if (onLeave) { leave.SetGravity = true; leave.Gravity = f[0]; hasLeave = true; }
-                        else { enter.SetGravity = true; enter.Gravity = f[0]; hasEnter = true; }
+                        int i = At(onLeave, o.Delay);
+                        var b = list[i]; b.SetGravity = true; b.Gravity = f[0]; list[i] = b;
                     }
                 }
             }
-            var list = new List<Boost>();
-            if (hasEnter) list.Add(enter);
-            if (hasLeave) list.Add(leave);
             return list;
         }
     }

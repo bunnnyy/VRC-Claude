@@ -58,6 +58,18 @@ static class Program
         Check(BspMechanics.Boosts(plain).Count == 0, "other AddOutputs (targetname) are not boosters");
         var grav = Parse("{\n\"classname\" \"trigger_gravity\"\n\"gravity\" \"0.25\"\n}");
         Check(BspMechanics.Boosts(grav).Count == 1 && BspMechanics.Boosts(grav)[0].Gravity == 0.25f, "trigger_gravity -> gravity scale");
+        var delayed = BspMechanics.Boosts(Parse("{\n\"classname\" \"trigger_multiple\"\n\"OnStartTouch\" \"!activator,AddOutput,gravity -2,0,-1\"\n" +
+            "\"OnStartTouch\" \"!activator,AddOutput,gravity 1,0.5,-1\"\n\"OnStartTouch\" \"!activator,AddOutput,basevelocity 0 0 600,0,-1\"\n" +
+            "\"OnStartTouch\" \"!activator,AddOutput,basevelocity 0 0 600,0,-1\"\n}"));
+        Check(delayed.Count == 2 && delayed[0].Delay == 0f && delayed[0].Gravity == -2f && delayed[0].Velocity.Z == 600f &&
+              delayed[1].Delay == 0.5f && delayed[1].Gravity == 1f && delayed[1].Velocity == System.Numerics.Vector3.Zero,
+            "outputs at different delays stay apart (gravity -2, then 1 after 0.5 s); the same basevelocity twice sets 600, not 1200");
+        var names = BspMechanics.NameSets(Parse("{\n\"classname\" \"trigger_multiple\"\n\"OnStartTouch\" \"!activator,AddOutput,targetname a,0,-1\"\n" +
+            "\"OnTrigger\" \"!activator,AddOutput,targetname b,0.1,-1\"\n}"));
+        Check(names.Count == 2 && names[0].OnStart && !names[1].OnStart, "OnStartTouch renames fire once per touch, OnTrigger ones repeat");
+        Check(Math.Abs(BspMechanics.Push(Parse("{\n\"classname\" \"trigger_push\"\n\"pushdir\" \"0 0 0\"\n}")).X - 100) < 0.5f &&
+              Math.Abs(BspMechanics.Push(Parse("{\n\"classname\" \"trigger_push\"\n\"speed\" \"0\"\n\"pushdir\" \"0 0 0\"\n}")).X - 100) < 0.5f,
+            "trigger_push without a speed (or 0) pushes 100 u/s (CTriggerPush::Spawn)");
         var push = Parse("{\n\"classname\" \"trigger_push\"\n\"speed\" \"1500\"\n\"pushdir\" \"-90 0 0\"\n}");
         var v = BspMechanics.Push(push);
         Check(Math.Abs(v.Z - 1500) < 0.5f && Math.Abs(v.X) < 0.5f && Math.Abs(v.Y) < 0.5f, $"trigger_push pushdir -90 0 0 speed 1500 -> straight up ({v})");
@@ -85,6 +97,48 @@ static class Program
             "health 15 breaks, 16 stays");
         Check(BspMechanics.BreaksOnApproach(Parse("{\n\"classname\" \"func_breakable_surf\"\n\"model\" \"*1\"\n\"health\" \"100\"\n\"spawnflags\" \"1\"\n}")),
             "func_breakable_surf (window glass breaks on any hit in CS:S) -> breaks, whatever its health or flags");
+    }
+
+    /// <summary>
+    /// A closed polyhedron's face area vectors add up to zero (a missing face leaves its area over). Summed around the
+    /// brush's middle: around the world origin, float error on far-out brushes would swamp a small hole.
+    /// </summary>
+    static bool Closed(List<Vector3[]> polys)
+    {
+        if (polys.Count == 0) return false;
+        Vector3 c = Vector3.Zero;
+        int n = 0;
+        foreach (var p in polys) foreach (var v in p) { c += v; n++; }
+        c /= n;
+        Vector3 sum = Vector3.Zero;
+        float total = 0f;
+        foreach (var p in polys)
+        {
+            Vector3 a = Vector3.Zero;
+            for (int k = 0; k < p.Length; k++) a += Vector3.Cross(p[k] - c, p[(k + 1) % p.Length] - c);
+            sum += a * 0.5f;
+            total += a.Length() * 0.5f;
+        }
+        return total > 0f && sum.Length() <= total * 2e-3f; // float noise stays under 0.12% on the test maps; a lost face is 1% or more
+    }
+
+    /// <summary>
+    /// A vertex more than `slack` units outside one of the brush's real planes. (Bevels aren't counted: the collision
+    /// mesh ignores them, see BspGeometry.BrushFaces, so a few sliver corners poke a few units past one.)
+    /// </summary>
+    static bool Spiked(BspFile bsp, int brushIndex, List<Vector3[]> polys, float slack)
+    {
+        var brush = bsp.Brushes[brushIndex];
+        foreach (var p in polys)
+            foreach (var v in p)
+                for (int s = 0; s < brush.NumSides; s++)
+                {
+                    var side = bsp.BrushSides[brush.FirstSide + s];
+                    if (side.Bevel) continue;
+                    var plane = bsp.Planes[side.Plane];
+                    if (Vector3.Dot(plane.Normal, v) - plane.Dist > slack) return true;
+                }
+        return false;
     }
 
     static string CacheDir => Path.Combine(AppContext.BaseDirectory, "../../../.cache/maps");
@@ -128,12 +182,23 @@ static class Program
         var world = bsp.ModelBrushes(0);
         var solid = world.Where(i => (bsp.Brushes[i].Contents & BspFile.MaskPlayerSolid) != 0).ToList();
         var whole = new MeshData();
-        int badBrushes = 0;
+        int badBrushes = 0, openBrushes = 0, spikedBrushes = 0;
         foreach (int i in solid)
         {
-            if (BspGeometry.BrushPolygons(bsp, i).Count < 4) badBrushes++;
+            var polys = BspGeometry.BrushPolygons(bsp, i);
+            if (polys.Count < 4) badBrushes++;
+            if (!Closed(polys)) openBrushes++;
+            if (Spiked(bsp, i, polys, 0.1f)) spikedBrushes++;
             BspGeometry.AddBrush(whole, bsp, i, BspGeometry.DefaultScale);
         }
+        // Triggers as the importer builds them (top raised 8 units, sides grown 5.5): no vertex far outside the brush.
+        int spikedTriggers = 0, triggerBrushes = 0;
+        foreach (var e in bsp.Entities.Where(e => e.BrushModel > 0 && e.ClassName.StartsWith("trigger_")))
+            foreach (int i in bsp.ModelBrushes(e.BrushModel))
+            {
+                triggerBrushes++;
+                if (Spiked(bsp, i, BspGeometry.BrushPolygons(bsp, i, 8f, 5.5f), 8f + 2 * 5.5f + 0.1f)) spikedTriggers++;
+            }
         var mesh = new MeshData();
         int trimmed = BspGeometry.AddSolidBrushes(mesh, bsp, solid, BspGeometry.DefaultScale);
         int brushTris = mesh.Triangles.Count / 3;
@@ -154,7 +219,8 @@ static class Program
         for (int i = 0; i < bsp.DispInfos.Length; i++) BspGeometry.AddDisplacement(mesh, bsp, i, BspGeometry.DefaultScale);
         Console.WriteLine($"  collision built in {watch.ElapsedMilliseconds} ms: {solid.Count} solid world brushes ({brushTris} triangles), " +
                           $"{mesh.Triangles.Count / 3 - brushTris} displacement triangles");
-        Check(badBrushes == 0, $"every solid brush is a closed volume (>= 4 faces), {badBrushes} broken");
+        Check(badBrushes == 0 && openBrushes == 0, $"every solid brush is a closed volume: {badBrushes} with < 4 faces, {openBrushes} with a hole (faces don't add up to zero area)");
+        Check(spikedBrushes == 0 && spikedTriggers == 0, $"no brush vertex outside its brush: {spikedBrushes} solid brushes, {spikedTriggers}/{triggerBrushes} trigger brushes spiked");
         Check(mesh.Vertices.All(v => float.IsFinite(v.X) && float.IsFinite(v.Y) && float.IsFinite(v.Z)), "all vertices finite");
 
         // Points where a player stands: spawns and teleport destinations.

@@ -11,6 +11,7 @@ Shader "SourceMaps/Prop"
         [Enum(UnityEngine.Rendering.BlendMode)] _SrcBlend ("Source blend", Float) = 1
         [Enum(UnityEngine.Rendering.BlendMode)] _DstBlend ("Destination blend", Float) = 0
         [Toggle] _ZWrite ("Depth write", Float) = 1
+        [Enum(UnityEngine.Rendering.CullMode)] _Cull ("Cull ($nocull: Off)", Float) = 2
     }
     SubShader
     {
@@ -19,14 +20,15 @@ Shader "SourceMaps/Prop"
         {
             Blend [_SrcBlend] [_DstBlend]
             ZWrite [_ZWrite]
+            Cull [_Cull]
             CGPROGRAM
             #pragma vertex vert
             #pragma fragment frag
             #pragma multi_compile_fog
             #include "UnityCG.cginc"
 
-            struct appdata { float4 vertex : POSITION; float2 uv : TEXCOORD0; float4 color : COLOR; };
-            struct v2f { float4 pos : SV_POSITION; float2 uv : TEXCOORD0; float3 light : TEXCOORD1; UNITY_FOG_COORDS(2) };
+            struct appdata { float4 vertex : POSITION; float2 uv : TEXCOORD0; float4 color : COLOR; UNITY_VERTEX_INPUT_INSTANCE_ID };
+            struct v2f { float4 pos : SV_POSITION; float2 uv : TEXCOORD0; float3 light : TEXCOORD1; UNITY_FOG_COORDS(2) UNITY_VERTEX_OUTPUT_STEREO };
 
             sampler2D _MainTex;
             float4 _MainTex_ST;
@@ -36,6 +38,9 @@ Shader "SourceMaps/Prop"
             v2f vert (appdata v)
             {
                 v2f o;
+                UNITY_SETUP_INSTANCE_ID(v);
+                UNITY_INITIALIZE_OUTPUT(v2f, o);
+                UNITY_INITIALIZE_VERTEX_OUTPUT_STEREO(o); // VR: single-pass stereo instancing (both eyes)
                 o.pos = UnityObjectToClipPos(v.vertex);
                 o.uv = TRANSFORM_TEX(v.uv, _MainTex);
                 o.light = v.color.rgb * 2;
@@ -54,5 +59,5 @@ Shader "SourceMaps/Prop"
             ENDCG
         }
     }
-    Fallback "Diffuse"
+    Fallback "Legacy Shaders/Transparent/Cutout/VertexLit" // its depth/shadow pass honours _Cutoff (0 = solid)
 }

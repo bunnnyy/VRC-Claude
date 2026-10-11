@@ -250,8 +250,8 @@ public static class SourceMapVisuals
     static readonly string[] LightmappedShaders = { "Legacy Shaders/Diffuse", "USource/Lightmapped/Generic",
         "USource/Lightmapped/WorldVertexTransition", "USource/CutoutGeneric", "USource/DetailGeneric", "USource/TranslucentGeneric" };
 
-    /// <summary>A uSource material's texture, colour, alpha test, $detail (Source's default blend only) and translucency
-    /// onto one of ours.</summary>
+    /// <summary>A uSource material's texture, colour, alpha test, $nocull, $detail (Source's default blend only) and
+    /// translucency onto one of ours.</summary>
     static void CopySurface(Material src, Material mat)
     {
         mat.SetTexture("_MainTex", src.mainTexture);
@@ -259,11 +259,12 @@ public static class SourceMapVisuals
         mat.mainTextureOffset = src.mainTextureOffset;
         if (src.HasProperty("_Color")) mat.SetColor("_Color", src.GetColor("_Color"));
         if (src.shader.name == "USource/CutoutGeneric") mat.SetFloat("_Cutoff", 0.5f);
+        if (src.HasProperty("_Cull")) mat.SetFloat("_Cull", src.GetInt("_Cull")); // $nocull: uSource sets 0 (both sides)
         if (src.shader.name == "USource/DetailGeneric" && src.GetTexture("_Detail") != null && src.GetFloat("_DetailBlendMode") == 0f)
         {
             mat.SetTexture("_Detail", src.GetTexture("_Detail"));
             mat.SetTextureScale("_Detail", src.GetTextureScale("_Detail"));
-            mat.SetFloat("_DetailFactor", src.GetFloat("_DetailFactor"));
+            mat.SetFloat("_DetailFactor", Mathf.Min(1f, src.GetFloat("_DetailFactor") * 2f)); // uSource stores $detailblendfactor / 2
         }
         if (src.shader.name == "USource/TranslucentGeneric")
         {
