@@ -65,7 +65,21 @@ for r in css_content:cstrike hl2_ep2_content:hl2; do repo=${r%%:*}; dir=$c/${r##
 | `SM_CSS=... Unity -executeMethod LightingShots.Run -bsp map -smLightmaps on` | screenshots of an imported map (stock textures with SM_CSS) | eazy textured |
 | `Dev/Tests/UnityPlay/run.sh 90` | movement suite (movement session's) | all passed |
 
+## Route files (another map for RouteRunner)
+`ROUTE_FILE=Dev/Tests/UnityPlay/Routes/<map>.txt [ROUTE_SECTION=n] run.sh route <bsp> <zones.json> [outdir]`. A route
+file has the end zone and one `section z` per stage (from the teleport that starts it to its exit) with `x y [z]` points
+(Source units; z = the floor height there, landing spots are looked for within 300 units of it). Write the lines with
+`Dev/Tools/MapView` (`dotnet run -- route map.bsp zlo zhi sx sy ex ey [exitRadius]` searches a path over the safe
+floors; the image mode draws a stage with its teleports), then check each stage with ROUTE_SECTION: the log's
+"plan section N: no way on" shows stretches the planner can't continue from, and "FAIL section N: teleported back from"
+where the bot falls. bhop_monster_jam's file has all 16 stages in Carmac's order; see the plan for what runs.
+
 ## Lessons
+- Physics.RaycastAll returns one hit per collider: the map's world is one MeshCollider, so a roof hides the floors
+  under it. Cast again from under each hit (RouteRunner's Surfaces for route files).
+- Old vbsp maps (bhop_monster_jam) have no ambient index lumps: one light cube per leaf (BspFile reads both).
+- uSource drops its file providers after LoadMap: SourceMapVisuals opens them again (CS:S folder, VPKs, the map's
+  pakfile) to read sounds and the sky.
 - uSource adds MeshColliders to every brush/displacement mesh: SourceMapVisuals removes them (the importer's
   collision is the map's; only solid props get colliders back).
 - uSource: needs `allowUnsafeCode` in its asmdef; clears the previous map on load (detach `BSP_WorldSpawn`);

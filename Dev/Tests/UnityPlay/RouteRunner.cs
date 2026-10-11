@@ -28,7 +28,7 @@ public class RouteRunner : MonoBehaviour
     public int startSection; // debugging: start at the beginning of this section
     public string routeFile = ""; // another map's route (see LoadRoute); empty: bhop_eazy_v2's built-in Route
     const float U = 0.01905f;
-    const float Gravity = 800f;
+    static float Gravity = 800f; // the player's gravity now (other maps' routes: with trigger_gravity, e.g. a moon stage)
     const float AirCap = 30f;
 
     // bhop_eazy_v2 (31K4L): five colour sections of four lanes, a wall teleport at the end of each section.
@@ -53,10 +53,11 @@ public class RouteRunner : MonoBehaviour
     bool builtIn = true;
     float scanFloor, scanReach = 600f; // landing spots are looked for within scanReach of the route's floor height there
     float[][] heights; // per section and point: the floor height (Source z) along the route line
+    bool[] padSections; // "section z pads": its points are the pads to land on, only spots near them count
 
     /// <summary>
-    /// A route file (text, Source units): "end x1 y1 x2 y2" (the end zone), then per section "section z" (its floor
-    /// height) followed by one "x y" line per point of its route line. # starts a comment. Sections run in order; each
+    /// A route file (text, Source units): "end x1 y1 x2 y2" (the end zone), then per section "section z [pads]" (its
+    /// floor height; pads: its points are the pads to land on) followed by one "x y [z]" line per point of its route line. # starts a comment. Sections run in order; each
     /// ends where a teleport sends the player to the next one's first point.
     /// </summary>
     void LoadRoute(string path)
@@ -64,6 +65,7 @@ public class RouteRunner : MonoBehaviour
         var lines = new List<Vector2[]>();
         var sectionFloors = new List<float>();
         var pointFloors = new List<float[]>();
+        var pads = new List<bool>();
         List<Vector2> points = null;
         List<float> zs = null;
         var inv = System.Globalization.CultureInfo.InvariantCulture;
@@ -83,6 +85,7 @@ public class RouteRunner : MonoBehaviour
                 points = new List<Vector2>();
                 zs = new List<float>();
                 sectionFloors.Add(float.Parse(w[1], inv));
+                pads.Add(w.Length > 2 && w[2] == "pads");
             }
             else
             {
@@ -94,6 +97,7 @@ public class RouteRunner : MonoBehaviour
         route = lines.ToArray();
         floors = sectionFloors.ToArray();
         heights = pointFloors.ToArray();
+        padSections = pads.ToArray();
         builtIn = false;
         scanReach = 300f; // round the route's own height (a point's z): roofs and ledges above aren't the way
         teleportLift = 6f;
@@ -162,6 +166,8 @@ public class RouteRunner : MonoBehaviour
             scanFloor = floors[li];
             // (Other maps' routes: sections before the start one aren't run, so they aren't planned.)
             var list = !builtIn && li < startSection ? new List<Spot>() : FindSpots(line, heights != null ? heights[li] : null);
+            if (padSections != null && padSections[li]) // land on the pads' middles: small round pads leave no room for an edge
+                list = list.FindAll(sp => System.Array.Exists(line, q => (Flat(sp.p) - q).magnitude <= 20f));
             Plan(list);
             spots.Add(list);
             total += list.Count;
@@ -254,6 +260,8 @@ public class RouteRunner : MonoBehaviour
             frame++;
             if (recordDir != "" && frame % 2 == 0) Capture();
             if (hops != lastHops) { lastHops = hops; lastHopTime = Time.time; }
+            // Other maps: flying (a push up a tower, a long fall) is no hop but isn't stuck either.
+            if (!builtIn && ((Vector3)movement.GetProgramVariable("velocity")).magnitude > 400f) { lastHopTime = Time.time; progressTime = Time.time; }
             if (progress > bestProgress + 32f || section != progressSection) { bestProgress = progress; progressSection = section; progressTime = Time.time; }
             if (Time.time - progressTime > 20f) { Log("FAIL: stuck, no progress for 20 s"); DumpRecent(); Probe(Origin()); fails++; break; }
             if (Time.time - lastHopTime > 10f) { Log("FAIL: stuck, no hop for 10 s"); DumpRecent(); Probe(Origin()); fails++; break; }
@@ -280,6 +288,7 @@ public class RouteRunner : MonoBehaviour
 
     void Step(Vector3 pos)
     {
+        if (!builtIn) Gravity = (float)movement.GetProgramVariable("gravity") * (float)movement.GetProgramVariable("gravityScale");
         Vector3 vel = (Vector3)movement.GetProgramVariable("velocity");
         bool onGround = (bool)movement.GetProgramVariable("onGround");
         recent[frame % recent.Length] = $"f{frame} pos {pos:F1} vel {vel:F1} ground {onGround} hop {hopping} keys {lastKeys} yaw {viewYaw:F0} target {(hasTarget ? target.p.ToString("F0") : "-")}";
