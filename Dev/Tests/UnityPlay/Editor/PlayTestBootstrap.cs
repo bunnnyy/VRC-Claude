@@ -168,6 +168,7 @@ public static class PlayTestBootstrap
             if (args[i] == "-smRecord") runner.recordDir = args[i + 1];
             if (args[i] == "-smRouteSection") runner.startSection = int.Parse(args[i + 1]);
             if (args[i] == "-smRoute") runner.routeFile = args[i + 1];
+            if (args[i] == "-smRouteOne") runner.oneSection = args[i + 1] == "1";
         }
         EditorApplication.isPlaying = true;
     }

@@ -6,6 +6,9 @@ using SourceMaps.Bsp; using System; using System.IO; using System.Linq; using Sy
 //   dotnet run -- route map.bsp zlo zhi sx sy ex ey [exitRadius [grid]]
 //       a path from (sx, sy) to the exit over safe floors in the height band (not over teleports), jumping gaps up to
 //       224 units, simplified: prints "x y z" lines for a route file (env ROUTE_OUTLINE=1: thin floors count too)
+//   dotnet run -- blocks map.bsp zlo zhi sx sy ex ey [reach]
+//       the bhop blocks (func_door) in the band chained from the start to the exit: from each, the nearest unvisited
+//       block within reach (default 420) that gets closer to the exit; prints "x y z" (block tops) for a route file
 //   dotnet run -- brushes map.bsp x y z r        solid brushes with sloped faces near a point, and displacements
 //   dotnet run -- props map.bsp x0 y0 x1 y1      static props in an area
 static class View
@@ -14,6 +17,7 @@ static class View
     {
         if (a[0] == "brushes") { Brushes(a); return; }
         if (a[0] == "route") { RouteFind(a); return; }
+        if (a[0] == "blocks") { Blocks(a); return; }
         if (a[0] == "props")
         {
             var b = BspFile.Load(a[1]); float px0 = float.Parse(a[2]), py0 = float.Parse(a[3]), px1 = float.Parse(a[4]), py1 = float.Parse(a[5]);
@@ -286,6 +290,42 @@ static class View
             found:
             Console.WriteLine($"{p.X:F0} {p.Y:F0} {z:F0}");
         }
+    }
+
+    static void Blocks(string[] a)
+    {
+        var bsp = BspFile.Load(a[1]);
+        float zlo = float.Parse(a[2]), zhi = float.Parse(a[3]);
+        var S = new Vector2(float.Parse(a[4]), float.Parse(a[5])); var E = new Vector2(float.Parse(a[6]), float.Parse(a[7]));
+        float reach = a.Length > 8 ? float.Parse(a[8]) : 420f;
+        var blocks = new List<Vector3>();
+        foreach (var e in bsp.Entities)
+        {
+            if (e.ClassName != "func_door" || e.BrushModel <= 0) continue;
+            var m = bsp.Models[e.BrushModel]; var o = e.GetVector("origin");
+            var c = (m.Mins + m.Maxs) * 0.5f + o; float top = m.Maxs.Z + o.Z;
+            if (top < zlo || top > zhi) continue;
+            blocks.Add(new Vector3(c.X, c.Y, top));
+        }
+        var here = S; var used = new HashSet<int>();
+        Console.WriteLine($"# {blocks.Count} blocks in the band");
+        Console.WriteLine($"{S.X:F0} {S.Y:F0}");
+        while (true)
+        {
+            int best = -1; float bestD = float.MaxValue;
+            for (int i = 0; i < blocks.Count; i++)
+            {
+                if (used.Contains(i)) continue;
+                var p = new Vector2(blocks[i].X, blocks[i].Y); float d = (p - here).Length();
+                if (d > reach || (p - E).Length() > (here - E).Length() + 64) continue; // forward only (a little slack)
+                if (d < bestD) { bestD = d; best = i; }
+            }
+            if (best < 0) break;
+            used.Add(best); here = new Vector2(blocks[best].X, blocks[best].Y);
+            Console.WriteLine($"{blocks[best].X:F0} {blocks[best].Y:F0} {blocks[best].Z:F0}");
+        }
+        Console.WriteLine($"# last block {(here - E).Length():F0} from the exit");
+        Console.WriteLine($"{E.X:F0} {E.Y:F0}");
     }
 
     static List<Vector2> Simplify(List<Vector2> pts, float tol, Func<Vector2, Vector2, bool> clear)

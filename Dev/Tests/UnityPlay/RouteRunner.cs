@@ -27,6 +27,7 @@ public class RouteRunner : MonoBehaviour
     public string recordDir = "";
     public int startSection; // debugging: start at the beginning of this section
     public string routeFile = ""; // another map's route (see LoadRoute); empty: bhop_eazy_v2's built-in Route
+    public bool oneSection; // stop once the start section is done (recording one stage)
     const float U = 0.01905f;
     static float Gravity = 800f; // the player's gravity now (other maps' routes: with trigger_gravity, e.g. a moon stage)
     const float AirCap = 30f;
@@ -222,6 +223,7 @@ public class RouteRunner : MonoBehaviour
                 if (next < route.Length && (Flat(pos) - route[next][0]).magnitude < 96f)
                 {
                     Log($"section {section + 1} done in {Time.time - sectionStart:F2} s");
+                    if (oneSection) break;
                     section = next;
                     scanFloor = floors[section];
                     sectionStart = Time.time;

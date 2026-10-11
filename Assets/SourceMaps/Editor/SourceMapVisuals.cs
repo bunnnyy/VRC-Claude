@@ -81,6 +81,16 @@ public static class SourceMapVisuals
         loader.GetMethod("Clear").Invoke(null, null);
         var provider = System.Activator.CreateInstance(dirProvider, temp + "/");
         resources.GetMethod("Init", new[] { typeof(int), FindType("uSource.IResourceProvider") }).Invoke(null, new[] { 0, provider });
+        // uSource reuses the materials it saved before instead of reading them again: ones saved without their texture
+        // (imported before the CS:S folder had it, e.g. an HL2 texture) would stay white. Drop those so they're redone
+        // (not ones a map already in the scene uses).
+        var inUse = new HashSet<Material>(Object.FindObjectsOfType<Renderer>(true).SelectMany(r => r.sharedMaterials));
+        foreach (string guid in AssetDatabase.FindAssets("t:Material", new[] { "Assets/SourceMapsImported/uSource" }))
+        {
+            string path = AssetDatabase.GUIDToAssetPath(guid);
+            var mat = AssetDatabase.LoadAssetAtPath<Material>(path);
+            if (mat != null && !inUse.Contains(mat) && mat.HasProperty("_MainTex") && mat.mainTexture == null) AssetDatabase.DeleteAsset(path);
+        }
         var worldSky = RenderSettings.skybox; // uSource sets its own (white when the sky's textures are missing)
         resources.GetMethod("LoadMap").Invoke(null, new object[] { mapName });
 
@@ -103,6 +113,7 @@ public static class SourceMapVisuals
         var bsp = BspFile.Load(bspPath);
         int propColliders = AddPropColliders(visuals, bsp, scale);
         int propsLit = !UseLightmaps ? 0 : LightProps(visuals, bsp, scale, "Assets/SourceMapsImported/" + mapName + "/Props");
+        int textures = PersistMaterials(visuals, "Assets/SourceMapsImported/" + mapName);
         int meshes = SaveMeshes(visuals, "Assets/SourceMapsImported/" + mapName + "/" + mapName + "_visuals.asset");
         // Sounds and the sky: uSource drops its file providers after loading a map, so open them again (the CS:S
         // folder with its VPKs, and the map's pakfile first) while they're read.
@@ -129,7 +140,7 @@ public static class SourceMapVisuals
         }
         RenderSettings.skybox = sky != null ? sky : worldSky;
         Debug.Log($"[Source Maps] {mapName} visuals: {visuals.GetComponentsInChildren<MeshRenderer>(true).Length} renderers, " +
-                  $"{removed} tool surfaces removed, {strayColliders} uSource colliders removed, {lit} surfaces with Source lightmaps, {propsLit} props lit, {doors} door blocks linked, {glass} breakable glass linked, {propColliders} solid props given colliders, {meshes} meshes saved, " +
+                  $"{removed} tool surfaces removed, {strayColliders} uSource colliders removed, {lit} surfaces with Source lightmaps, {propsLit} props lit, {doors} door blocks linked, {glass} breakable glass linked, {propColliders} solid props given colliders, {meshes} meshes saved, {textures} textures kept that only uSource's memory had, " +
                   $"{sounds} sounds" + (missing.Count > 0 ? $" ({missing.Count} sound files missing: {string.Join(", ", missing)})" : "") +
                   $", sky {skyName}" + (sky == null ? " missing (HL2 skies need the CS:S folder's hl2)" : "") +
                   (css == "" ? " (no CS:S folder set: stock textures missing)" : ""));
@@ -433,6 +444,60 @@ public static class SourceMapVisuals
     }
 
     /// <summary>Saves every mesh that only lives in the scene (rendered, skinned, colliders) into one asset file.</summary>
+    /// <summary>
+    /// Saves the textures and materials uSource only has in memory under the map's folder (Textures, Materials): a
+    /// texture that isn't an asset is lost when a material or the scene is saved (the surface turns white), and uSource
+    /// doesn't save a texture or material again when its file already exists. Returns the textures saved.
+    /// </summary>
+    static int PersistMaterials(GameObject root, string folder)
+    {
+        var saved = new Dictionary<Texture, Texture>();
+        var names = new HashSet<string>();
+        int n = 0;
+        foreach (var r in root.GetComponentsInChildren<Renderer>(true))
+            foreach (var m in r.sharedMaterials)
+            {
+                if (m == null) continue;
+                bool changed = false;
+                foreach (string prop in m.GetTexturePropertyNames())
+                {
+                    var tex = m.GetTexture(prop) as Texture2D;
+                    if (tex == null || tex == Texture2D.whiteTexture || AssetDatabase.Contains(tex)) continue;
+                    if (!saved.TryGetValue(tex, out var asset))
+                    {
+                        // Copied through a render texture: uSource's textures may be compressed or not readable.
+                        var rt = RenderTexture.GetTemporary(tex.width, tex.height, 0, RenderTextureFormat.ARGB32);
+                        Graphics.Blit(tex, rt);
+                        var copy = new Texture2D(tex.width, tex.height, TextureFormat.RGBA32, false);
+                        RenderTexture.active = rt;
+                        copy.ReadPixels(new Rect(0, 0, tex.width, tex.height), 0, 0);
+                        RenderTexture.active = null;
+                        RenderTexture.ReleaseTemporary(rt);
+                        string name = (tex.name == "" ? "texture" : tex.name).Replace('/', '_').Replace('\\', '_');
+                        for (int k = 2; !names.Add(name); k++) name = name.TrimEnd('0', '1', '2', '3', '4', '5', '6', '7', '8', '9') + k;
+                        string path = folder + "/Textures/" + name + ".png";
+                        Directory.CreateDirectory(Path.GetDirectoryName(path));
+                        File.WriteAllBytes(path, copy.EncodeToPNG());
+                        Object.DestroyImmediate(copy);
+                        AssetDatabase.ImportAsset(path);
+                        saved[tex] = asset = AssetDatabase.LoadAssetAtPath<Texture2D>(path);
+                        n++;
+                    }
+                    m.SetTexture(prop, asset);
+                    changed = true;
+                }
+                if (!AssetDatabase.Contains(m))
+                {
+                    string mpath = folder + "/Materials/" + m.GetInstanceID().ToString().Replace('-', 'm') + ".mat";
+                    Directory.CreateDirectory(Path.GetDirectoryName(mpath));
+                    AssetDatabase.CreateAsset(m, mpath);
+                }
+                else if (changed) EditorUtility.SetDirty(m);
+            }
+        AssetDatabase.SaveAssets();
+        return n;
+    }
+
     static int SaveMeshes(GameObject root, string path)
     {
         Directory.CreateDirectory(Path.GetDirectoryName(path));

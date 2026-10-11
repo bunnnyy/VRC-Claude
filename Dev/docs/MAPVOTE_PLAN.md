@@ -373,3 +373,26 @@ the render meshes (needs a test). I did not dig into why USource's geometry does
   A multi-lens review (12 findings, each checked by a skeptic) led to the hull-based check, the surf, damage filter
   and prop data rules, and upright panes only.
 - Still open: the route bot's plan treats the glass as a wall, so it doesn't get through red lanes 3 and 4 yet.
+
+### Step 8: bhop_monster_jam, map sounds and skies, a recorded run (2026-10-11, asked by the user overnight)
+- **Map**: bhop_monster_jam (Aoki, GameBanana 125558) added to `get_maps.sh`: 2706 brushes, 131 displacements, 62
+  teleports, 454 func_door bhop blocks, 25 sounds (its music and voice clips are in its pakfile), sky `sky_day01_01`
+  (HL2). Stage order from Carmac's 2:50 run (the user's reference video, `Dev/docs/media/Monster jam-compressed.mp4`):
+  c (dirt yards) > r (white corridor) > ch (castle trench) > e (Egypt, pyramid) > i/g/f (corridors) > en (orange rooms)
+  > o (rooftops, pier, a long surf over water) > d (caves) > b (grass, black blocks) > fl (forest, ladder climb) >
+  the tower push > s (the moon, 0.17 gravity) > end.
+- **Sounds** (`SourceMapSounds`, run by the visuals import): every `ambient_generic` is an AudioSource on its marker,
+  heard within its radius (linear fade), so each area has its own music; loops when the wav has a loop point (as
+  Source); start silent unless a logic_auto plays it at spawn; play everywhere = 2D; volume/pitch from the entity;
+  triggers with PlaySound/StopSound outputs get `SourceMapSoundTrigger` (plays for the local player walking in).
+  Files from the map's pakfile, the CS:S folder or its VPKs (uSource's providers, opened again after its LoadMap).
+- **Skies**: the map's `skyname` saved as `<map>_sky.mat` (6 faces from uSource's VTF reader, flipped upright); on
+  `SourceMapInfo.skybox`; `SourceMapManager` shows it while you're in that map, the world's sky in the lobby. HL2 skies
+  come from the CS:S folder's `hl2`.
+- **Fixes on the way**: old-style leaf ambient light (no index lumps, one cube per leaf: monster_jam's props had none);
+  uSource reused materials it had saved without their texture (an import before the HL2 folder was there): those are
+  dropped before an import so they're rebuilt, and textures only in uSource's memory are saved with the map. White
+  dirt and grass on monster_jam's displacements came from this.
+- **Route bot on other maps** (`RouteRunner` with a route file, see the handoff): per-point heights, a floor scan that
+  sees under roofs, teleports touched like the raised triggers, real gravity, pushes count as progress, pad sections.
+  `Dev/Tools/MapView` draws stages, finds paths over safe floors and chains bhop blocks into route lines.
