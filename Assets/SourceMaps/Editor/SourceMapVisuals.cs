@@ -492,7 +492,7 @@ public static class SourceMapVisuals
             if (match < 0) continue;
             var prop = bsp.StaticProps[match];
             // The model's own collision, in its model space: on the object whose mesh is in that space too (uSource
-            // puts a model's vertices at (x, z, y) * scale).
+            // puts a model's vertices at (-x, z, -y) * scale, its SwapZY).
             var filters = t.GetComponentsInChildren<MeshFilter>(true);
             var skinned = t.GetComponentsInChildren<SkinnedMeshRenderer>(true);
             var host = filters.Length > 0 ? filters[0].gameObject : skinned.Length > 0 ? skinned[0].gameObject : null;
@@ -511,7 +511,7 @@ public static class SourceMapVisuals
                         foreach (var hull in hulls)
                         {
                             var mesh = new Mesh { name = Path.GetFileNameWithoutExtension(model) + " collision" };
-                            mesh.vertices = hull.Select(v => new Vector3(v.X, v.Z, v.Y) * scale).ToArray();
+                            mesh.vertices = hull.Select(v => new Vector3(-v.X, v.Z, -v.Y) * scale).ToArray();
                             mesh.triangles = Enumerable.Range(0, hull.Length).ToArray();
                             var col = host.AddComponent<MeshCollider>();
                             col.sharedMesh = mesh;
@@ -525,7 +525,7 @@ public static class SourceMapVisuals
                 else if (prop.Solid == 2 && BspPhy.ModelHull(ReadGameFile(resources, model), out var min, out var max))
                 {
                     var box = host.AddComponent<BoxCollider>();
-                    box.center = new Vector3(min.X + max.X, min.Z + max.Z, min.Y + max.Y) * (0.5f * scale);
+                    box.center = new Vector3(-(min.X + max.X), min.Z + max.Z, -(min.Y + max.Y)) * (0.5f * scale);
                     box.size = new Vector3(max.X - min.X, max.Z - min.Z, max.Y - min.Y) * scale;
                     fromModel++;
                     added++;

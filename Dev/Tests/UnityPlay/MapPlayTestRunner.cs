@@ -16,8 +16,8 @@ using VRC.Udon;
 ///   teleports - falling into every reachable working trigger_teleport (best of 3 spots) brings the player to its
 ///               destination (followed through relay teleports at the destination)
 ///   runs      - bhop (hold W + jump, strafe with A/D and turning) along the longest open floors from the destinations,
-///               and surf along the map's biggest surfable slopes: no stalls (sudden speed loss with no wall ahead,
-///               e.g. a fake wall at a seam between collision mesh triangles)
+///               and surf along the map's biggest surfable slopes: no stalls (sudden speed loss with no wall ahead
+///               and no keys held against the motion, e.g. a fake wall at a seam between collision mesh triangles)
 ///   blocks    - bhop blocks: standing on one sends you back, bouncing on it doesn't, switched off you can stand
 ///   glass     - breakable glass (first, as it stays broken): flying at each pane breaks it before the hull touches it,
 ///               through it without losing speed; still broken after the map is switched off and on
@@ -616,6 +616,7 @@ public class MapPlayTestRunner : MonoBehaviour
             lastPos = player.GetPosition();
             float before = Flat(prevVel).magnitude, now = Flat(vel).magnitude;
             if (before - now > 100f && InMechanics(prevPos)) { } // pushes and boosters change speed on purpose
+            else if (before - now > 100f && KeysAgainst(prevVel)) { } // braking: air acceleration 1000 (bhop servers) stops you in a tick
             else if (before - now > 100f && WallAhead(prevSim, Flat(prevVel).normalized, before)) wallHits++;
             else if (before - now > 100f)
             {
@@ -668,6 +669,14 @@ public class MapPlayTestRunner : MonoBehaviour
         foreach (var c in Physics.OverlapBox(feet + Vector3.up * exact.y, exact + Vector3.one * U, Quaternion.identity, ~0, QueryTriggerInteraction.Collide))
             sb.Append($" {c.name}{(c.isTrigger ? " (trigger)" : "")};");
         return sb.Append(")").ToString();
+    }
+
+    /// <summary>The movement keys held point against `vel` (horizontally): air acceleration then brakes, as in CS:S.</summary>
+    bool KeysAgainst(Vector3 vel)
+    {
+        Vector3 wish = (Vector3)movement.GetProgramVariable("wishForward") * (float)movement.GetProgramVariable("moveForward")
+            + (Vector3)movement.GetProgramVariable("wishRight") * (float)movement.GetProgramVariable("moveRight");
+        return Vector3.Dot(Flat(vel), wish) < 0f;
     }
 
     /// <summary>A surface facing against the motion within two frames of travel (+ 16 u) in front of the 32 x 72 hull.</summary>

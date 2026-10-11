@@ -14,7 +14,9 @@ Shader "SourceMaps/Water"
         Tags { "RenderType" = "Opaque" "Queue" = "Geometry" }
         Pass
         {
-            Cull Off
+            // One-sided like Source's: the surface faces up, and maps draw its underside as a second face facing down
+            // ($bottommaterial). Drawn from both sides, the two would fight at the same height.
+            Cull Back
             CGPROGRAM
             #pragma vertex vert
             #pragma fragment frag
