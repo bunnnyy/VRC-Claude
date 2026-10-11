@@ -12,7 +12,7 @@ using UnityEngine.UI;
 /// Map rotation setup:
 ///   Tools > Source Maps > Add Selected Map To Rotation   (on an imported map root: SourceMapInfo + spawn)
 ///   Tools > Source Maps > Create Lobby                    (vote manager, lobby board, a panel in every map)
-///   Tools > Source Maps > Build Test Scene                (6 small box maps + lobby, for trying it out)
+///   Tools > Source Maps > Build Sample World...           (every .bsp in a folder imported, plus the lobby)
 ///   Tools > Source Maps > Create Menu Prefabs             (Prefabs/VoteMenu and MapMenu, made again from this code)
 /// The menus are prefabs: drag VoteMenu (lobby) or MapMenu (in a map) into a custom lobby; they find the object
 /// named "SourceMapManager" themselves.
@@ -67,10 +67,17 @@ public static class SourceMapsSetup
     {
         SourceMapImporter.EnsureProgramAssets();
         EnsureTextMeshPro();
-        foreach (var old in Object.FindObjectsOfType<SourceMapManager>(true)) Object.DestroyImmediate(old.transform.root.gameObject);
+        // The old lobby (only what Create Lobby made: a manager moved into a custom lobby goes alone).
+        foreach (var old in Object.FindObjectsOfType<SourceMapManager>(true))
+        {
+            if (old == null) continue;
+            var parent = old.transform.parent;
+            Undo.DestroyObjectImmediate(parent != null && parent.name == "SourceMaps Lobby" ? parent.gameObject : old.gameObject);
+        }
         var maps = Object.FindObjectsOfType<SourceMapInfo>(true).OrderBy(m => m.mapName).ToArray();
 
         var root = new GameObject("SourceMaps Lobby");
+        Undo.RegisterCreatedObjectUndo(root, "Create Lobby");
         root.transform.position = position;
         var floor = GameObject.CreatePrimitive(PrimitiveType.Cube);
         floor.name = "Floor";
@@ -226,17 +233,16 @@ public static class SourceMapsSetup
     [MenuItem("Tools/Source Maps/Create Menu Prefabs")]
     public static void CreateMenuPrefabs()
     {
-        AssetDatabase.DeleteAsset(VoteMenuPath);
-        AssetDatabase.DeleteAsset(MapMenuPath);
-        MenuPrefab(VoteMenuPath, BuildVoteMenu);
-        Selection.activeObject = MenuPrefab(MapMenuPath, BuildMapMenu);
+        MenuPrefab(VoteMenuPath, BuildVoteMenu, true);
+        Selection.activeObject = MenuPrefab(MapMenuPath, BuildMapMenu, true);
     }
 
-    /// <summary>A menu prefab asset, built and saved if it isn't there.</summary>
-    static GameObject MenuPrefab(string path, System.Func<GameObject> build)
+    /// <summary>A menu prefab asset, built and saved if it isn't there (or `force`: saved again over it, which keeps
+    /// placed instances' overrides; deleting it first would give its objects new IDs and lose them).</summary>
+    static GameObject MenuPrefab(string path, System.Func<GameObject> build, bool force = false)
     {
         var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(path);
-        if (prefab != null) return prefab;
+        if (prefab != null && !force) return prefab;
         SourceMapImporter.EnsureProgramAssets();
         EnsureTextMeshPro();
         System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(path));
@@ -264,17 +270,22 @@ public static class SourceMapsSetup
     static readonly Dictionary<string, string> Authors = new Dictionary<string, string>
     {
         ["bhop_japan"] = "Tony Montana", ["bhop_kitsune"] = "Ghost1447951", ["bhop_eazy_v2"] = "31K4L",
-        ["bhop_arcane_v1"] = "Panzerhandschuh", ["bhop_badges"] = "Badges & fission",
+        ["bhop_arcane_v1"] = "Panzerhandschuh", ["bhop_badges"] = "Badges & fission", ["bhop_monster_jam"] = "Aoki",
     };
     const float MapSpacing = 700f; // metres between map origins (Source maps are up to ~620 m across)
 
     [MenuItem("Tools/Source Maps/Build Sample World...")]
     public static void BuildSampleWorldMenu()
     {
+        if (!EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo()) return;
         string folder = EditorUtility.OpenFolderPanel("Folder with the maps' .bsp files", "", "");
         if (string.IsNullOrEmpty(folder)) return;
-        if (SourceMapVisuals.CssFolder == "")
-            SourceMapVisuals.CssFolder = EditorUtility.OpenFolderPanel("Your Counter-Strike Source folder (with cstrike and hl2)", "", "");
+        string css = SourceMapVisuals.CssFolder;
+        if (css == "" || SourceMapVisuals.ValidCss(css) != css)
+        {
+            css = SourceMapVisuals.ValidCss(EditorUtility.OpenFolderPanel("Your Counter-Strike Source folder (with cstrike and hl2)", css, ""));
+            if (css != null) SourceMapVisuals.CssFolder = css;
+        }
         BuildSampleWorld(folder, null);
     }
 

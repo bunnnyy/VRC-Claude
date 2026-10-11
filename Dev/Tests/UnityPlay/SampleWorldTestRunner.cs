@@ -109,7 +109,9 @@ public class SampleWorldTestRunner : MonoBehaviour
                 if (System.Array.Exists(r.sharedMaterials, m => m != null && m.shader.name == "SourceMaps/Prop")) litProps++;
             }
         var doors = root.GetComponentsInChildren<SourceMapDoor>(true);
-        int linked = System.Array.FindAll(doors, d => d.visuals != null).Length;
+        // Linked, and not static batched (a batched model stays where it starts).
+        int linked = System.Array.FindAll(doors, d => d.visuals != null &&
+            System.Array.TrueForAll(d.visuals.GetComponentsInChildren<Renderer>(true), r => !r.isPartOfStaticBatch)).Length;
         var hullOnly = (GameObject[])movement.GetProgramVariable("hullOnly");
         Check(hullOnly != null && System.Array.IndexOf(hullOnly, root) >= 0, $"{name}: in SourceMovement's Hull Only (only the CS:S hull collides with it)");
         Check((propRenderers == 0 || litProps > 0) && linked == doors.Length,

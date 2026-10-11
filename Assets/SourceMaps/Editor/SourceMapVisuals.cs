@@ -30,6 +30,27 @@ public static class SourceMapVisuals
         set { EditorPrefs.SetString(PrefsCssFolder, value); }
     }
 
+    /// <summary>A picked CS:S folder as it's stored: itself if it has cstrike, its parent if it is cstrike, "" for
+    /// none; null if it's neither.</summary>
+    public static string ValidCss(string p)
+    {
+        if (string.IsNullOrEmpty(p)) return "";
+        if (Directory.Exists(Path.Combine(p, "cstrike"))) return p;
+        p = p.TrimEnd('/', '\\');
+        if (Path.GetFileName(p).ToLowerInvariant() == "cstrike") return Path.GetDirectoryName(p);
+        return null;
+    }
+
+    [MenuItem("Tools/Source Maps/Set CS:S Folder...")]
+    public static void SetCssFolderMenu()
+    {
+        string picked = EditorUtility.OpenFolderPanel("Your Counter-Strike Source folder (with cstrike and hl2)", CssFolder, "");
+        if (string.IsNullOrEmpty(picked)) return;
+        string css = ValidCss(picked);
+        if (css == null) { EditorUtility.DisplayDialog("Source Maps", picked + " has no cstrike folder: pick the Counter-Strike Source folder (with cstrike and hl2).", "OK"); return; }
+        CssFolder = css;
+    }
+
     /// <summary>
     /// Light the map like Source: surfaces with its own lightmaps, static props with its ambient light and lights
     /// (off: uSource's materials, lit by Unity lights).
@@ -38,7 +59,8 @@ public static class SourceMapVisuals
 
     public static bool USourceInstalled { get { return FindType("uSource.uLoader") != null; } }
 
-    // Tool textures that Source never renders (toolsblack and the sky ones are drawn, so they stay: see ShowSkyFaces).
+    // Tool textures that Source never renders (toolsblack and the sky ones are drawn, so they stay: see ShowBlackFaces,
+    // ShowSkyFaces).
     static readonly string[] Hidden = { "toolsnodraw", "toolstrigger", "toolsclip", "toolsplayerclip", "toolsnpcclip",
         "toolsskip", "toolshint", "toolsinvisible", "toolsareaportal", "toolsoccluder", "toolsfog", "toolsorigin",
         "toolsblocklight", "toolsblockbullets", "toolsblock_los", "toolsdotted" };
@@ -66,9 +88,11 @@ public static class SourceMapVisuals
         File.Copy(bspPath, temp + "/maps/" + mapName + ".bsp", true);
 
         string css = CssFolder;
+        if (css != "" && !Directory.Exists(Path.Combine(css, "cstrike")))
+            Debug.LogWarning($"[Source Maps] The CS:S folder {css} has no cstrike folder (stock textures and sounds missing): Tools > Source Maps > Set CS:S Folder...");
         Set(loader, "RootPath", css != "" ? css : temp);
         Set(loader, "ModFolders", new[] { "cstrike", "hl2" });
-        Set(loader, "DirPaks", new[] { new[] { "cstrike_pak_dir" }, new[] { "hl2_misc_dir", "hl2_textures_dir" } });
+        Set(loader, "DirPaks", new[] { new[] { "cstrike_pak_dir" }, new[] { "hl2_misc_dir", "hl2_textures_dir", "hl2_sound_misc_dir", "hl2_sound_vo_english_dir" } });
         Set(loader, "UnitScale", scale);
         Set(loader, "SaveAssetsToUnity", true);
         Set(loader, "OutputAssetsFolder", "SourceMapsImported/uSource");
@@ -79,6 +103,7 @@ public static class SourceMapVisuals
         Set(loader, "Use3DSkybox", false); // it adds a fly camera (and a camera on sky_camera) to the scene
         Set(loader, "DebugTime", new System.Diagnostics.Stopwatch());
         Set(loader, "DebugTimeOutput", new System.Text.StringBuilder());
+        var worldSky = RenderSettings.skybox; // uSource clears it and sets its own (white when the sky's textures are missing)
         loader.GetMethod("Clear").Invoke(null, null);
         var provider = System.Activator.CreateInstance(dirProvider, temp + "/");
         resources.GetMethod("Init", new[] { typeof(int), FindType("uSource.IResourceProvider") }).Invoke(null, new[] { 0, provider });
@@ -92,7 +117,6 @@ public static class SourceMapVisuals
             var mat = AssetDatabase.LoadAssetAtPath<Material>(path);
             if (mat != null && !inUse.Contains(mat) && mat.HasProperty("_MainTex") && mat.mainTexture == null) AssetDatabase.DeleteAsset(path);
         }
-        var worldSky = RenderSettings.skybox; // uSource sets its own (white when the sky's textures are missing)
         resources.GetMethod("LoadMap").Invoke(null, new object[] { mapName });
 
         var visuals = (GameObject)vbsp.GetField("BSP_WorldSpawn").GetValue(null);
@@ -111,6 +135,7 @@ public static class SourceMapVisuals
         int doors = LinkDoors(visuals);
         int glass = LinkBreakables(visuals);
         int lit = !UseLightmaps ? 0 : ApplyLightmaps(visuals, "Assets/SourceMapsImported/" + mapName + "/Lightmaps");
+        int black = ShowBlackFaces(visuals, "Assets/SourceMapsImported/" + mapName, mapName);
         var bsp = BspFile.Load(bspPath);
         int propColliders = AddPropColliders(visuals, bsp, scale);
         int propsLit = !UseLightmaps ? 0 : LightProps(visuals, bsp, scale, "Assets/SourceMapsImported/" + mapName + "/Props");
@@ -151,7 +176,7 @@ public static class SourceMapVisuals
             unshadowed++;
         }
         Debug.Log($"[Source Maps] {mapName} visuals: {visuals.GetComponentsInChildren<MeshRenderer>(true).Length} renderers, " +
-                  $"{removed} tool surfaces removed, {strayColliders} uSource colliders removed, {lit} surfaces with Source lightmaps, {water} water surfaces, {skyFaces} sky faces, {unshadowed} renderers without Unity shadows, {propsLit} props lit, {doors} door blocks linked, {glass} breakable glass linked, {propColliders} solid props given colliders, {meshes} meshes saved, {textures} textures kept that only uSource's memory had, " +
+                  $"{removed} tool surfaces removed, {strayColliders} uSource colliders removed, {lit} surfaces with Source lightmaps, {black} toolsblack faces, {water} water surfaces, {skyFaces} sky faces, {unshadowed} renderers without Unity shadows, {propsLit} props lit, {doors} door blocks linked, {glass} breakable glass linked, {propColliders} solid props given colliders, {meshes} meshes saved, {textures} textures kept that only uSource's memory had, " +
                   $"{sounds} sounds" + (missing.Count > 0 ? $" ({missing.Count} sound files missing: {string.Join(", ", missing)})" : "") +
                   $", sky {skyName}" + (sky == null ? " missing (HL2 skies need the CS:S folder's hl2)" : "") +
                   (css == "" ? " (no CS:S folder set: stock textures missing)" : ""));
@@ -211,6 +236,9 @@ public static class SourceMapVisuals
         {
             var model = ModelVisuals(faces, door);
             if (model == null) continue;
+            // uSource marks its faces static: static batching would freeze the model where it starts.
+            foreach (var t in model.GetComponentsInChildren<Transform>(true))
+                GameObjectUtility.SetStaticEditorFlags(t.gameObject, GameObjectUtility.GetStaticEditorFlags(t.gameObject) & ~StaticEditorFlags.BatchingStatic);
             door.visuals = model;
             UdonSharpEditor.UdonSharpEditorUtility.CopyProxyToUdon(door);
             linked++;
@@ -441,8 +469,8 @@ public static class SourceMapVisuals
 
     /// <summary>
     /// MeshColliders on static props the map marks solid (2 = bounding box, 6 = vphysics; both use the render mesh
-    /// here). uSource puts each prop directly under its "[StaticProps]" group, at the position SourceMaps would use, so
-    /// props are matched by position.
+    /// here, without its alpha-tested or translucent parts: leaf cards, canopies). uSource puts each prop directly under
+    /// its "[StaticProps]" group, at the position SourceMaps would use, so props are matched by position.
     /// </summary>
     static int AddPropColliders(GameObject root, BspFile bsp, float scale)
     {
@@ -457,19 +485,46 @@ public static class SourceMapVisuals
             Vector3 at = root.transform.InverseTransformPoint(t.position);
             if (!solid.Any(s => (s - at).sqrMagnitude < 0.0025f)) continue; // within 5 cm
             foreach (var mf in t.GetComponentsInChildren<MeshFilter>(true))
-                if (mf.sharedMesh != null && mf.GetComponent<Collider>() == null)
-                    mf.gameObject.AddComponent<MeshCollider>().sharedMesh = mf.sharedMesh;
+            {
+                if (mf.sharedMesh == null || mf.GetComponent<Collider>() != null) continue;
+                var r = mf.GetComponent<Renderer>();
+                var mesh = SolidPart(mf.sharedMesh, r != null ? r.sharedMaterials : new Material[0]);
+                if (mesh != null) mf.gameObject.AddComponent<MeshCollider>().sharedMesh = mesh;
+            }
             // Models with bones come as SkinnedMeshRenderers: collide with the mesh in its current (static) pose.
             foreach (var smr in t.GetComponentsInChildren<SkinnedMeshRenderer>(true))
             {
                 if (smr.sharedMesh == null || smr.GetComponent<Collider>() != null) continue;
                 var baked = new Mesh { name = smr.sharedMesh.name + " collision" };
                 smr.BakeMesh(baked);
-                smr.gameObject.AddComponent<MeshCollider>().sharedMesh = baked;
+                var mesh = SolidPart(baked, smr.sharedMaterials);
+                if (mesh != baked) Object.DestroyImmediate(baked);
+                if (mesh != null) smr.gameObject.AddComponent<MeshCollider>().sharedMesh = mesh;
             }
-            added++;
+            if (t.GetComponentInChildren<MeshCollider>(true) != null) added++;
         }
         return added;
+    }
+
+    /// <summary>`mesh` without its sub-meshes whose material isn't opaque (alpha tested or translucent): itself if all
+    /// are opaque, a new mesh (saved with the visuals' meshes) if some are, null if none are.</summary>
+    static Mesh SolidPart(Mesh mesh, Material[] mats)
+    {
+        var keep = new List<int>();
+        for (int i = 0; i < mesh.subMeshCount; i++)
+        {
+            var m = i < mats.Length ? mats[i] : null;
+            bool clear = m != null && ((m.HasProperty("_Cutoff") && m.GetFloat("_Cutoff") > 0f) ||
+                (m.HasProperty("_ZWrite") && m.GetFloat("_ZWrite") == 0f) || m.renderQueue >= 2450);
+            if (!clear) keep.Add(i);
+        }
+        if (keep.Count == mesh.subMeshCount) return mesh;
+        if (keep.Count == 0) return null;
+        var solid = new Mesh { name = mesh.name + " solid", indexFormat = mesh.indexFormat };
+        solid.SetVertices(mesh.vertices);
+        solid.subMeshCount = keep.Count;
+        for (int k = 0; k < keep.Count; k++) solid.SetTriangles(mesh.GetTriangles(keep[k]), k);
+        return solid;
     }
 
     /// <summary>Saves every mesh that only lives in the scene (rendered, skinned, colliders) into one asset file.</summary>
@@ -594,14 +649,24 @@ public static class SourceMapVisuals
             if (!made.TryGetValue(name, out var mat))
             {
                 byte[] vmt = ReadGameFile(resources, "materials/" + name + ".vmt");
-                string text = vmt != null ? System.Text.Encoding.UTF8.GetString(vmt).TrimStart('\uFEFF', ' ', '\t', '\r', '\n', '"') : "";
+                string text = VmtText(vmt), colors = text;
+                // vbsp's cubemap "patch" materials (maps/<map>/liquids/water_..._x_y_z) include the real one: the patch's
+                // keys come first, so a $fogcolor in it wins.
+                for (int k = 0; k < 4 && text.StartsWith("patch", System.StringComparison.OrdinalIgnoreCase); k++)
+                {
+                    var include = System.Text.RegularExpressions.Regex.Match(text, "\"?include\"?\\s+\"([^\"]+)\"", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+                    byte[] baseVmt = include.Success ? ReadGameFile(resources, include.Groups[1].Value.Replace('\\', '/')) : null;
+                    if (baseVmt == null) break;
+                    text = VmtText(baseVmt);
+                    colors += "\n" + text;
+                }
                 mat = null;
                 // The Water shader, or its cheap fallback (LightmappedGeneric with %compilewater, no lightmap of its own).
                 if (text.StartsWith("water", System.StringComparison.OrdinalIgnoreCase) || text.IndexOf("%compilewater", System.StringComparison.OrdinalIgnoreCase) >= 0)
                 {
                     Directory.CreateDirectory(folder);
                     mat = new Material(shader) { name = name };
-                    mat.SetColor("_FogColor", VmtColor(text, "$fogcolor", VmtColor(text, "$reflecttint", new Color(0.07f, 0.14f, 0.12f))));
+                    mat.SetColor("_FogColor", VmtColor(colors, "$fogcolor", VmtColor(colors, "$reflecttint", new Color(0.07f, 0.14f, 0.12f))));
                     mat.SetColor("_SkyColor", skyColor);
                     AssetDatabase.CreateAsset(mat, $"{folder}/{made.Count}_{Path.GetFileName(name)}.mat");
                 }
@@ -614,6 +679,30 @@ public static class SourceMapVisuals
             done++;
         }
         return done;
+    }
+
+    /// <summary>
+    /// The tools/toolsblack faces, which uSource hides with every "TOOLS/" group: Source draws them plain black.
+    /// Returns the faces' renderers shown.
+    /// </summary>
+    static int ShowBlackFaces(GameObject visuals, string folder, string mapName)
+    {
+        var faces = visuals.GetComponentsInChildren<MeshRenderer>(true)
+            .Where(r => r.gameObject.name.ToUpperInvariant().EndsWith("TOOLS/TOOLSBLACK")).ToList();
+        if (faces.Count == 0) return 0;
+        string matPath = folder + "/" + mapName + "_toolsblack.mat";
+        Directory.CreateDirectory(folder);
+        AssetDatabase.DeleteAsset(matPath);
+        var mat = new Material(Shader.Find("Unlit/Color")) { name = mapName + "_toolsblack", color = Color.black };
+        AssetDatabase.CreateAsset(mat, matPath);
+        foreach (var r in faces)
+        {
+            r.enabled = true;
+            var mats = r.sharedMaterials;
+            for (int i = 0; i < mats.Length; i++) mats[i] = mat;
+            r.sharedMaterials = mats;
+        }
+        return faces.Count;
     }
 
     /// <summary>
@@ -650,6 +739,12 @@ public static class SourceMapVisuals
             r.sharedMaterials = mats;
         }
         return faces.Count;
+    }
+
+    /// <summary>A VMT's text from its shader name on (no BOM, leading space or quote).</summary>
+    static string VmtText(byte[] vmt)
+    {
+        return vmt != null ? System.Text.Encoding.UTF8.GetString(vmt).TrimStart('\uFEFF', ' ', '\t', '\r', '\n', '"') : "";
     }
 
     /// <summary>A VMT colour: "[0.07 0.14 0.12]" (0..1) or "{18 36 31}" (0..255).</summary>

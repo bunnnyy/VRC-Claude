@@ -19,15 +19,15 @@ public static class ScoreboardPrefab
     [MenuItem("Tools/Source Timer/Create Scoreboard Prefab")]
     public static void Menu()
     {
-        AssetDatabase.DeleteAsset(Path);
-        Selection.activeObject = Get();
+        Selection.activeObject = Get(true);
     }
 
-    /// <summary>The prefab asset, made if it isn't there.</summary>
-    public static GameObject Get()
+    /// <summary>The prefab asset, made if it isn't there (or `force`: made again over it, which keeps placed
+    /// instances' overrides; deleting it first would give its objects new IDs and lose them).</summary>
+    public static GameObject Get(bool force = false)
     {
         var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(Path);
-        if (prefab != null) return prefab;
+        if (prefab != null && !force) return prefab;
         var root = Build();
         prefab = PrefabUtility.SaveAsPrefabAsset(root, Path);
         Object.DestroyImmediate(root);
