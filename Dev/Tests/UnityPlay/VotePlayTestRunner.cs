@@ -46,7 +46,9 @@ public class VotePlayTestRunner : MonoBehaviour
 
         // Vote: first vote starts the timer, the winner is played by everyone.
         manager.SetProgramVariable("voteSeconds", 3f);
-        Press("map", 2);
+        var board = GameObject.Find("VoteBoard").transform;
+        Check(PointerHits(board.Find("Menu")), "menu: VRChat's pointer finds the lobby board (UI shape and its collider)");
+        Click(board, "Menu/Cards/Slot3"); // the UI button itself (On Click -> SourceMapButton.Click -> manager)
         yield return Seconds(0.5f);
         int[] votes = (int[])manager.GetProgramVariable("votes");
         Check(votes[2] == 1 && (int)manager.GetProgramVariable("voteEnd") != 0, "vote: vote counted on slot 3, timer started");
@@ -63,7 +65,9 @@ public class VotePlayTestRunner : MonoBehaviour
         yield return Shot("map_panel", MapRoot(map).transform.Find("SourceMapPanel"), new Vector3(0, 1.45f, -1.9f), 55);
 
         // Rock the vote: 1 player = 100% >= 60%: new vote in the lobby with the timer running.
-        Press("rtv", -1);
+        var panel = MapRoot(map).transform.Find("SourceMapPanel");
+        Check(PointerHits(panel.Find("Menu")), "menu: VRChat's pointer finds the map's panel");
+        Click(panel, "Menu/RTV");
         yield return Seconds(0.5f);
         Check(State() == 0 && (int)manager.GetProgramVariable("voteEnd") != 0, "rtv: rocking the vote starts a new vote with the timer running");
         Check(Near(lobby.position) && ActiveMaps() == 0, "rtv: everyone is back in the lobby");
@@ -146,7 +150,7 @@ public class VotePlayTestRunner : MonoBehaviour
     IEnumerator OwnerChanges()
     {
         var board = GameObject.Find("VoteBoard").transform;
-        var ownerControls = board.Find("OwnerControls").gameObject;
+        var ownerControls = board.Find("Menu/OwnerControls").gameObject;
         Press("forcelobby", -1);
         yield return Seconds(0.3f);
 
@@ -266,6 +270,23 @@ public class VotePlayTestRunner : MonoBehaviour
         return null;
     }
 
+    /// <summary>Clicks a menu's UI button (runs its On Click like VRChat's pointer does).</summary>
+    void Click(Transform root, string path)
+    {
+        var button = root.Find(path)?.GetComponent<UnityEngine.UI.Button>();
+        if (button == null) { Check(false, $"menu: button {path} exists"); return; }
+        button.onClick.Invoke();
+    }
+
+    /// <summary>A ray from 2 m in front of a menu at its middle hits its VRChat UI shape (what the pointer uses).</summary>
+    static bool PointerHits(Transform menu)
+    {
+        if (menu == null) return false;
+        Vector3 front = -menu.forward; // world-space canvases are read from their -z side
+        return Physics.Raycast(menu.position + front * 2f, -front, out var hit, 5f, ~0, QueryTriggerInteraction.Collide)
+            && hit.collider.GetComponent<VRC.SDKBase.VRC_UiShape>() != null;
+    }
+
     void Press(string action, int slot)
     {
         manager.SetProgramVariable("__0_action__param", action);
@@ -293,7 +314,7 @@ public class VotePlayTestRunner : MonoBehaviour
     string Status()
     {
         var board = GameObject.Find("VoteBoard");
-        var text = board != null ? board.transform.Find("Status/Text") : null;
+        var text = board != null ? board.transform.Find("Menu/Status") : null;
         return text != null ? text.GetComponent<TMPro.TextMeshProUGUI>().text : "";
     }
 

@@ -96,6 +96,10 @@ another map use that map's scene, so rebuild (or check the log's map name) befor
   saves materials without folder names; skinned props need baked colliders; no lights imported.
 - VRChat respawns below `RespawnHeightY` (default -100 m): Create Lobby lowers it below the deepest map.
 - Boards inside switched-off maps can't sync: course boards live in the lobby.
+- Lobby board and map panels are world-space UI menus (SourceMapsSetup.Menu/UiButton): Canvas + VRCUiShape + a
+  trigger BoxCollider (what VRChat's and ClientSim's pointer raycast hits), Buttons whose On Click calls
+  SendCustomEvent("Click") on SourceMapButton. VRChat's UnityEventFilter drops those events unless `UDON` is defined
+  (the SDK adds it in an interactive editor; run.sh adds it to the test project). The vote test clicks real buttons.
 - ClientSim persistence needs the `VRC_ENABLE_PLAYER_PERSISTENCE` define (SDK sets it only in an interactive editor).
 - `stream.Position += r.ReadInt32()` reads Position before the read: split it.
 - Collision is a hollow mesh: overlap tests (CheckBox) don't see a point inside a solid block; use a ray with back

@@ -41,6 +41,10 @@ if ! grep -q "VRC_ENABLE_PLAYER_PERSISTENCE" "$proj/ProjectSettings/ProjectSetti
   # Only the Standalone line inside scriptingDefineSymbols (other settings have Standalone lines too).
   sed -i '/^  scriptingDefineSymbols:/,/^  [a-zA-Z]/ s|^    Standalone: \(.*\)$|    Standalone: \1;VRC_SDK_VRCSDK3;VRC_ENABLE_PLAYER_PERSISTENCE|' "$proj/ProjectSettings/ProjectSettings.asset"
 fi
+# UDON too: without it VRChat's UnityEvent filter drops UI events calling UdonBehaviour.SendCustomEvent (menu buttons).
+if ! grep -q "VRC_ENABLE_PLAYER_PERSISTENCE;UDON" "$proj/ProjectSettings/ProjectSettings.asset"; then
+  sed -i '/^  scriptingDefineSymbols:/,/^  [a-zA-Z]/ s|^    Standalone: \(.*VRC_ENABLE_PLAYER_PERSISTENCE\)$|    Standalone: \1;UDON|' "$proj/ProjectSettings/ProjectSettings.asset"
+fi
 
 # The project gets a copy of the assets, so Unity never rewrites the committed files.
 copy_assets() {

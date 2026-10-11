@@ -154,6 +154,11 @@ bhop lane on one side, a small surf ramp on the other, each with its own legit a
 map added in step 7 and moves the VRC World spawn into the lobby. Run it again whenever you add a map (it replaces
 the old lobby). Add the SourceMovement prefab before you run it, so the practice boards split auto and legit bhop.
 
+The vote board and the map panels are UI menus: point at them and click (VRChat's laser in VR, the mouse on
+desktop). The board shows a card per map (thumbnail, name, author, votes; your vote has a blue bar), the owner
+controls in amber at the bottom and **Rejoin map**. A world built before this has cube buttons: run Create Lobby
+again to get the menus.
+
 ![The vote board during a vote (test maps with plain colour thumbnails)](images/lobby_vote.png)
 
 ![The panel next to a map's spawn](images/map_panel.png)
@@ -189,8 +194,8 @@ the current instance, including their saved bests from earlier sessions. There i
 
 ## 10. Test in Unity
 
-Press **Play**. ClientSim (VRChat's simulator) starts you in the lobby. Click a map's thumbnail to vote
-(desktop: look at it and left-click; the timer starts with the first vote). In Play mode you are the instance
+Press **Play**. ClientSim (VRChat's simulator) starts you in the lobby. Click a map's card to vote
+(point at it with the mouse and left-click; the timer starts with the first vote). In Play mode you are the instance
 owner, so you also see the owner buttons.
 
 ## 11. Upload
@@ -205,7 +210,7 @@ owner, so you also see the owner buttons.
   As in CS:S, a crouch jump reaches ledges up to about 65 units, and ducked you fit through 46+ unit gaps.
 - **Practice courses** next to the lobby: walk onto the green start pad, run to the red end pad. Falling off sends
   you back to the start; **G** (desktop) restarts. Times go on the boards beside the course.
-- **Lobby board**: press a map to vote (press another to change your vote). The vote ends 60 s after the first
+- **Lobby board**: click a map's card to vote (click another to change your vote). The vote ends 60 s after the first
   vote; ties are broken at random. Everyone is teleported to the winner.
 - **In a map**: the panel next to the spawn shows the time left and the rock-the-vote count. **Rock the vote**
   (press again to take it back): at 60% of players a new vote starts in the lobby. **Back to lobby** takes only
@@ -213,7 +218,7 @@ owner, so you also see the owner buttons.
 - **Glass doors** (bhop_eazy_v2's red lanes): hop at the glass and it breaks as you get close, as if you'd knifed
   it. Only for you; it stays broken until you leave the instance.
 - **Time limit**: when it runs out everyone goes to the lobby for a vote that also offers "Extend".
-- **Instance owner** (the master in public/group instances, which have no owner) sees red buttons: **Lock / unlock
+- **Instance owner** (the master in public/group instances, which have no owner) sees amber buttons: **Lock / unlock
   vote** (stops the timer; only Start ends it), **Start now**, **Force a map** (then press a map), **Everyone to
   lobby**, and **+ time** in maps.
 
@@ -233,4 +238,5 @@ is in **[SETTINGS.md](SETTINGS.md)**.
 | Another stage shows through the sky | Import the map again: the sky faces now hide what's behind them |
 | Sky is the world's default | The map's sky textures weren't found (an HL2 sky needs the CS:S folder's `hl2`); import again after setting the folder |
 | Two maps overlap | Move the map objects apart (step 6b.4) |
+| Can't click the menus | They need VRChat's pointer (laser in VR, mouse on desktop). In your own test project make sure the scripting defines include `UDON` (the VRChat SDK adds it when Unity opens): without it the buttons' events are removed |
 | Owner buttons don't show | Only the instance owner sees them; in public/group instances, the master |

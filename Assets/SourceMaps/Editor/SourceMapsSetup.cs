@@ -16,8 +16,6 @@ using UnityEngine.UI;
 /// </summary>
 public static class SourceMapsSetup
 {
-    static readonly Color ButtonColor = new Color(0.2f, 0.45f, 0.85f), AdminColor = new Color(0.85f, 0.35f, 0.2f);
-
     [MenuItem("Tools/Source Maps/Add Selected Map To Rotation")]
     public static void AddSelectedMap()
     {
@@ -113,59 +111,74 @@ public static class SourceMapsSetup
         return manager;
     }
 
-    /// <summary>The lobby vote board: 6 map slots (press a thumbnail to vote), extend, status, owner controls.</summary>
+    // Menu look: dark rounded panels, light text, one blue accent; owner controls in amber.
+    static readonly Color PanelColor = new Color32(15, 18, 24, 255), CardColor = new Color32(30, 35, 46, 255),
+        TextColor = new Color32(242, 244, 248, 255), Accent = new Color32(76, 141, 255, 255), Green = new Color32(47, 175, 110, 255),
+        OwnerFill = new Color32(46, 40, 34, 255), OwnerText = new Color32(255, 181, 71, 255), Divider = new Color32(255, 255, 255, 20);
+
+    /// <summary>
+    /// The lobby vote board, a UI menu (VRChat's pointer, desktop and VR): status at the top, 6 map cards (thumbnail,
+    /// name, author, votes; press one to vote), extend, and a footer with the owner controls and Rejoin.
+    /// </summary>
     static SourceMapScreen CreateBoard(Transform parent, SourceMapManager manager, Vector3 at)
     {
         var board = new GameObject("VoteBoard");
         board.transform.SetParent(parent, false);
         board.transform.localPosition = at;
-        // World-space canvases read from their -z side: unrotated, the board faces the spawn (which looks along +z).
         var screen = board.AddUdonSharpComponent<SourceMapScreen>();
         screen.manager = manager;
+        // 1600 x 900 units of 4 mm (6.4 x 3.6 m), its middle 1.9 m up. Unrotated, its front faces the spawn.
+        var menu = Menu(board.transform, new Vector2(1600, 900), 0.004f, new Vector3(0, 1.9f, 0));
+        screen.status = Label(menu, "Status", "Vote for the next map", new Vector2(0, 345), new Vector2(1500, 150), 44, TextColor, FontStyles.Bold);
 
-        var back = GameObject.CreatePrimitive(PrimitiveType.Cube);
-        back.name = "Backplate";
-        back.transform.SetParent(board.transform, false);
-        back.transform.localPosition = new Vector3(0, 1.9f, 0.06f);
-        back.transform.localScale = new Vector3(7.6f, 3.6f, 0.05f);
-        back.GetComponent<MeshRenderer>().sharedMaterial = Colored(new Color(0.08f, 0.09f, 0.12f));
-
-        screen.status = Text(board.transform, "Status", "Vote for the next map", new Vector3(0, 3.35f, 0), new Vector2(7, 0.5f), 0.16f);
-
+        // The cards in a row that stays centred however many are shown.
+        var cards = Group(menu, "Cards", new Vector2(0, 60), new Vector2(1500, 300));
+        var row = cards.gameObject.AddComponent<HorizontalLayoutGroup>();
+        row.spacing = 18;
+        row.childAlignment = TextAnchor.MiddleCenter;
+        row.childControlWidth = row.childControlHeight = false;
+        row.childForceExpandWidth = row.childForceExpandHeight = false;
         var roots = new GameObject[6];
         var images = new RawImage[6];
         var texts = new TextMeshProUGUI[6];
+        var selected = new Image[6];
         for (int i = 0; i < 6; i++)
         {
-            float x = (i - 2.5f) * 1.2f;
-            var slot = Button(board.transform, "Slot" + (i + 1), "", manager, "map", i, new Vector3(x, 2.35f, 0), new Vector3(1.1f, 0.62f, 0.04f), new Color(0.15f, 0.15f, 0.18f));
-            images[i] = Image(slot.transform, new Vector2(1.05f, 0.59f), -0.025f);
-            texts[i] = Text(slot.transform, "SlotText", "map", new Vector3(0, -0.6f, 0), new Vector2(1.15f, 0.5f), 0.09f);
-            roots[i] = slot;
+            var card = UiButton(cards, "Slot" + (i + 1), "", manager, "map", i, Vector2.zero, new Vector2(232, 300), CardColor, TextColor);
+            var mask = Box(card, "Thumbnail", new Vector2(0, 74), new Vector2(216, 122), Color.white);
+            mask.gameObject.AddComponent<Mask>().showMaskGraphic = false; // rounded corners
+            var image = new GameObject("Image", typeof(RectTransform)).AddComponent<RawImage>();
+            Place(image.rectTransform, mask.rectTransform, Vector2.zero, new Vector2(216, 122));
+            image.raycastTarget = false;
+            images[i] = image;
+            texts[i] = Label(card, "SlotText", "map", new Vector2(0, -62), new Vector2(216, 130), 25, TextColor, FontStyles.Normal);
+            selected[i] = Box(card, "YourVote", new Vector2(0, -144), new Vector2(120, 6), Accent); // your vote: a blue bar
+            roots[i] = card;
         }
         screen.slotRoots = roots;
         screen.slotImages = images;
         screen.slotTexts = texts;
+        screen.slotSelected = selected;
 
-        var extend = Button(board.transform, "Extend", "", manager, "extend", -1, new Vector3(0, 1.2f, 0), new Vector3(2.4f, 0.32f, 0.04f), new Color(0.2f, 0.55f, 0.3f));
+        var extend = UiButton(menu, "Extend", "", manager, "extend", -1, new Vector2(0, -185), new Vector2(620, 96), Green, TextColor);
         screen.extendRoot = extend;
-        screen.extendText = Text(extend.transform, "ExtendText", "Extend", new Vector3(0, 0, -0.025f), new Vector2(2.3f, 0.3f), 0.1f);
+        screen.extendText = Label(extend, "ExtendText", "Extend", Vector2.zero, new Vector2(600, 90), 28, TextColor, FontStyles.Bold);
 
-        var admin = new GameObject("OwnerControls");
-        admin.transform.SetParent(board.transform, false);
-        screen.adminRoot = admin;
-        screen.adminText = Text(admin.transform, "OwnerText", "Owner controls", new Vector3(-3.15f, 0.55f, 0), new Vector2(1.0f, 0.3f), 0.08f);
+        Box(menu, "Divider", new Vector2(0, -298), new Vector2(1500, 2), Divider);
+        var admin = Group(menu, "OwnerControls", Vector2.zero, new Vector2(1600, 900));
+        screen.adminRoot = admin.gameObject;
+        screen.adminText = Label(admin, "OwnerText", "Owner controls", new Vector2(-690, -360), new Vector2(180, 70), 22, OwnerText, FontStyles.Bold);
         string[] actions = { "lock", "start", "force", "forcelobby" };
         string[] labels = { "Lock / unlock vote", "Start now", "Force a map", "Everyone to lobby" };
         for (int i = 0; i < actions.Length; i++)
-            Button(admin.transform, actions[i], labels[i], manager, actions[i], -1, new Vector3(-1.75f + i * 1.2f, 0.55f, 0), new Vector3(1.1f, 0.25f, 0.04f), AdminColor);
-        Button(board.transform, "Rejoin", "Rejoin map", manager, "rejoin", -1, new Vector3(3.15f, 0.55f, 0), new Vector3(0.9f, 0.25f, 0.04f), ButtonColor);
+            UiButton(admin, actions[i], labels[i], manager, actions[i], -1, new Vector2(-470 + i * 230, -360), new Vector2(210, 64), OwnerFill, OwnerText);
+        UiButton(menu, "Rejoin", "Rejoin map", manager, "rejoin", -1, new Vector2(650, -360), new Vector2(220, 64), Accent, TextColor);
 
         UdonSharpEditorUtility.CopyProxyToUdon(screen);
         return screen;
     }
 
-    /// <summary>Panel at a map's spawn: status (time left, rtv), RTV and lobby buttons, owner controls.</summary>
+    /// <summary>Menu at a map's spawn: status (time left, rtv), Rock the vote and Back to lobby, owner controls.</summary>
     static SourceMapScreen CreatePanel(SourceMapInfo map, SourceMapManager manager)
     {
         var old = map.transform.Find("SourceMapPanel");
@@ -175,17 +188,18 @@ public static class SourceMapsSetup
         // 1.5 m to the right of the spawn, facing it.
         panel.transform.position = map.spawn.position + map.spawn.right * 1.5f + map.spawn.forward * 1.0f;
         Vector3 away = panel.transform.position - map.spawn.position;
-        panel.transform.rotation = Quaternion.LookRotation(new Vector3(away.x, 0, away.z), Vector3.up); // -z faces the spawn
+        panel.transform.rotation = Quaternion.LookRotation(new Vector3(away.x, 0, away.z), Vector3.up); // front faces the spawn
         var screen = panel.AddUdonSharpComponent<SourceMapScreen>();
         screen.manager = manager;
-        screen.status = Text(panel.transform, "Status", "", new Vector3(0, 1.75f, 0), new Vector2(1.6f, 0.4f), 0.08f);
-        Button(panel.transform, "RTV", "Rock the vote", manager, "rtv", -1, new Vector3(-0.42f, 1.4f, 0), new Vector3(0.8f, 0.22f, 0.04f), ButtonColor);
-        Button(panel.transform, "Lobby", "Back to lobby", manager, "lobby", -1, new Vector3(0.42f, 1.4f, 0), new Vector3(0.8f, 0.22f, 0.04f), ButtonColor);
-        var admin = new GameObject("OwnerControls");
-        admin.transform.SetParent(panel.transform, false);
-        screen.adminRoot = admin;
-        Button(admin.transform, "ForceLobby", "Everyone to lobby", manager, "forcelobby", -1, new Vector3(-0.42f, 1.12f, 0), new Vector3(0.8f, 0.22f, 0.04f), AdminColor);
-        Button(admin.transform, "AddTime", "+ time", manager, "addtime", -1, new Vector3(0.42f, 1.12f, 0), new Vector3(0.8f, 0.22f, 0.04f), AdminColor);
+        // 640 x 400 units of 2.5 mm (1.6 x 1 m), its middle 1.45 m up.
+        var menu = Menu(panel.transform, new Vector2(640, 400), 0.0025f, new Vector3(0, 1.45f, 0));
+        screen.status = Label(menu, "Status", "", new Vector2(0, 125), new Vector2(600, 110), 28, TextColor, FontStyles.Bold);
+        UiButton(menu, "RTV", "Rock the vote", manager, "rtv", -1, new Vector2(-150, 10), new Vector2(280, 84), Accent, TextColor);
+        UiButton(menu, "Lobby", "Back to lobby", manager, "lobby", -1, new Vector2(150, 10), new Vector2(280, 84), CardColor, TextColor);
+        var admin = Group(menu, "OwnerControls", Vector2.zero, new Vector2(640, 400));
+        screen.adminRoot = admin.gameObject;
+        UiButton(admin, "ForceLobby", "Everyone to lobby", manager, "forcelobby", -1, new Vector2(-150, -115), new Vector2(280, 64), OwnerFill, OwnerText);
+        UiButton(admin, "AddTime", "+ time", manager, "addtime", -1, new Vector2(150, -115), new Vector2(280, 64), OwnerFill, OwnerText);
         UdonSharpEditorUtility.CopyProxyToUdon(screen);
         return screen;
     }
@@ -309,77 +323,139 @@ public static class SourceMapsSetup
     }
 
     /// <summary>
-    /// An Interact button: an unscaled object (returned, so hiding it hides everything) holding the cube that is
-    /// pressed and its label, auto-sized to fit.
+    /// A world-space UI menu (pointer clicks in VRChat and ClientSim: VRCUiShape and a collider over it) under
+    /// `parent`, `size` in canvas units of `metresPerUnit`, with a rounded dark panel behind everything.
     /// </summary>
-    static GameObject Button(Transform parent, string name, string label, SourceMapManager manager, string action, int slot,
-        Vector3 at, Vector3 size, Color color)
+    static RectTransform Menu(Transform parent, Vector2 size, float metresPerUnit, Vector3 at)
     {
-        var holder = new GameObject(name);
-        holder.transform.SetParent(parent, false);
-        holder.transform.localPosition = at;
-        var cube = GameObject.CreatePrimitive(PrimitiveType.Cube);
-        cube.name = "Press";
-        cube.transform.SetParent(holder.transform, false);
-        cube.transform.localScale = size;
-        cube.GetComponent<MeshRenderer>().sharedMaterial = Colored(color);
-        var button = cube.AddUdonSharpComponent<SourceMapButton>();
-        button.manager = manager;
-        button.action = action;
-        button.slot = slot;
-        button.InteractionText = label != "" ? label : "Vote";
-        UdonSharpEditorUtility.CopyProxyToUdon(button);
-        if (label != "")
-        {
-            var text = Text(holder.transform, "Label", label, new Vector3(0, 0, -size.z / 2 - 0.005f), new Vector2(size.x * 0.92f, size.y * 0.9f), size.y * 0.5f);
-            text.enableAutoSizing = true;
-            text.fontSizeMin = 1;
-            text.fontSizeMax = size.y * 50;
-        }
-        return holder;
+        var go = new GameObject("Menu", typeof(RectTransform), typeof(Canvas), typeof(GraphicRaycaster));
+        go.transform.SetParent(parent, false);
+        go.GetComponent<Canvas>().renderMode = RenderMode.WorldSpace;
+        var rect = (RectTransform)go.transform;
+        rect.localPosition = at;
+        rect.sizeDelta = size;
+        rect.localScale = Vector3.one * metresPerUnit;
+        go.AddComponent<VRC.SDK3.Components.VRCUiShape>();
+        var hit = go.AddComponent<BoxCollider>(); // what the pointer hits
+        hit.isTrigger = true;
+        hit.size = new Vector3(size.x, size.y, 0.02f / metresPerUnit);
+        Box(rect, "Background", Vector2.zero, size, PanelColor).raycastTarget = false;
+        return rect;
     }
 
-    /// <summary>World-space TextMeshPro text, size and font size in metres.</summary>
-    static TextMeshProUGUI Text(Transform parent, string name, string text, Vector3 at, Vector2 size, float fontSize)
+    /// <summary>
+    /// A rounded UI button calling SourceMapButton.Click (which tells SourceMapManager), with an optional label;
+    /// returns its object (hiding it hides the label too).
+    /// </summary>
+    static GameObject UiButton(RectTransform parent, string name, string label, SourceMapManager manager, string action, int slot,
+        Vector2 at, Vector2 size, Color fill, Color textColor)
     {
-        var canvasObject = new GameObject(name, typeof(Canvas));
-        canvasObject.transform.SetParent(parent, false);
-        canvasObject.transform.localPosition = at;
-        canvasObject.GetComponent<Canvas>().renderMode = RenderMode.WorldSpace;
-        var rect = canvasObject.GetComponent<RectTransform>();
-        rect.sizeDelta = size * 100;
-        rect.localScale = Vector3.one * 0.01f;
-        var textObject = new GameObject("Text", typeof(RectTransform));
-        textObject.transform.SetParent(canvasObject.transform, false);
-        var label = textObject.AddComponent<TextMeshProUGUI>();
+        var image = Box(parent, name, at, size, fill);
+        var button = image.gameObject.AddComponent<Button>();
+        button.targetGraphic = image;
+        button.navigation = new Navigation { mode = Navigation.Mode.None };
+        image.color = Color.white; // the button's tint is the colour: hover lighter, press darker
+        var colors = button.colors;
+        colors.normalColor = colors.selectedColor = fill;
+        colors.highlightedColor = Color.Lerp(fill, Color.white, 0.15f);
+        colors.pressedColor = Color.Lerp(fill, Color.black, 0.25f);
+        colors.disabledColor = Color.Lerp(fill, Color.black, 0.5f);
+        colors.colorMultiplier = 1f;
+        colors.fadeDuration = 0.08f;
+        button.colors = colors;
+        var press = image.gameObject.AddUdonSharpComponent<SourceMapButton>();
+        press.manager = manager;
+        press.action = action;
+        press.slot = slot;
+        UdonSharpEditorUtility.CopyProxyToUdon(press);
+        var udon = UdonSharpEditorUtility.GetBackingUdonBehaviour(press);
+        UnityEditor.Events.UnityEventTools.AddStringPersistentListener(button.onClick, udon.SendCustomEvent, "Click");
+        if (label != "") Label(image.rectTransform, "Label", label, Vector2.zero, size - new Vector2(20, 8), size.y * 0.34f, textColor, FontStyles.Bold).enableWordWrapping = false; // one line, shrunk to fit
+        return image.gameObject;
+    }
+
+    /// <summary>A rounded box (UI image) in `parent`.</summary>
+    static Image Box(RectTransform parent, string name, Vector2 at, Vector2 size, Color color)
+    {
+        var image = new GameObject(name, typeof(RectTransform)).AddComponent<Image>();
+        Place(image.rectTransform, parent, at, size);
+        image.sprite = RoundedSprite();
+        image.type = Image.Type.Sliced;
+        image.color = color;
+        return image;
+    }
+
+    static Image Box(GameObject parent, string name, Vector2 at, Vector2 size, Color color)
+    {
+        return Box((RectTransform)parent.transform, name, at, size, color);
+    }
+
+    /// <summary>A UI text, font size in canvas units.</summary>
+    static TextMeshProUGUI Label(RectTransform parent, string name, string text, Vector2 at, Vector2 size, float fontSize, Color color, FontStyles style)
+    {
+        var label = new GameObject(name, typeof(RectTransform)).AddComponent<TextMeshProUGUI>();
+        Place(label.rectTransform, parent, at, size);
         label.text = text;
+        label.fontSize = fontSize;
+        label.fontStyle = style;
+        label.color = color;
         label.alignment = TextAlignmentOptions.Center;
-        label.fontSize = fontSize * 100;
         label.enableWordWrapping = true;
-        var textRect = textObject.GetComponent<RectTransform>();
-        textRect.anchorMin = Vector2.zero;
-        textRect.anchorMax = Vector2.one;
-        textRect.sizeDelta = Vector2.zero;
+        label.enableAutoSizing = true; // long names shrink to fit
+        label.fontSizeMin = fontSize * 0.5f;
+        label.fontSizeMax = fontSize;
+        label.raycastTarget = false;
         return label;
     }
 
-    static RawImage Image(Transform holder, Vector2 sizeMetres, float z)
+    static TextMeshProUGUI Label(GameObject parent, string name, string text, Vector2 at, Vector2 size, float fontSize, Color color, FontStyles style)
     {
-        var canvasObject = new GameObject("Thumbnail", typeof(Canvas));
-        canvasObject.transform.SetParent(holder, false);
-        canvasObject.transform.localPosition = new Vector3(0, 0, z);
-        canvasObject.GetComponent<Canvas>().renderMode = RenderMode.WorldSpace;
-        var rect = canvasObject.GetComponent<RectTransform>();
-        rect.sizeDelta = sizeMetres * 100;
-        rect.localScale = Vector3.one * 0.01f;
-        var imageObject = new GameObject("Image", typeof(RectTransform));
-        imageObject.transform.SetParent(canvasObject.transform, false);
-        var image = imageObject.AddComponent<RawImage>();
-        var r = imageObject.GetComponent<RectTransform>();
-        r.anchorMin = Vector2.zero;
-        r.anchorMax = Vector2.one;
-        r.sizeDelta = Vector2.zero;
-        return image;
+        return Label((RectTransform)parent.transform, name, text, at, size, fontSize, color, style);
+    }
+
+    /// <summary>An empty UI rectangle (a group to show or hide).</summary>
+    static RectTransform Group(RectTransform parent, string name, Vector2 at, Vector2 size)
+    {
+        var rect = (RectTransform)new GameObject(name, typeof(RectTransform)).transform;
+        Place(rect, parent, at, size);
+        return rect;
+    }
+
+    static void Place(RectTransform rect, RectTransform parent, Vector2 at, Vector2 size)
+    {
+        rect.SetParent(parent, false);
+        rect.anchoredPosition = at;
+        rect.sizeDelta = size;
+    }
+
+    /// <summary>The menus' rounded corner sprite (white, 9-sliced; 16 unit corners), made once as an asset.</summary>
+    static Sprite RoundedSprite()
+    {
+        const string path = "Assets/SourceMaps/Materials/rounded.png";
+        var sprite = AssetDatabase.LoadAssetAtPath<Sprite>(path);
+        if (sprite != null) return sprite;
+        const int n = 64, r = 16;
+        var tex = new Texture2D(n, n, TextureFormat.RGBA32, false);
+        for (int y = 0; y < n; y++)
+            for (int x = 0; x < n; x++)
+            {
+                // Distance outside the rounded rectangle, anti-aliased over one pixel.
+                float dx = Mathf.Max(r - (x + 0.5f), (x + 0.5f) - (n - r), 0f), dy = Mathf.Max(r - (y + 0.5f), (y + 0.5f) - (n - r), 0f);
+                float a = Mathf.Clamp01(r + 0.5f - Mathf.Sqrt(dx * dx + dy * dy));
+                tex.SetPixel(x, y, new Color(1, 1, 1, a));
+            }
+        System.IO.Directory.CreateDirectory("Assets/SourceMaps/Materials");
+        System.IO.File.WriteAllBytes(path, tex.EncodeToPNG());
+        Object.DestroyImmediate(tex);
+        AssetDatabase.ImportAsset(path);
+        var importer = (TextureImporter)AssetImporter.GetAtPath(path);
+        importer.textureType = TextureImporterType.Sprite;
+        importer.spriteBorder = new Vector4(r, r, r, r);
+        importer.mipmapEnabled = false;
+        importer.alphaIsTransparency = true;
+        importer.wrapMode = TextureWrapMode.Clamp;
+        importer.SaveAndReimport();
+        return AssetDatabase.LoadAssetAtPath<Sprite>(path);
     }
 
     static readonly Dictionary<Color, Material> materials = new Dictionary<Color, Material>();
