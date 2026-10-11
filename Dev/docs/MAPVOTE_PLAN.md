@@ -396,3 +396,16 @@ the render meshes (needs a test). I did not dig into why USource's geometry does
 - **Route bot on other maps** (`RouteRunner` with a route file, see the handoff): per-point heights, a floor scan that
   sees under roofs, teleports touched like the raised triggers, real gravity, pushes count as progress, pad sections.
   `Dev/Tools/MapView` draws stages, finds paths over safe floors and chains bhop blocks into route lines.
+- **Results** (real Unity + ClientSim): `Dev/Tests/Bsp` 98/98 (monster_jam added); Sim all passed; U# compile OK;
+  vote all passed; `run.sh map` eazy all passed, monster_jam: teleports 50/50, blocks, bhop runs pass, stand passes with
+  the push launcher (s1) skipped, one pyramid surf stalls (below); `SM_CSS=... run.sh sample` 63/65 (the 2 known
+  drop-probe teleports): every map's sky shown in it, sounds play (monster_jam: 25, its 10 looping ones from the start,
+  walking into a trigger plays its sound). eazy's built-in route: sections 1-4 done, red lanes (5) still open as before.
+- **Route bot on monster_jam** (each stage started at its teleport destination): r, o (2), b (3) and the tower push run
+  to their exit; c runs from the start zone past c75 (first fall before c8), then from c8 falls before c10; the others fall early or stop: ch and
+  o (3) are surfs (not done by the bot), e falls past e2 in the dunes, en/oa/d/b (1)/b (2) on their first gaps, fl needs
+  its ladder climb, s (the moon) falls early. Video: `Dev/docs/media/bhop_monster_jam_bot.mp4` (2:09, the stages that
+  run, in Carmac's order, the map's music mixed in at the importer's volumes; the recorder has no audio).
+- Still open: one of the map test's pyramid surfs (Egypt) loses speed with nothing ahead and moving away from both
+  faces (the other 3 surf fine); the bot stages above; the route bot doesn't press buttons (monster_jam's are side
+  events: a monster truck show, explosions, voice clips).

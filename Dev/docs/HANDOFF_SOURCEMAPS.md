@@ -58,10 +58,10 @@ for r in css_content:cstrike hl2_ep2_content:hl2; do repo=${r%%:*}; dir=$c/${r##
 | `dotnet run --project Dev/Tests/Bsp` | BSP reader/collision on all 6 maps + booster parsing + breakable glass rule | 98/98 |
 | `dotnet run --project Dev/Tests/Sim` | movement + timer simulation (incl. course boards, saved bests) | all passed |
 | `Dev/Tests/UdonCompile/compile.sh` | real UdonSharp compile + editor scripts | OK |
-| `Dev/Tests/UnityPlay/run.sh vote` | rotation, owner changes, practice courses (ClientSim) | 44/44 |
+| `Dev/Tests/UnityPlay/run.sh vote` | rotation, owner changes, practice courses (ClientSim) | all passed |
 | `Dev/Tests/UnityPlay/run.sh map <bsp>` | one map: breakable glass, stand, reachable teleports, bhop/surf runs (SM_ONLY=runs or glass: only that) | eazy all passed; monster_jam all but one pyramid surf (see the plan) |
-| `SM_CSS=... Dev/Tests/UnityPlay/run.sh sample` | whole sample world (6 maps), per map incl. its sky and sounds (needs uSource, zones downloaded) | see the plan's step 8 |
-| `ROUTE_FILE=Dev/Tests/UnityPlay/Routes/bhop_monster_jam.txt ROUTE_SECTION=n run.sh route <bsp> <zones>` | the route bot on one monster_jam stage | r, o (2), b (3), tower: done; c to c10 |
+| `SM_CSS=... Dev/Tests/UnityPlay/run.sh sample` | whole sample world (6 maps), per map incl. its sky and sounds (needs uSource, zones downloaded) | 63/65 (2 drop-probe teleports) |
+| `ROUTE_FILE=Dev/Tests/UnityPlay/Routes/bhop_monster_jam.txt ROUTE_SECTION=n run.sh route <bsp> <zones>` | the route bot on one monster_jam stage | r, o (2), b (3), tower: done; c: start to c8 |
 | `SM_CSS=... Unity -executeMethod LadderDemoBootstrap.Run -smRecord dir`, then `make_video.sh dir out.mp4` | first-person ladder clip on the test map (CS:S ladder model with SM_CSS) | recorded |
 | `SM_CSS=... Unity -executeMethod LightingShots.Run -bsp map -smLightmaps on` | screenshots of an imported map (stock textures with SM_CSS) | eazy textured |
 | `Dev/Tests/UnityPlay/run.sh 90` | movement suite (movement session's) | all passed |

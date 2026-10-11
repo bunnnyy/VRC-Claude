@@ -389,8 +389,9 @@ public class MapPlayTestRunner : MonoBehaviour
         }
         Check(kept == bounced, $"bhop blocks: bouncing on a block with jump held is safe ({kept}/{bounced})");
 
-        // Off: standing stays.
+        // Off: standing stays (after the blocks sunk by the tests above are back up).
         blocks.SetProgramVariable("on", false);
+        yield return Frames(3f);
         int stood = 0;
         foreach (var spot in spots)
         {
