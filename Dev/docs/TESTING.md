@@ -24,7 +24,7 @@ Source's own maths. Back to the [README](../../README.md).
 | 3 | `UDON_TEST=1 Dev/Tests/UdonCompile/compile.sh` | VRChat's Udon VM | The compiled SourceMovement program against the movement tests | 66/66 (the same movement tests as suite 1) |
 | 4 | `Dev/Tests/UnityPlay/run.sh 90` | Unity + ClientSim | Movement suite at one frame rate (no argument: 30, 90, 144, 300 fps) | All passed at 30, 90, 144, 300 and 600 fps |
 | 5 | `dotnet run --project Dev/Tests/Bsp` | .NET | BSP reader and collision on the 6 real maps (closed brushes, no spike vertices), boosters, breakable glass | 108/108 |
-| 6 | `Dev/Tests/UnityPlay/run.sh map <bsp>` | Unity + ClientSim | One map: glass, stand at every destination, teleports, bhop blocks, bhop/surf runs | eazy, badges, kitsune all passed; arcane 22/25 and japan 53/54 teleports (drop-probe spots), monster_jam all but one pyramid surf |
+| 6 | `Dev/Tests/UnityPlay/run.sh map <bsp>` | Unity + ClientSim | One map: glass, stand at every destination, teleports, bhop blocks, bhop/surf runs | eazy, badges, kitsune, monster_jam all passed; arcane 22/25 and japan 53/54 teleports (drop-probe spots) |
 | 7 | `Dev/Tests/UnityPlay/run.sh vote` | Unity + ClientSim | Map rotation: voting through the UI menus, owner changes, practice courses, menu and scoreboard prefabs dragged in unwired | 52/52 |
 | 8 | `SM_CSS=... Dev/Tests/UnityPlay/run.sh sample` | Unity + ClientSim | Whole sample world (6 maps with uSource visuals, skies, sounds, zones) | 62/64 (the same 2 drop-probe misses) |
 

@@ -65,7 +65,7 @@ All commands and last results: [TESTING.md](TESTING.md#1-test-suites). The ones 
 |---|---|
 | `dotnet run --project Dev/Tests/Bsp` | 98/98 |
 | `Dev/Tests/UnityPlay/run.sh vote` | 52/52 (votes through the real UI buttons; dragged-in prefabs) |
-| `Dev/Tests/UnityPlay/run.sh map <bsp>` | eazy all passed; monster_jam all but one pyramid surf |
+| `Dev/Tests/UnityPlay/run.sh map <bsp>` | eazy, monster_jam all passed |
 | `SM_CSS=... Dev/Tests/UnityPlay/run.sh sample` | 63/65 (2 known drop-probe misses: arcane, japan) |
 | `SM_CSS=... SM_SHOT_DESTS=... LightingShots.Run` | Screenshots; use these instead of recordings to check visuals |
 
@@ -96,7 +96,7 @@ All commands and last results: [TESTING.md](TESTING.md#1-test-suites). The ones 
 | 1 | Bot turn-rate easing (smoother strafing) made stage r worse on its first try (4 falls vs 1); the fix after it is untested | `RouteRunner.TurnAccel` |
 | 2 | e's exit should now be reachable (triggers widened); en has a new route through the doorway; both untested with the bot | `Routes/bhop_monster_jam.txt` |
 | 3 | ch is bhops over a grass bank and stepping stones (not a surf): route to rewrite | same |
-| 4 | One pyramid surf in Egypt loses speed with nothing ahead | `run.sh map` monster_jam |
+| 4 | Done: the pyramid surf "stall" was the bot holding into the ramp after leaving it (air acceleration 1000 brakes, as in CS:S) | `run.sh map` monster_jam |
 | 5 | Bot video `Dev/docs/media/bhop_monster_jam_bot.mp4` predates the lighting fixes | re-record |
 | 6 | Drop-probe misses: arcane's out-of-bounds `*_stop` volumes, one japan teleport | the test's probe, not the triggers |
 | 7 | Faint lines where two lightmapped faces meet (atlas edges) | cosmetic |
@@ -109,7 +109,7 @@ All commands and last results: [TESTING.md](TESTING.md#1-test-suites). The ones 
 | Collision | A hollow mesh: overlap tests don't see a point inside a solid block (use a ray with back faces, `InsideSolid`); BoxCasts ignore a mesh they start touching |
 | Triggers | VRChat's capsule floats ~6 units up (triggers raised 8, but kept 1 under a bhop door lying on them) and is 0.2 m wide vs Source's 32-unit hull (triggers widened by the difference, `TriggerGrow`; hull checks take it off again). Timing-sensitive touches (bhop blocks) use Source's box |
 | BSP | Old vbsp maps (monster_jam) have no ambient index lumps: one light cube per leaf. `stream.Position += r.ReadInt32()` reads Position first: split it |
-| uSource | Needs `allowUnsafeCode`; clears the previous map on load (detach `BSP_WorldSpawn`); adds MeshColliders everywhere (removed); drops its file providers after LoadMap (reopened for prop `.phy` shapes, sounds, sky); 3D skybox off (adds a fly camera) |
+| uSource | Needs `allowUnsafeCode`; clears the previous map on load (detach `BSP_WorldSpawn`); adds MeshColliders everywhere (removed); drops its file providers after LoadMap (reopened for prop `.phy` shapes, sounds, sky); 3D skybox off (adds a fly camera); model vertices are (-x, z, -y) (its `SwapZY`): match it for anything in model space (prop `.phy` hulls) |
 | Lighting | uSource's shader decides what gets lightmaps (`LightmappedShaders`): `$detail` = DetailGeneric, `$translucent` = TranslucentGeneric. Water (Water shader or `%compilewater`) has no lightmap. Sky faces are its hidden `TOOLS/TOOLSSKYBOX` meshes |
 | Menus | Canvas + VRCUiShape + a trigger BoxCollider (what the pointer raycast hits); Buttons call `SendCustomEvent("Click")`. VRChat's UnityEventFilter drops those without the `UDON` define |
 | Prefabs | `Prefabs/VoteMenu`, `MapMenu` (SourceMaps) and `SourceTimer/Scoreboard` are built by code (Create Menu Prefabs / Create Scoreboard Prefab) in the test project and copied back with their `.meta`s. Unwired, they find "SourceMapManager" by name and register (`_AddScreen`). Udon objects made by `Object.Instantiate` from a MonoBehaviour aren't initialised: test drag-in by placing them at edit time |
