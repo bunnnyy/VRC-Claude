@@ -7,7 +7,7 @@ between imported CS:S bhop maps. Every setting is in the [settings reference](SE
 > [!NOTE]
 > **Status (2026-10-11).** Done and tested in Unity with ClientSim: movement, timer, map import (collision, visuals,
 > lightmaps, water, sky, sounds, bhop blocks, breakable glass, boosters, ladders), timer zones, map rotation with
-> UI menus, practice courses, saved records. Pictures are rendered by Unity; menus are described in words.
+> UI menus, practice courses, saved records.
 
 ## Contents
 
@@ -95,8 +95,6 @@ Download from GameBanana, unzip (7-Zip opens .zip, .rar and .7z) and put the `.b
 It does steps 7 and 8 for every map: visuals, collision, markers, timer zones, a thumbnail from the spawn, the lobby
 with practice courses and a records wall, saved as `Assets/SourceMapsSample.unity`.
 
-![bhop_eazy_v2 in the sample world, from its spawn](images/sample_bhop_eazy_v2.png)
-
 ## 7. Manual way: one map at a time
 
 | # | Do | Result |
@@ -111,8 +109,6 @@ with practice courses and a records wall, saved as `Assets/SourceMapsSample.unit
 > [!TIP]
 > No zones on zones-cstrike for your map? Add a Box Collider (Is Trigger) + **Timer Zone**, type Start/End. Name the
 > start zone "Start &lt;map name&gt;" so it gets boards.
-
-![bhop_japan converted with uSource (white: stock textures were missing on the build machine)](images/usource_bhop_japan.png)
 
 ## 8. Create the lobby
 
@@ -217,10 +213,6 @@ everyone plays the winner, **Back to lobby** leaves it, **Rejoin map** goes back
 | Sky | The map's `skyname` as `<map>_sky.mat`, shown while you're in that map; the lobby keeps the world's sky |
 | Sky faces | The `toolsskybox` walls draw the sky and hide what's behind them, so other stages don't show through |
 | Sounds and music | Each `ambient_generic` is an Audio Source heard within its radius (areas have their own music); loops, start-silent and play-everywhere as in CS:S; triggers that play them work |
-
-![bhop_monster_jam at each stage start: lightmaps, sky faces, water](images/lighting_bhop_monster_jam.jpg)
-
-![bhop_japan: left Unity's default light, right the map's own light on the world and props](images/props_bhop_japan.png)
 
 ## 14. Troubleshooting
 
