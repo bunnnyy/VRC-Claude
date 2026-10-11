@@ -24,3 +24,7 @@ Dev/Tests/Bsp/.cache/
 Dev/Tests/Bsp/bin/
 Dev/Tests/Bsp/obj/
 Dev/Tests/Converters/.cache/
+
+# Map tools build output
+Dev/Tools/MapView/bin/
+Dev/Tools/MapView/obj/

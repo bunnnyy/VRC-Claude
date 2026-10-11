@@ -70,7 +70,8 @@ fi
 # Route mode: run.sh route map.bsp zones.json outdir imports the map with visuals and timer zones, lets RouteRunner
 # bhop it from start to finish and, given outdir, records frames (outdir/f*.jpg) plus outdir/hud.txt for make_video.sh.
 if [ "${1:-}" = "route" ]; then
-  bsp=$(realpath "$2"); zones=$(realpath "$3"); record=()
+  bsp=$(realpath "$2"); zones=$(realpath "$3"); record=(); routefile=()
+  [ -n "${ROUTE_FILE:-}" ] && routefile=(-smRoute "$(realpath "$ROUTE_FILE")")
   [ -n "${4:-}" ] && { rm -rf "$4"; record=(-smRecord "$(realpath -m "$4")"); }
   copy_assets
   # The map's visible geometry and textures need DeadZoneLuna's uSource (no license stated: kept in the
@@ -89,7 +90,7 @@ if [ "${1:-}" = "route" ]; then
   if run build_route -quit -executeMethod PlayTestBootstrap.BuildRoute -bsp "$bsp" -zones "$zones" &&
      grep -q "route scene built" "$logs/build_route.log" &&
      [ "$(grep -o "Tundra build [a-z]*" "$logs/build_route.log" | tail -1)" != "Tundra build failed" ] &&
-     run route -executeMethod PlayTestBootstrap.RunRoute -smFrameRate 100 -smRouteSection "${ROUTE_SECTION:-0}" "${record[@]}"; then r="FINISHED"; else r="FAILED"; status=1; fi
+     run route -executeMethod PlayTestBootstrap.RunRoute -smFrameRate 100 -smRouteSection "${ROUTE_SECTION:-0}" "${record[@]}" "${routefile[@]}"; then r="FINISHED"; else r="FAILED"; status=1; fi
   echo "== $(basename "$bsp" .bsp) route: $r"
   grep -ho "\[SMTEST\] .*" "$logs/route.log" 2>/dev/null | sed 's/^\[SMTEST\] /  /'
   exit $status

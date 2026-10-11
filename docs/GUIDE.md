@@ -3,8 +3,8 @@
 Step by step, from nothing to an uploaded VRChat world with Source movement, a timer and a lobby where
 players vote between imported CS:S bhop maps. Kept up to date as features are finished.
 
-> **Status (2026-10-10).** Done and tested: movement, timer, map import (visuals with uSource and the maps' own
-> lightmaps, collision, prop collision, markers, teleports, boosters, water, ladders, breakable glass), bhop and surf runs on every map, timer zones from zones-cstrike, map rotation (vote, rock the
+> **Status (2026-10-11).** Done and tested: movement, timer, map import (visuals with uSource and the maps' own
+> lightmaps, sounds and music, skies, collision, prop collision, markers, teleports, boosters, water, ladders, breakable glass), bhop and surf runs on every map, timer zones from zones-cstrike, map rotation (vote, rock the
 > vote, time limit, owner controls), lobby practice courses, saved records per map. The quickest way to a full world is
 > the **sample world builder** (step 5b). Pictures come from Unity itself; editor windows can't be screenshotted on the
 > build machine, so menus are described in words.
@@ -114,7 +114,15 @@ atlas).
    the sample world puts them 700 m apart along X). Do this before adding visuals and zones.
 3. **Visuals**: with uSource installed, the sample world builder imports them automatically
    (`SourceMapVisuals.Import`, using your CS:S folder): it removes the tool surfaces Source never draws, gives solid
-   props collision and saves the meshes. Doing it by hand: uSource's window with **Unit scale 0.01905**, then drag
+   props collision and saves the meshes. It also brings the map's **sounds and music** and its **sky**:
+   - Every `ambient_generic` becomes an **Audio Source** on its marker, heard within the radius the mapper gave it, so
+     areas have their own music (bhop_monster_jam has a song per area). As in CS:S: a sound loops if its file has a
+     loop point, "Start Silent" ones wait for a trigger (walking into a `trigger_multiple` that plays them, for you
+     only), "Play everywhere" ones are heard everywhere. The files come from the map itself or your CS:S folder
+     (`Assets/SourceMapsImported/<map>/Sounds`).
+   - The map's **sky** (its `skyname`) is saved as `<map>_sky.mat` and set on **Source Map Info > Skybox**: you see it
+     while you're in that map, and the world's own sky in the lobby. Skies from Half-Life 2 (e.g. `sky_day01_01`)
+     come from the `hl2` folder next to `cstrike`, so pick the folder that has both. Doing it by hand: uSource's window with **Unit scale 0.01905**, then drag
    its map object under the map's object.
 
 ![bhop_japan converted with uSource (white: stock textures missing on the build machine, which has no CS:S)](images/usource_bhop_japan.png)

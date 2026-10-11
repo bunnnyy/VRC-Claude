@@ -41,12 +41,15 @@ dotnet tool install --global vrchat.vpm.cli
 apt-get install -y 7zip unar            # map archives (rar needs unar)
 # Unity 2022.3.22f1 into /opt/unity (URL in MAPVOTE_PLAN.md "Context"), license:
 /opt/unity/Editor/Data/Resources/Licensing/Client/Unity.Licensing.Client --activate-ulf --username "$UNITY_EMAIL" --password "$UNITY_PASSWORD"
-Dev/Tests/Bsp/get_maps.sh                   # the 5 maps from GameBanana
+Dev/Tests/Bsp/get_maps.sh                   # the 6 maps from GameBanana (incl. bhop_monster_jam)
 Dev/Tests/Converters/compare.sh Dev/Tests/Bsp/.cache/maps/bhop_japan.bsp   # downloads uSource (needed by run.sh sample)
-# Optional: CS:S stock materials/models (1.9 GB, git-ignored cache) as a "CS:S folder" for tests (env SM_CSS)
-c=Dev/Tests/UnityPlay/.cache; git clone --depth 1 --filter=blob:none --no-checkout https://github.com/bouletmarc/css_content $c/css_content
-git -C $c/css_content sparse-checkout set --no-cone /materials/ /models/ && git -C $c/css_content checkout master
-mkdir -p $c/css && ln -sfn ../css_content $c/css/cstrike    # SM_CSS=$PWD/$c/css
+# Optional: CS:S + HL2 stock content (~6 GB, git-ignored cache) as a "CS:S folder" for tests (env SM_CSS): stock
+# textures, models, sounds and skies (HL2 skies like sky_day01_01 and HL2 sounds are in the hl2 folder)
+c=Dev/Tests/UnityPlay/.cache; mkdir -p $c/css
+for r in css_content:cstrike hl2_ep2_content:hl2; do repo=${r%%:*}; dir=$c/${r##*:}_content
+  git clone --depth 1 --filter=blob:none --no-checkout https://github.com/bouletmarc/$repo $dir
+  git -C $dir sparse-checkout set --no-cone /materials/ /models/ /sound/ && git -C $dir checkout master
+  ln -sfn ../${r##*:}_content $c/css/${r##*:}; done          # SM_CSS=$PWD/$c/css
 ```
 
 ## Tests

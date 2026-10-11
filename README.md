@@ -87,7 +87,9 @@ Step-by-step setup: **[docs/GUIDE.md](docs/GUIDE.md)**; design and test history:
   you only, and stays broken until you leave the instance.
 - **Visuals** with [uSource](https://github.com/DeadZoneLuna/uSource) (installed by you, not included): the map's own
   Source **lightmaps** on a small `SourceMaps/Lightmapped` shader (nothing to bake), static props lit from the map's
-  ambient light and lights like CS:S lights models, tool surfaces removed, solid props get colliders.
+  ambient light and lights like CS:S lights models, tool surfaces removed, solid props get colliders; the map's
+  **sounds and music** (`ambient_generic` as Audio Sources heard within their radius, so areas have their own music;
+  triggers that play them) and its **sky** (shown while you're in that map).
 - **Timer zones** from [zones-cstrike](https://github.com/srcwr/zones-cstrike) (what CS:S bhop servers use).
 - **Map rotation** (`SourceMapManager`): 5 random maps per vote, 60 s timer, owner controls, rock the vote, time
   limit with extend, saved records per map. **Build Sample World** makes all of it from a folder of `.bsp` files.

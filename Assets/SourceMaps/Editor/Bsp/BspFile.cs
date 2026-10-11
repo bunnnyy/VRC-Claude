@@ -182,6 +182,7 @@ namespace SourceMaps.Bsp
 
             // Ambient light samples per leaf (LDR, else HDR): index = (ushort count, ushort first) per leaf; a sample is
             // 6 ColorRGBExp32 (r, g, b, signed exponent) then x, y, z fractions of the leaf box (0-255) and a pad byte.
+            // Older maps have no index: one cube (6 ColorRGBExp32) per leaf.
             bool ldr = lengths[LumpLeafAmbientLighting] > 0;
             int indexLump = ldr ? LumpLeafAmbientIndex : LumpLeafAmbientIndexHdr, lightLump = ldr ? LumpLeafAmbientLighting : LumpLeafAmbientLightingHdr;
             bsp.LeafAmbient = new AmbientSample[bsp.Leafs.Length][];
@@ -208,6 +209,25 @@ namespace SourceMaps.Bsp
                             samples[k] = new AmbientSample { Cube = cube, Position = leaf.Mins + (leaf.Maxs - leaf.Mins) * frac };
                         }
                         bsp.LeafAmbient[i] = samples;
+                    }
+            }
+            else if (lengths[indexLump] == 0 && lengths[lightLump] == bsp.Leafs.Length * 24)
+            {
+                // Older maps (vbsp before the index lumps): one cube per leaf, no position: the leaf's middle. Solid
+                // leaves (inside walls, black) are left out.
+                using (var br = lump(lightLump))
+                    for (int i = 0; i < bsp.Leafs.Length; i++)
+                    {
+                        var cube = new Vector3[6];
+                        for (int f = 0; f < 6; f++)
+                        {
+                            byte cr = br.ReadByte(), cg = br.ReadByte(), cb = br.ReadByte();
+                            float scale = (float)Math.Pow(2, br.ReadSByte());
+                            cube[f] = new Vector3(cr, cg, cb) * scale;
+                        }
+                        var leaf = bsp.Leafs[i];
+                        bsp.LeafAmbient[i] = (leaf.Contents & ContentsSolid) != 0 ? new AmbientSample[0]
+                            : new[] { new AmbientSample { Cube = cube, Position = (leaf.Mins + leaf.Maxs) * 0.5f } };
                     }
             }
 

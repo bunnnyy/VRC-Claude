@@ -142,8 +142,9 @@ public class SampleWorldTestRunner : MonoBehaviour
         var sounds = root.GetComponentsInChildren<AudioSource>(true);
         if (sounds.Length > 0)
         {
-            int atStart = System.Array.FindAll(sounds, a => a.playOnAwake).Length;
-            int playing = System.Array.FindAll(sounds, a => a.playOnAwake && a.isPlaying).Length;
+            // (Looping ones: a one-shot played at spawn may be over by now.)
+            int atStart = System.Array.FindAll(sounds, a => a.playOnAwake && a.loop).Length;
+            int playing = System.Array.FindAll(sounds, a => a.playOnAwake && a.loop && a.isPlaying).Length;
             var triggers = root.GetComponentsInChildren<SourceMapSoundTrigger>(true);
             string triggered = "no sound triggers";
             bool ok = playing == atStart;
@@ -158,7 +159,7 @@ public class SampleWorldTestRunner : MonoBehaviour
                 triggered = $"walking into {t.transform.parent.name} plays {on}/{t.play.Length}";
                 ok &= on == t.play.Length && t.play.Length > 0;
             }
-            Check(ok, $"{name}: {sounds.Length} sounds, {playing}/{atStart} playing from the start; {triggered}");
+            Check(ok, $"{name}: {sounds.Length} sounds, {playing}/{atStart} looping ones playing from the start; {triggered}");
         }
 
         // Teleports: up to 15, spread over the map.

@@ -26,6 +26,7 @@ public class RouteRunner : MonoBehaviour
     public int frameRate = 100;
     public string recordDir = "";
     public int startSection; // debugging: start at the beginning of this section
+    public string routeFile = ""; // another map's route (see LoadRoute); empty: bhop_eazy_v2's built-in Route
     const float U = 0.01905f;
     const float Gravity = 800f;
     const float AirCap = 30f;
@@ -44,6 +45,59 @@ public class RouteRunner : MonoBehaviour
                 V(4912, 1120), V(4832, 1176), V(4400, 1248) },
     };
     static readonly Rect EndZone = new Rect(-2256, 4512, 2256 - 1728, 5056 - 4512); // flat coords (unity x, z)
+
+    // The route being run: the built-in one above, or another map's from routeFile.
+    Vector2[][] route = Route;
+    float[] floors = new float[Route.Length]; // per section: the floor height (Source z) to look for landing spots round
+    Rect endZone = EndZone;
+    bool builtIn = true;
+    float scanFloor, scanReach = 600f; // landing spots are looked for within scanReach of the route's floor height there
+    float[][] heights; // per section and point: the floor height (Source z) along the route line
+
+    /// <summary>
+    /// A route file (text, Source units): "end x1 y1 x2 y2" (the end zone), then per section "section z" (its floor
+    /// height) followed by one "x y" line per point of its route line. # starts a comment. Sections run in order; each
+    /// ends where a teleport sends the player to the next one's first point.
+    /// </summary>
+    void LoadRoute(string path)
+    {
+        var lines = new List<Vector2[]>();
+        var sectionFloors = new List<float>();
+        var pointFloors = new List<float[]>();
+        List<Vector2> points = null;
+        List<float> zs = null;
+        var inv = System.Globalization.CultureInfo.InvariantCulture;
+        foreach (string raw in System.IO.File.ReadAllLines(path))
+        {
+            string l = raw.Split('#')[0].Trim();
+            if (l == "") continue;
+            string[] w = l.Split(new[] { ' ', '\t' }, System.StringSplitOptions.RemoveEmptyEntries);
+            if (w[0] == "end")
+            {
+                Vector2 a = V(float.Parse(w[1], inv), float.Parse(w[2], inv)), b = V(float.Parse(w[3], inv), float.Parse(w[4], inv));
+                endZone = Rect.MinMaxRect(Mathf.Min(a.x, b.x), Mathf.Min(a.y, b.y), Mathf.Max(a.x, b.x), Mathf.Max(a.y, b.y));
+            }
+            else if (w[0] == "section")
+            {
+                if (points != null) { lines.Add(points.ToArray()); pointFloors.Add(zs.ToArray()); }
+                points = new List<Vector2>();
+                zs = new List<float>();
+                sectionFloors.Add(float.Parse(w[1], inv));
+            }
+            else
+            {
+                points.Add(V(float.Parse(w[0], inv), float.Parse(w[1], inv)));
+                zs.Add(w.Length > 2 ? float.Parse(w[2], inv) : zs.Count > 0 ? zs[zs.Count - 1] : sectionFloors[sectionFloors.Count - 1]);
+            }
+        }
+        if (points != null) { lines.Add(points.ToArray()); pointFloors.Add(zs.ToArray()); }
+        route = lines.ToArray();
+        floors = sectionFloors.ToArray();
+        heights = pointFloors.ToArray();
+        builtIn = false;
+        scanReach = 300f; // round the route's own height (a point's z): roofs and ledges above aren't the way
+        teleportLift = 6f;
+    }
 
     /// <summary>Source x, y to flat Unity-axis coordinates (x = -y, z = x), Source units.</summary>
     static Vector2 V(float x, float y) { return new Vector2(-y, x); }
@@ -74,6 +128,7 @@ public class RouteRunner : MonoBehaviour
 
     IEnumerator Start()
     {
+        if (routeFile != "") LoadRoute(routeFile);
         Time.captureDeltaTime = 1f / frameRate;
         for (int i = 0; i < 600 && (player == null || movement == null); i++)
         {
@@ -101,9 +156,12 @@ public class RouteRunner : MonoBehaviour
 
         float t0 = Time.realtimeSinceStartup;
         int total = 0;
-        foreach (var line in Route)
+        for (int li = 0; li < route.Length; li++)
         {
-            var list = FindSpots(line);
+            var line = route[li];
+            scanFloor = floors[li];
+            // (Other maps' routes: sections before the start one aren't run, so they aren't planned.)
+            var list = !builtIn && li < startSection ? new List<Spot>() : FindSpots(line, heights != null ? heights[li] : null);
             Plan(list);
             spots.Add(list);
             total += list.Count;
@@ -129,14 +187,15 @@ public class RouteRunner : MonoBehaviour
         foreach (var go in FindObjectsOfType<Transform>()) if (go.name == "Visuals") visualColliders += go.GetComponentsInChildren<Collider>(true).Length;
         Log($"{visualColliders} colliders under the map's Visuals (uSource's own: the movement collides with them too)");
         foreach (var list in spots) foreach (var sp in list) if (sp.block != null) onBlocks++;
-        Log($"{total} landing spots in {Route.Length} sections, {onBlocks} on bhop blocks ({Time.realtimeSinceStartup - t0:F1} s)");
+        Log($"{total} landing spots in {route.Length} sections, {onBlocks} on bhop blocks ({Time.realtimeSinceStartup - t0:F1} s)");
 
         // Start in the start zone facing down the first lane.
-        if (startSection < 0 || startSection >= Route.Length) { Log($"FAIL no section {startSection} (0 to {Route.Length - 1})"); Finish(1); yield break; }
+        if (startSection < 0 || startSection >= route.Length) { Log($"FAIL no section {startSection} (0 to {route.Length - 1})"); Finish(1); yield break; }
         section = startSection;
-        Vector2 a = Route[section][0], b = Route[section][1];
+        scanFloor = floors[section];
+        Vector2 a = route[section][0], b = route[section][1];
         viewYaw = camYaw = Yaw(b - a);
-        movement.SetProgramVariable("__0_position__param", new Vector3(a.x, 49f, a.y) * U);
+        movement.SetProgramVariable("__0_position__param", new Vector3(a.x, floors[section] + 49f, a.y) * U);
         movement.SetProgramVariable("__0_rotation__param", Quaternion.Euler(0, viewYaw, 0));
         movement.SetProgramVariable("__0_keepVelocity__param", false);
         movement.SendCustomEvent("__0_TeleportPlayer");
@@ -154,10 +213,11 @@ public class RouteRunner : MonoBehaviour
             if ((pos - last).magnitude > 150f)
             {
                 int next = section + 1;
-                if (next < Route.Length && (Flat(pos) - Route[next][0]).magnitude < 96f)
+                if (next < route.Length && (Flat(pos) - route[next][0]).magnitude < 96f)
                 {
                     Log($"section {section + 1} done in {Time.time - sectionStart:F2} s");
                     section = next;
+                    scanFloor = floors[section];
                     sectionStart = Time.time;
                     progress = 0f;
                     ridge = 0;
@@ -165,7 +225,7 @@ public class RouteRunner : MonoBehaviour
                     System.Array.Clear(circled, 0, circled.Length);
                     tabu.Clear();
                 }
-                else if (EndZone.Contains(Flat(pos)))
+                else if (endZone.Contains(Flat(pos)))
                 {
                     Log($"section {section + 1} done in {Time.time - sectionStart:F2} s; in the end zone");
                     break;
@@ -181,7 +241,8 @@ public class RouteRunner : MonoBehaviour
                     circling = -1;
                     System.Array.Clear(circled, 0, circled.Length);
                     DumpRecent();
-                    if (fails >= MaxFails) { Log($"FAIL: giving up after {MaxFails} fails"); break; }
+                    int maxFails = builtIn ? MaxFails : 8; // other maps: a stage that keeps failing is reported sooner
+                    if (fails >= maxFails) { Log($"FAIL: giving up after {maxFails} fails"); break; }
                 }
                 hopping = false;
                 hasTarget = false;
@@ -224,7 +285,7 @@ public class RouteRunner : MonoBehaviour
         recent[frame % recent.Length] = $"f{frame} pos {pos:F1} vel {vel:F1} ground {onGround} hop {hopping} keys {lastKeys} yaw {viewYaw:F0} target {(hasTarget ? target.p.ToString("F0") : "-")}";
         Vector2 here = Flat(pos), v = new Vector2(vel.x, vel.z);
         progress = Project(here, progress);
-        var line = Route[section];
+        var line = route[section];
         int segment = SegmentAt(line, progress);
         if (segment != lastSegment || section != lastSegmentSection)
         {
@@ -233,7 +294,7 @@ public class RouteRunner : MonoBehaviour
         }
         float lookYaw = Yaw(PointAt(line, progress + 160f) - here);
         Vector2 src = new Vector2(here.y, -here.x); // Source x, y
-        for (int i = 0; i < Circles.Length && circling < 0; i++)
+        for (int i = 0; i < Circles.Length && circling < 0 && builtIn; i++) // eazy's own (keyed to its sections)
             if (!circled[i] && hopping && Circles[i].section == section && Circles[i].area.Contains(src) && (Circles[i].always || v.magnitude < Circles[i].speed))
             { circling = i; circleTurn = 0; }
         if (circling >= 0)
@@ -947,16 +1008,20 @@ public class RouteRunner : MonoBehaviour
             var A = list[a];
             if (A.s >= lastS - 64f) { A.need = 0f; list[a] = A; continue; }
             hopsFrom.Clear();
-            for (int b = a + 1; b < list.Count && list[b].s <= A.s + 600f; b++)
-            {
-                var B = list[b];
-                if (B.s < A.s + 24f || B.seg > A.seg + 1 || float.IsInfinity(B.need)) continue;
-                float time = FlightTime(A.p.y, jump, B.p.y, Mathf.Min(A.ceil, B.ceil));
-                if (float.IsNaN(time) || time < 0.2f) continue;
-                float need = new Vector2(B.p.x - A.p.x, B.p.z - A.p.z).magnitude / time;
-                if (need < B.need) continue; // we'd land there too slow to go on
-                hopsFrom.Add((MinSpeed(need, time), b, time));
-            }
+            for (int pass = 0; pass < (builtIn ? 1 : 2) && hopsFrom.Count == 0; pass++) // eazy's tuned run: one pass, as before
+                for (int b = a + 1; b < list.Count && list[b].s <= A.s + 600f; b++)
+                {
+                    var B = list[b];
+                    // Second pass (other maps' routes): past a stretch with no way on, plan up to it as if it were the
+                    // end, so one gap the model can't cross doesn't leave everything before it unplanned.
+                    float bNeed = pass == 1 && float.IsInfinity(B.need) ? 0f : B.need;
+                    if (B.s < A.s + 24f || B.seg > A.seg + 1 || float.IsInfinity(bNeed)) continue;
+                    float time = FlightTime(A.p.y, jump, B.p.y, Mathf.Min(A.ceil, B.ceil));
+                    if (float.IsNaN(time) || time < 0.2f) continue;
+                    float need = new Vector2(B.p.x - A.p.x, B.p.z - A.p.z).magnitude / time;
+                    if (need < bNeed) continue; // we'd land there too slow to go on
+                    hopsFrom.Add((MinSpeed(need, time), b, time));
+                }
             // The easiest hop whose flight path is clear (glass panels and walls across lanes).
             hopsFrom.Sort((x, y) => x.v.CompareTo(y.v));
             A.need = float.PositiveInfinity;
@@ -980,7 +1045,7 @@ public class RouteRunner : MonoBehaviour
     }
 
     /// <summary>Landing spots along a section: raycast a grid in the corridor of each segment.</summary>
-    List<Spot> FindSpots(Vector2[] line)
+    List<Spot> FindSpots(Vector2[] line, float[] zs)
     {
         var list = new List<Spot>();
         float s0 = 0f;
@@ -991,6 +1056,7 @@ public class RouteRunner : MonoBehaviour
             for (float along = 0f; along <= len; along += 16f)
                 for (float lat = -176f; lat <= 176f; lat += 8f)
                 {
+                    if (zs != null) scanFloor = Mathf.Lerp(zs[i], zs[i + 1], along / Mathf.Max(len, 1f));
                     Vector2 p = a + d * along + side * lat;
                     bool any = false;
                     foreach (float top in Surfaces(p)) // every floor in the column: blocks can sit under arches
@@ -1036,12 +1102,25 @@ public class RouteRunner : MonoBehaviour
     List<float> Surfaces(Vector2 p)
     {
         surfaces.Clear();
-        var hits = Physics.RaycastAll(new Vector3(p.x, 600f, p.y) * U, Vector3.down, 1200f * U, layers, QueryTriggerInteraction.Ignore);
-        System.Array.Sort(hits, (x, y) => x.distance.CompareTo(y.distance));
-        foreach (var h in hits)
+        if (builtIn) // eazy's tuned run, as before (no roofs there)
+        {
+            var hits = Physics.RaycastAll(new Vector3(p.x, 600f, p.y) * U, Vector3.down, 1200f * U, layers, QueryTriggerInteraction.Ignore);
+            System.Array.Sort(hits, (x, y) => x.distance.CompareTo(y.distance));
+            foreach (var h in hits)
+            {
+                float top = h.point.y / U;
+                if (h.normal.y >= 0.7f && (surfaces.Count == 0 || surfaces[surfaces.Count - 1] - top > 1f)) surfaces.Add(top);
+            }
+            return surfaces;
+        }
+        // Ray after ray down the column: RaycastAll gives one hit per collider, and the map's world is one collider (a
+        // roof would hide the floors under it).
+        float from = scanFloor + scanReach, to = scanFloor - scanReach;
+        while (from > to && Physics.Raycast(new Vector3(p.x, from, p.y) * U, Vector3.down, out RaycastHit h, (from - to) * U, layers, QueryTriggerInteraction.Ignore))
         {
             float top = h.point.y / U;
             if (h.normal.y >= 0.7f && (surfaces.Count == 0 || surfaces[surfaces.Count - 1] - top > 1f)) surfaces.Add(top);
+            from = top - 1f;
         }
         return surfaces;
     }
@@ -1164,6 +1243,7 @@ public class RouteRunner : MonoBehaviour
     /// capsule following it, which is what fires the map's triggers (taller, narrower).</summary>
     static bool TouchesTeleport(Vector2 p, float feet, float h)
     {
+        feet += teleportLift - 1f;
         foreach (var c in Physics.OverlapBox(HullCenter(p, feet, h), HullHalf(0f, h), Quaternion.identity, ~0, QueryTriggerInteraction.Collide))
             if (c.isTrigger && c.GetComponent<SourceMapTeleport>() != null) return true;
         // From 1 unit up, like the hull: the capsule rides a little over the floor (the map's floor teleports are
@@ -1175,6 +1255,11 @@ public class RouteRunner : MonoBehaviour
     }
 
     const float CapsuleHeight = 84f, CapsuleRadius = 10.5f; // ClientSim's player: 1.6 m by 0.2 m
+    // How far over the feet a teleport counts as touched. The importer raises triggers 8 units because the capsule
+    // floats about 6 over the floor, so blocks a few units over a floor teleport (bhop_monster_jam's stones, 4 over
+    // it) are safe in play: 6 for other maps' routes (the raise less the 2 units the player hovers, as the importer's
+    // blocks.hullBottom); eazy's tuned run keeps 1 (its teleports sit at its block tops).
+    static float teleportLift = 1f;
 
     /// <summary>Whether the hull (with feet at y) overlaps the map at `p`.</summary>
     bool HullHits(Vector2 p, float y, float h)
@@ -1228,7 +1313,7 @@ public class RouteRunner : MonoBehaviour
     /// <summary>Distance along the section of the closest point to `p` near the current progress (any, if negative).</summary>
     float Project(Vector2 p, float near)
     {
-        var line = Route[section];
+        var line = route[section];
         float best = 1e9f, bestS = near < 0 ? 0 : near, s0 = 0f;
         for (int i = 0; i + 1 < line.Length; i++)
         {

@@ -145,7 +145,10 @@ public static class PlayTestBootstrap
         Debug.Log("[SMTEST] route scene built from " + bsp);
     }
 
-    /// <summary>-executeMethod PlayTestBootstrap.RunRoute -smRecord dir [-smFrameRate 100]: RouteRunner on Assets/RouteTest.unity.</summary>
+    /// <summary>
+    /// -executeMethod PlayTestBootstrap.RunRoute -smRecord dir [-smFrameRate 100] [-smRoute file]: RouteRunner on
+    /// Assets/RouteTest.unity (with the route from `file`, else bhop_eazy_v2's).
+    /// </summary>
     public static void RunRoute()
     {
         var settings = ClientSimSettings.Instance;
@@ -164,6 +167,7 @@ public static class PlayTestBootstrap
             if (args[i] == "-smFrameRate") runner.frameRate = int.Parse(args[i + 1]);
             if (args[i] == "-smRecord") runner.recordDir = args[i + 1];
             if (args[i] == "-smRouteSection") runner.startSection = int.Parse(args[i + 1]);
+            if (args[i] == "-smRoute") runner.routeFile = args[i + 1];
         }
         EditorApplication.isPlaying = true;
     }
