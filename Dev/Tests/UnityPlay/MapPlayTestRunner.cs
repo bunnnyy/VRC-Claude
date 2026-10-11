@@ -605,8 +605,10 @@ public class MapPlayTestRunner : MonoBehaviour
         Vector3 prevVel = (Vector3)movement.GetProgramVariable("velocity");
         Vector3 prevPos = player.GetPosition();
         Vector3 prevSim = SimFeet(); // the walls are probed from the simulation: VRChat's capsule trails it a physics step
+        var planes = (Vector3[])movement.GetProgramVariable("planes"); // the movement's clip planes this frame (cleared each frame)
         for (int i = 0; i < frameRate * 8; i++)
         {
+            if (planes != null) System.Array.Clear(planes, 0, planes.Length);
             yield return null;
             bool go = each();
             Vector3 vel = (Vector3)movement.GetProgramVariable("velocity");
@@ -619,7 +621,7 @@ public class MapPlayTestRunner : MonoBehaviour
             {
                 stalls++;
                 if (stallLog.Count < 10)
-                    stallLog.Add($"{what}: at {player.GetPosition() / U:F0} speed {before:F0} -> {now:F0}, velocity {prevVel:F0} -> {vel:F0}, grounded {OnGround()}, ahead:{Ahead(prevSim, Flat(prevVel).normalized)}");
+                    stallLog.Add($"{what}: at {player.GetPosition() / U:F0} speed {before:F0} -> {now:F0}, velocity {prevVel:F0} -> {vel:F0}, grounded {OnGround()} (simulation {movement.GetProgramVariable("onGround")}), clip planes {(planes == null ? "?" : string.Join(" ", planes.Where(n => n != Vector3.zero).Select(n => n.ToString("F2"))))}, ahead:{Ahead(prevSim, Flat(prevVel).normalized)}");
             }
             prevVel = vel;
             prevPos = player.GetPosition();
