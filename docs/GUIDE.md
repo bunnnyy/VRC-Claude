@@ -222,6 +222,8 @@ is in **[SETTINGS.md](SETTINGS.md)**.
 | Problem | Fix |
 |---|---|
 | Players fall through a map | Was **Import BSP** run (step 6b)? The visuals from uSource have no collision |
-| Map looks white/pink | uSource's root path must point at your CS:S folder; pink = shader problem, re-import |
+| Map looks white/pink | Set the CS:S folder (the one with `cstrike` and `hl2`; HL2 textures, skies and sounds are in `hl2`), then import the map again: materials saved without their texture are rebuilt. Pink = shader problem, re-import |
+| No music / sounds in a map | The map's `ambient_generic` sounds become Audio Sources under its entities; files the map doesn't pack come from your CS:S folder. You hear an area's sound only within its radius, like in CS:S |
+| Sky is the world's default | The map's sky textures weren't found (an HL2 sky needs the CS:S folder's `hl2`); import again after setting the folder |
 | Two maps overlap | Move the map objects apart (step 6b.4) |
 | Owner buttons don't show | Only the instance owner sees them; in public/group instances, the master |

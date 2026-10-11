@@ -73,10 +73,13 @@ public class MapPlayTestRunner : MonoBehaviour
         if (!onlyRuns && System.Environment.GetEnvironmentVariable("SM_ONLY") != "blocks") yield return BreakableGlass();
         if (onlyRuns) { yield return Runs(points); Finish(); yield break; }
         if (System.Environment.GetEnvironmentVariable("SM_ONLY") == "blocks") { yield return BhopBlocks(points); Finish(); yield break; }
-        int stood = 0;
+        int stood = 0, launched = 0;
         var notStanding = new List<string>();
         foreach (var p in points)
         {
+            // A destination inside a trigger_push is a launcher (bhop_monster_jam's s1, at the foot of a push up a
+            // tower): the push takes the player, as in Source.
+            if (InPush(p.transform.position + Vector3.up * 0.5f)) { launched++; continue; }
             yield return Teleport(p.transform.position, p.transform.rotation);
             yield return Frames(2f);
             // Grounded, or still at the destination: some maps put a teleport back to the same destination on the
@@ -85,7 +88,8 @@ public class MapPlayTestRunner : MonoBehaviour
             if (ok) stood++;
             else notStanding.Add($"{p.name} (grounded {OnGround()}, y {player.GetPosition().y:F2} m)");
         }
-        Check(stood == points.Count, $"stand: player lands and stays on a floor at {stood}/{points.Count} destinations/spawns");
+        Check(stood == points.Count - launched, $"stand: player lands and stays on a floor at {stood}/{points.Count - launched} destinations/spawns" +
+            (launched > 0 ? $" ({launched} inside a push, not tested)" : ""));
         foreach (var s in notStanding) Log("   not standing: " + s);
 
         // teleports: reset at the first point, then drop into each working teleport's trigger from above and expect to
