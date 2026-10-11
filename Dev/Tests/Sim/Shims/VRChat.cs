@@ -42,6 +42,17 @@ namespace VRC.Udon.Common
     public struct UdonInputEventArgs { }
 }
 
+namespace VRC.Udon
+{
+    /// <summary>A script found by name (GameObject.Find returns null in the Sim, so these are never called).</summary>
+    public class UdonBehaviour : UnityEngine.Component
+    {
+        public void SetProgramVariable(string name, object value) { }
+        public object GetProgramVariable(string name) => null;
+        public void SendCustomEvent(string name) { }
+    }
+}
+
 namespace VRC.Udon.Common.Interfaces
 {
     public enum NetworkEventTarget { All, Owner, Others, Self }

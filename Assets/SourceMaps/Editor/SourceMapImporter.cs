@@ -141,7 +141,7 @@ public static class SourceMapImporter
         for (int i = 0; i < bsp.Entities.Count; i++)
         {
             var e = bsp.Entities[i];
-            if (e.ClassName != "trigger_teleport" || e.BrushModel <= 0) continue;
+            if (e.ClassName != "trigger_teleport" || e.BrushModel <= 0 || !BspMechanics.TouchesPlayers(e)) continue;
             string filterName = BspMechanics.FilterName(bsp, e, out bool negate, out bool filterClass);
             if (filterName == "?") { filtered++; continue; }
             Transform target;
@@ -150,6 +150,7 @@ public static class SourceMapImporter
             AddTriggerColliders(go, bsp, e, scale, meshes);
             var teleport = go.AddUdonSharpComponent<SourceMapTeleport>();
             teleport.destination = target;
+            if (e.Get("landmark") != "" && byName.TryGetValue(e.Get("landmark"), out Transform landmark)) teleport.landmark = landmark;
             if (filterName != null)
             {
                 teleport.filterName = filterName;
@@ -168,7 +169,7 @@ public static class SourceMapImporter
         {
             var e = bsp.Entities[i];
             var sets = BspMechanics.NameSets(e);
-            if (sets.Count == 0 || e.BrushModel <= 0 || e.Get("StartDisabled") == "1") continue;
+            if (sets.Count == 0 || e.BrushModel <= 0 || e.Get("StartDisabled") == "1" || !BspMechanics.TouchesPlayers(e)) continue;
             string filterName = BspMechanics.FilterName(bsp, e, out bool negate, out bool filterClass);
             if (filterName == "?") continue;
             var go = markers[i];
@@ -198,7 +199,7 @@ public static class SourceMapImporter
         for (int i = 0; i < bsp.Entities.Count; i++)
         {
             var e = bsp.Entities[i];
-            if (e.BrushModel <= 0) continue;
+            if (e.BrushModel <= 0 || !BspMechanics.TouchesPlayers(e)) continue;
             bool push = e.ClassName == "trigger_push";
             var boostList = push ? new List<BspMechanics.Boost>() : BspMechanics.Boosts(e);
             if (!push && boostList.Count == 0) continue;

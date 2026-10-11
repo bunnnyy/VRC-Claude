@@ -66,6 +66,12 @@ static class Program
 
         Console.WriteLine("\n== breakable glass (breaks within knife reach when one knife hit breaks it in CS:S)");
         Entity Breakable(string keys) => Parse("{\n\"classname\" \"func_breakable\"\n\"model\" \"*1\"\n" + keys + "}");
+        Check(BspMechanics.TouchesPlayers(Parse("{\n\"classname\" \"trigger_push\"\n\"spawnflags\" \"1\"\n}")) &&
+              BspMechanics.TouchesPlayers(Parse("{\n\"classname\" \"trigger_teleport\"\n\"spawnflags\" \"64\"\n}")) &&
+              !BspMechanics.TouchesPlayers(Parse("{\n\"classname\" \"trigger_push\"\n\"spawnflags\" \"0\"\n}")) &&
+              !BspMechanics.TouchesPlayers(Parse("{\n\"classname\" \"trigger_teleport\"\n\"spawnflags\" \"2\"\n}")) &&
+              BspMechanics.TouchesPlayers(Parse("{\n\"classname\" \"func_button\"\n}")),
+              "triggers act on players only with spawnflag 1 (clients) or 64 (everything)");
         Check(BspMechanics.BreaksOnApproach(Breakable("\"material\" \"0\"\n\"health\" \"1\"\n")), "glass, health 1 -> breaks");
         Check(!BspMechanics.BreaksOnApproach(Breakable("\"material\" \"7\"\n\"health\" \"1\"\n")), "unbreakable glass (material 7) -> stays");
         Check(!BspMechanics.BreaksOnApproach(Breakable("\"material\" \"0\"\n\"health\" \"0\"\n")), "health 0 (takes no damage) -> stays");

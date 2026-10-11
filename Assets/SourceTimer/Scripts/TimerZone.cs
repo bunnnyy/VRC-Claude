@@ -17,9 +17,9 @@ public class TimerZone : UdonSharpBehaviour
 {
     public TimerZoneType zoneType;
     public RunTimer timer;
-    [Tooltip("Checkpoint respawn point, defaults to this object. Start zone: where Restart sends you for this course")]
+    [Tooltip("Checkpoint: where Reset sends you (default: this object). Start zone: where Restart sends you for this course (default: the RunTimer's Start Point, else this object)")]
     public Transform respawnPoint;
-    [Header("Start zone only (optional): this course's own boards")]
+    [Header("Start zone (optional): this course's own boards. End zone: its legit board, so only its runs end here")]
     public Leaderboard leaderboard;
     public Leaderboard autoLeaderboard;
 
@@ -28,10 +28,11 @@ public class TimerZone : UdonSharpBehaviour
         if (!player.isLocal || timer == null) return;
         if (zoneType == TimerZoneType.Start)
         {
-            timer._SetCourse(leaderboard, autoLeaderboard, respawnPoint);
+            // No point of its own: the timer's Start Point, or (none either, e.g. a map's zone made by hand) this zone.
+            timer._SetCourse(leaderboard, autoLeaderboard, respawnPoint != null || timer.startPoint != null ? respawnPoint : transform);
             timer._EnterStart();
         }
-        else if (zoneType == TimerZoneType.End) timer._EnterEnd();
+        else if (zoneType == TimerZoneType.End) timer._EnterEndOf(leaderboard);
         else if (zoneType == TimerZoneType.Checkpoint) timer._SetCheckpoint(respawnPoint != null ? respawnPoint : transform);
         else if (zoneType == TimerZoneType.Reset) timer._ResetToCheckpoint();
         else if (zoneType == TimerZoneType.Restart) timer._Restart();

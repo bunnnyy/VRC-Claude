@@ -192,11 +192,12 @@ public class SampleWorldTestRunner : MonoBehaviour
                 Teleport(spawn.position);
                 yield return Seconds(0.3f);
                 Teleport(drop);
+                Vector3 want = t.landmark != null ? t.destination.position + (drop - t.landmark.position) : dest; // keeps the offset
                 for (float until = Time.time + 2f; Time.time < until && !reached;)
                 {
                     yield return null;
-                    Vector3 d = player.GetPosition() - dest;
-                    reached = new Vector2(d.x, d.z).magnitude < 0.5f && Mathf.Abs(d.y) < 1.5f;
+                    Vector3 d = player.GetPosition() - want;
+                    reached = new Vector2(d.x, d.z).magnitude < 0.5f && Mathf.Abs(d.y) < (t.landmark != null ? 3f : 1.5f);
                 }
                 if (reached) break;
             }

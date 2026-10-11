@@ -2,6 +2,7 @@ using UdonSharp;
 using UnityEngine;
 using VRC.SDK3.UdonNetworkCalling;
 using VRC.SDKBase;
+using VRC.Udon;
 using VRC.Udon.Common.Interfaces;
 
 /// <summary>
@@ -11,8 +12,8 @@ using VRC.Udon.Common.Interfaces;
 /// the vote, start it, force a map, extend or send everyone to the lobby.
 /// The object's owner counts the votes; players send them with network events. Everything the owner needs is synced
 /// (who voted for what, who rocked the vote, the timers), so when the owner leaves the next one carries on.
-/// Independent of SourceMovement:
-/// travel is a plain TeleportTo (SourceMovement resets its velocity on a jump that far).
+/// Independent of SourceMovement: travel is a plain TeleportTo (SourceMovement resets its velocity on a jump that far),
+/// and if SourceMovement is in the world (found by name) its map state (pushes, gravity) is reset too.
 /// </summary>
 [UdonBehaviourSyncMode(BehaviourSyncMode.Manual)]
 public class SourceMapManager : UdonSharpBehaviour
@@ -27,7 +28,7 @@ public class SourceMapManager : UdonSharpBehaviour
     [Range(2, 6)] public int choices = 5;
 
     [Header("Vote (CS:S mapchooser style)")]
-    [Tooltip("Seconds from the first vote to the result")]
+    [Tooltip("Seconds from the first vote to the result (after rock the vote or the time limit: from when the vote opens)")]
     public float voteSeconds = 60f;
     [Tooltip("Share of players needed to rock the vote")]
     [Range(0.1f, 1f)] public float rtvRatio = 0.6f;
@@ -64,6 +65,8 @@ public class SourceMapManager : UdonSharpBehaviour
     private int appliedRound = -1;
     private VRCPlayerApi localPlayer;
     private Material lobbySky;
+    private UdonBehaviour movement;
+    private bool lookedUp;
 
     private void Start()
     {
@@ -266,10 +269,11 @@ public class SourceMapManager : UdonSharpBehaviour
     /// <summary>Random maps for the vote; like CS:S, not the map just played (unless the pool is too small).</summary>
     private int[] PickCandidates(int played)
     {
-        int pool = maps == null ? 0 : maps.Length;
+        int pool = 0;
+        if (maps != null) for (int i = 0; i < maps.Length; i++) if (maps[i] != null) pool++;
         int n = Mathf.Min(choices, pool);
         var order = new int[pool];
-        for (int i = 0; i < pool; i++) order[i] = i;
+        for (int i = 0, m = 0; m < pool; i++) if (maps[i] != null) order[m++] = i; // missing (deleted) maps are never offered
         for (int i = pool - 1; i > 0; i--)
         {
             int j = Random.Range(0, i + 1);
@@ -366,6 +370,7 @@ public class SourceMapManager : UdonSharpBehaviour
 
     private void Travel(int map)
     {
+        if (maps == null || map >= maps.Length || (map >= 0 && maps[map] == null)) map = -1; // a missing map: the lobby
         localMap = map;
         ShowMap(map);
         if (localPlayer == null) return;
@@ -373,6 +378,23 @@ public class SourceMapManager : UdonSharpBehaviour
         if (target == null) return;
         localPlayer.TeleportTo(target.position, target.rotation);
         localPlayer.SetVelocity(Vector3.zero); // VRChat keeps the old velocity through a teleport
+        // Like a CS:S map change: no speed, pushes or gravity carried over from the last map.
+        if (!lookedUp)
+        {
+            lookedUp = true;
+            GameObject go = GameObject.Find("SourceMovement");
+            if (go != null) movement = (UdonBehaviour)go.GetComponent(typeof(UdonBehaviour));
+        }
+        if (movement != null) movement.SendCustomEvent("ResetMapState");
+    }
+
+    /// <summary>VRChat's respawn puts the player at the world spawn, in the lobby: switch the map off for them.</summary>
+    public override void OnPlayerRespawn(VRCPlayerApi player)
+    {
+        if (!player.isLocal || localMap < 0) return;
+        localMap = -1;
+        ShowMap(-1);
+        RefreshScreens();
     }
 
     /// <summary>Only the map the local player is in is switched on (renderers, collision, sounds), with its sky.</summary>

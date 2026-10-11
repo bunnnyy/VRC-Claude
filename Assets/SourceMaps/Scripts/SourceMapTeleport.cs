@@ -1,17 +1,22 @@
 using UdonSharp;
 using UnityEngine;
 using VRC.SDKBase;
+using VRC.Udon;
 
 /// <summary>
 /// trigger_teleport: sends the local player to the destination when they touch a trigger collider on this
-/// object (Unity only sends trigger events to the collider's own object). Like Source without a landmark: the player faces the destination's direction and
-/// stops. Works with SourceMovement (it resets its velocity on a teleport this far) and without it. With a filter
-/// (bhop blocks) it fires only while the player's name matches, see SourceMapBlocks.
+/// object (Unity only sends trigger events to the collider's own object). Without a landmark the player faces the
+/// destination's direction and stops (CS:S keeps the velocity; here a teleport is a reset). With a landmark (seamless
+/// level exits) they keep their offset from the landmark, their view and their speed, like Source. Works with
+/// SourceMovement (through its _Teleport event, found by name) and without it. With a filter (bhop blocks) it fires
+/// only while the player's name matches, see SourceMapBlocks.
 /// </summary>
 [UdonBehaviourSyncMode(BehaviourSyncMode.None)]
 public class SourceMapTeleport : UdonSharpBehaviour
 {
     public Transform destination;
+    [Tooltip("trigger_teleport landmark: arrive at the same offset from the destination as from this, keeping view and speed")]
+    public Transform landmark;
     [Tooltip("Only for a player with this name (filter_activator_name, e.g. bhop blocks), empty = everyone")]
     public string filterName = "";
     public bool filterNegate;
@@ -19,6 +24,9 @@ public class SourceMapTeleport : UdonSharpBehaviour
     public bool filterClass;
     [Tooltip("Holds the player's name (needed with a filter)")]
     public SourceMapBlocks blocks;
+
+    UdonBehaviour movement;
+    bool lookedUp;
 
     public override void OnPlayerTriggerEnter(VRCPlayerApi player)
     {
@@ -41,7 +49,25 @@ public class SourceMapTeleport : UdonSharpBehaviour
     void Teleport(VRCPlayerApi player)
     {
         if (destination == null) return;
-        player.TeleportTo(destination.position, destination.rotation);
-        player.SetVelocity(Vector3.zero); // VRChat keeps the old velocity through a teleport
+        bool keep = landmark != null;
+        Vector3 position = keep ? destination.position + (player.GetPosition() - landmark.position) : destination.position;
+        Quaternion rotation = keep ? player.GetRotation() : destination.rotation;
+        if (!lookedUp)
+        {
+            lookedUp = true;
+            GameObject go = GameObject.Find("SourceMovement"); // by name, so SourceMaps works without it
+            if (go != null) movement = (UdonBehaviour)go.GetComponent(typeof(UdonBehaviour));
+        }
+        if (movement != null)
+        {
+            movement.SetProgramVariable("teleportPosition", position);
+            movement.SetProgramVariable("teleportRotation", rotation);
+            movement.SetProgramVariable("teleportKeepVelocity", keep);
+            movement.SendCustomEvent("_Teleport");
+            return;
+        }
+        Vector3 velocity = player.GetVelocity();
+        player.TeleportTo(position, rotation);
+        player.SetVelocity(keep ? velocity : Vector3.zero); // VRChat keeps the old velocity through a teleport
     }
 }

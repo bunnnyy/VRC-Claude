@@ -121,12 +121,14 @@ public class MapPlayTestRunner : MonoBehaviour
                 yield return Teleport(points[0].transform.position, Quaternion.identity);
                 yield return Frames(0.3f);
                 yield return Teleport(start, Quaternion.identity);
+                Vector3 want = t.landmark != null ? t.destination.position + (start - t.landmark.position) : dest;
                 for (int i = 0; i < frameRate && !reached; i++)
                 {
                     yield return null;
                     if (i % 10 == 0) trace.Append($" f{i} {player.GetPosition():F1}");
-                    Vector3 d = player.GetPosition() - dest;
-                    reached = new Vector2(d.x, d.z).magnitude < 0.5f && Mathf.Abs(d.y) < 1.5f;
+                    Vector3 d = player.GetPosition() - want;
+                    // A landmark teleport keeps the offset from the landmark (and the fall), so its height varies more.
+                    reached = new Vector2(d.x, d.z).magnitude < 0.5f && Mathf.Abs(d.y) < (t.landmark != null ? 3f : 1.5f);
                 }
                 if (reached) break;
             }
@@ -315,7 +317,18 @@ public class MapPlayTestRunner : MonoBehaviour
                 var body = hit.point + Vector3.up * 0.06f;
                 if ((c.ClosestPoint(body) - body).sqrMagnitude > 1e-6f || (tc.ClosestPoint(body) - body).sqrMagnitude > 1e-6f) continue;
                 spots.Add(new KeyValuePair<Vector3, Vector3>(hit.point, Relayed(t)));
-                spotTops.Add(tc.bounds.max.y);
+                // How high the block's teleports reach over it: the highest of all with this name over the spot
+                // (bhop_arcane_v1 stacks a 65 unit one over a low one).
+                float reach = tc.bounds.max.y;
+                foreach (var t2 in teleports)
+                {
+                    var c2 = t2.GetComponent<Collider>();
+                    if (c2 == null || t2.filterName == "" || System.Array.IndexOf(nt.names, t2.filterName) < 0) continue;
+                    Bounds b2 = c2.bounds;
+                    if (body.x >= b2.min.x && body.x <= b2.max.x && body.z >= b2.min.z && body.z <= b2.max.z && b2.min.y <= body.y)
+                        reach = Mathf.Max(reach, b2.max.y);
+                }
+                spotTops.Add(reach);
                 spotParts.Add($"name trigger {c.bounds.min.y / U:F1}..{c.bounds.max.y / U:F1}, teleport {tc.bounds.min.y / U:F1}..{tc.bounds.max.y / U:F1} filter '{t.filterName}', floor {hit.point.y / U:F1}");
                 break;
             }

@@ -2,6 +2,7 @@ using TMPro;
 using UdonSharp;
 using UnityEngine;
 using VRC.SDKBase;
+using VRC.Udon;
 
 /// <summary>
 /// Local run timer with checkpoints, driven by TimerZones. Independent of any movement system:
@@ -12,7 +13,9 @@ using VRC.SDKBase;
 /// instead, so auto bhop and legit bhop keep separate records.
 ///
 /// Courses: a Start zone can bring its own boards and start point (several courses or maps in one world, each with
-/// its own records). Start zones without them use the boards and start point set here.
+/// its own records). Start zones without them use the boards and start point set here. An End zone with its course's
+/// legit board only finishes that course's run. A run stops on a VRChat respawn and when its course is switched off
+/// (map rotation), and Restart/Reset never send you into a switched-off map.
 /// </summary>
 [UdonBehaviourSyncMode(BehaviourSyncMode.None)]
 public class RunTimer : UdonSharpBehaviour
@@ -45,6 +48,8 @@ public class RunTimer : UdonSharpBehaviour
     private bool lastWasAuto;
     private Leaderboard courseBoard, courseAutoBoard;
     private Transform courseStart;
+    private UdonBehaviour movement; // SourceMovement, found by name: teleports through it keep its hull in step
+    private bool lookedUp;
 
     private void Start()
     {
@@ -55,6 +60,7 @@ public class RunTimer : UdonSharpBehaviour
     private void Update()
     {
         if (Input.GetKeyDown(restartKey)) _Restart();
+        if (running && courseStart != null && !courseStart.gameObject.activeInHierarchy) running = false; // map switched off
         if (running && !runIsAuto && CategoryIsOn()) runIsAuto = true;
         if (label == null) return;
         if (running) label.text = CategoryName(runIsAuto) + FormatTime(Time.time - startTime);
@@ -92,7 +98,14 @@ public class RunTimer : UdonSharpBehaviour
         courseStart = start;
     }
 
-    private Transform StartPoint() { return courseStart != null ? courseStart : startPoint; }
+    public override void OnPlayerRespawn(VRCPlayerApi player)
+    {
+        if (player.isLocal) running = false; // left the course (VRChat's respawn is the world spawn)
+    }
+
+    private Transform StartPoint() { return Usable(courseStart) ? courseStart : startPoint; }
+
+    private bool Usable(Transform point) { return point != null && point.gameObject.activeInHierarchy; }
 
     public void _EnterStart()
     {
@@ -108,9 +121,12 @@ public class RunTimer : UdonSharpBehaviour
         runIsAuto = CategoryIsOn();
     }
 
-    public void _EnterEnd()
+    public void _EnterEnd() { _EnterEndOf(null); }
+
+    /// <summary>End zone of the course whose legit board is `course` (null: any course's run).</summary>
+    public void _EnterEndOf(Leaderboard course)
     {
-        if (!running) return;
+        if (!running || (course != null && course != courseBoard)) return;
         if (CategoryIsOn()) runIsAuto = true;
         running = false;
         lastTime = Time.time - startTime;
@@ -122,7 +138,7 @@ public class RunTimer : UdonSharpBehaviour
 
     public void _SetCheckpoint(Transform point) { checkpoint = point; }
 
-    public void _ResetToCheckpoint() { TeleportTo(checkpoint != null ? checkpoint : StartPoint()); }
+    public void _ResetToCheckpoint() { TeleportTo(Usable(checkpoint) ? checkpoint : StartPoint()); }
 
     public void _Restart()
     {
@@ -133,7 +149,21 @@ public class RunTimer : UdonSharpBehaviour
 
     private void TeleportTo(Transform point)
     {
-        if (point == null || localPlayer == null) return;
+        if (!Usable(point) || localPlayer == null) return;
+        if (!lookedUp)
+        {
+            lookedUp = true;
+            GameObject go = GameObject.Find("SourceMovement");
+            if (go != null) movement = (UdonBehaviour)go.GetComponent(typeof(UdonBehaviour));
+        }
+        if (movement != null)
+        {
+            movement.SetProgramVariable("teleportPosition", point.position);
+            movement.SetProgramVariable("teleportRotation", point.rotation);
+            movement.SetProgramVariable("teleportKeepVelocity", false);
+            movement.SendCustomEvent("_Teleport");
+            return;
+        }
         localPlayer.TeleportTo(point.position, point.rotation);
         localPlayer.SetVelocity(Vector3.zero);
     }

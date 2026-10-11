@@ -45,12 +45,18 @@ public class SourceMapBlocks : UdonSharpBehaviour
     bool[] queueClass = new bool[QueueSize];
     int queued;
     bool[] touching;
+    bool gatesDirty;
 
     void OnEnable()
     {
+        // The map's starting state each time it's switched on (map rotation), like a fresh CS:S map.
         queued = 0;
+        touching = null;
+        if (nameTriggers != null)
+            for (int i = 0; i < nameTriggers.Length; i++) if (nameTriggers[i] != null) nameTriggers[i]._ResetState();
         activatorClass = "player";
         Rename("", false);
+        UpdateGates();
     }
 
     /// <summary>"!activator AddOutput targetname name" (or "classname name") with a delay (seconds).</summary>
@@ -72,7 +78,7 @@ public class SourceMapBlocks : UdonSharpBehaviour
         {
             int first = 0;
             for (int i = 1; i < queued; i++) if (queueTime[i] < queueTime[first]) first = i;
-            if (queueTime[first] > Time.time) return;
+            if (queueTime[first] > Time.time) break;
             string name = queueName[first];
             bool isClass = queueClass[first];
             queued--;
@@ -81,15 +87,30 @@ public class SourceMapBlocks : UdonSharpBehaviour
             queueClass[first] = queueClass[queued];
             Rename(name, isClass);
         }
+        if (gatesDirty) UpdateGates();
     }
 
     void Rename(string name, bool isClass)
     {
         if (isClass) activatorClass = name; else activator = name;
         CheckTeleports();
-        if (gated != null)
-            for (int i = 0; i < gated.Length; i++)
-                if (gated[i] != null) gated[i].enabled = Passes(gatedNames[i], gatedNegate[i], gatedClass[i]);
+        gatesDirty = true;
+    }
+
+    /// <summary>
+    /// Gated pushes and boosters on or off for the name the player has now. Once a frame, after all due renames: a
+    /// gate switched off and on again within one frame would send the push a second enter (Unity sends no exit).
+    /// </summary>
+    void UpdateGates()
+    {
+        gatesDirty = false;
+        if (gated == null) return;
+        for (int i = 0; i < gated.Length; i++)
+        {
+            if (gated[i] == null) continue;
+            bool open = Passes(gatedNames[i], gatedNegate[i], gatedClass[i]);
+            if (gated[i].enabled != open) gated[i].enabled = open;
+        }
     }
 
     /// <summary>
@@ -166,6 +187,17 @@ public class SourceMapBlocks : UdonSharpBehaviour
     /// <summary>Does the local player pass a filter_activator_name (or _class, isClass) on this name?</summary>
     public bool Passes(string filterName, bool negate, bool isClass)
     {
-        return on && (((isClass ? activatorClass : activator) == filterName) != negate);
+        if (!on) return false;
+        bool match = !isClass && filterName == "!player" ? true : NamesMatch(filterName, isClass ? activatorClass : activator);
+        return match != negate;
+    }
+
+    /// <summary>Source's EntityNamesMatch: ignores case, and a '*' matches the rest of the name ("block*").</summary>
+    static bool NamesMatch(string query, string name)
+    {
+        string q = query.ToLowerInvariant(), n = name.ToLowerInvariant();
+        if (q == n) return true;
+        int star = q.IndexOf('*');
+        return star >= 0 && n.StartsWith(q.Substring(0, star));
     }
 }

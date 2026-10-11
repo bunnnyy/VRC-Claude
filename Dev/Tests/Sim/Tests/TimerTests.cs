@@ -21,6 +21,9 @@ public static class TimerTests
         test("Leaderboard: rejects bad times", BoardRejects);
         test("Leaderboard: non-owners send their time to the owner", BoardNetwork);
         test("Courses: a start zone's own boards and start point are used", Courses);
+        test("Courses: an End zone only finishes its own course's run", EndOfOtherCourse);
+        test("Timer: a run stops on respawn and when its course is switched off; Restart skips a switched-off start", StopsWhenLeft);
+        test("Timer: a Start zone without a Respawn Point (and no timer Start Point) restarts at the zone", StartZoneDefaultPoint);
         test("Leaderboard: saved best is kept, restored on join, not replaced by a worse time", SavedBest);
     }
 
@@ -114,6 +117,55 @@ public static class TimerTests
         Check(!timer.IsRunning() && board.GetCount() == 1, "end zone did not finish");
         Zone(TimerZoneType.Restart).OnPlayerTriggerEnter(player);
         Check(player.position.x == 1, "restart zone went to " + player.position);
+    }
+
+    static void EndOfOtherCourse()
+    {
+        var (timer, board) = Setup();
+        var a = Make<Leaderboard>();
+        var b = Make<Leaderboard>();
+        var start = new TimerZone { zoneType = TimerZoneType.Start, timer = timer, leaderboard = a, respawnPoint = Point(5) };
+        start.OnPlayerTriggerEnter(player);
+        start.OnPlayerTriggerExit(player);
+        Time.time = 4f;
+        new TimerZone { zoneType = TimerZoneType.End, timer = timer, leaderboard = b }.OnPlayerTriggerEnter(player);
+        Check(timer.IsRunning() && b.GetCount() == 0, "another course's end zone finished the run");
+        new TimerZone { zoneType = TimerZoneType.End, timer = timer, leaderboard = a }.OnPlayerTriggerEnter(player);
+        Check(!timer.IsRunning() && a.GetCount() == 1 && board.GetCount() == 0, "its own end zone did not finish it on its board");
+    }
+
+    static void StopsWhenLeft()
+    {
+        var (timer, board) = Setup();
+        var courseStart = Point(5);
+        var start = new TimerZone { zoneType = TimerZoneType.Start, timer = timer, respawnPoint = courseStart };
+        start.OnPlayerTriggerEnter(player);
+        start.OnPlayerTriggerExit(player);
+        courseStart.gameObject.SetActive(false); // the map was switched off (map rotation, back to lobby)
+        typeof(RunTimer).GetMethod("Update", BindingFlags.NonPublic | BindingFlags.Instance).Invoke(timer, null);
+        Check(!timer.IsRunning(), "run kept going with its map switched off");
+        player.position = new Vector3(99, 0, 0);
+        timer._Restart();
+        Check(player.position.x == 1, "restart went to " + player.position + " (the switched-off start is at 5, the timer's own at 1)");
+        courseStart.gameObject.SetActive(true);
+        start.OnPlayerTriggerEnter(player);
+        start.OnPlayerTriggerExit(player);
+        timer.OnPlayerRespawn(player);
+        Check(!timer.IsRunning(), "run kept going after a respawn");
+        new TimerZone { zoneType = TimerZoneType.End, timer = timer }.OnPlayerTriggerEnter(player);
+        Check(board.GetCount() == 0, "a stopped run was recorded");
+    }
+
+    static void StartZoneDefaultPoint()
+    {
+        var (timer, board) = Setup();
+        timer.startPoint = null;
+        var start = new TimerZone { zoneType = TimerZoneType.Start, timer = timer };
+        start.transform.position = new Vector3(33, 0, 0);
+        start.OnPlayerTriggerEnter(player);
+        player.position = new Vector3(99, 0, 0);
+        timer._Restart();
+        Check(player.position.x == 33, "restart went to " + player.position);
     }
 
     static void Submit(Leaderboard board, string name, float time)

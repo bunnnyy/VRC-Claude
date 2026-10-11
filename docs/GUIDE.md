@@ -149,8 +149,8 @@ everyone plays the winner, **Back to lobby** leaves it, **Rejoin map** goes back
 
 | Setting | Default | What it does |
 |---|---|---|
-| Choices | 5 | Maps offered per vote (2-6), random, never the map just played |
-| Vote Seconds | 60 | From the first vote to the result |
+| Choices | 5 | Maps offered per vote (2-6), random, not the map just played (unless there are no more maps than this) |
+| Vote Seconds | 60 | From the first vote to the result (after rock the vote or the time limit: from when the vote opens) |
 | Rtv Ratio | 0.6 | Share of players needed to rock the vote |
 | Time Limit Minutes | 30 | Then a new vote with "extend" offered. **0 = rock the vote only** |
 | Extend Minutes | 15 | Added when "extend" wins or the owner presses "+ time" |
@@ -191,7 +191,7 @@ everyone plays the winner, **Back to lobby** leaves it, **Rejoin map** goes back
 
 | Thing | How |
 |---|---|
-| Vote | Click a map card; click another to change. Ends 60 s after the first vote, ties at random, everyone goes to the winner |
+| Vote | Click a map card; click another to change. Ends 60 s after the first vote (after rtv or the time limit, 60 s after it opens), ties at random, everyone goes to the winner |
 | Rock the vote | On the map's menu; click again to take it back. At 60% of players a new vote starts in the lobby |
 | Lobby / rejoin | **Back to lobby** takes only you; **Rejoin map** on the vote menu takes you back in |
 | Time limit | When it runs out everyone returns for a vote that also offers "Extend" |

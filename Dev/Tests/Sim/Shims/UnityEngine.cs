@@ -145,11 +145,13 @@ namespace UnityEngine
     public class GameObject : Object
     {
         public bool activeSelf = true;
+        public bool activeInHierarchy => activeSelf; // no parents in the Sim
         Transform _transform;
         public Transform transform => _transform ??= new Transform { owner = this };
         public void SetActive(bool v) => activeSelf = v;
         public static GameObject Find(string name) => null;
         public T GetComponent<T>() where T : class => null;
+        public Component GetComponent(Type type) => null;
         public int layer;
         public T[] GetComponents<T>() => new T[0];
         public T[] GetComponentsInChildren<T>(bool includeInactive) => new T[0];

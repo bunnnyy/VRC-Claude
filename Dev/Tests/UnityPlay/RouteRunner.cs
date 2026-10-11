@@ -100,6 +100,7 @@ public class RouteRunner : MonoBehaviour
         heights = pointFloors.ToArray();
         padSections = pads.ToArray();
         builtIn = false;
+        turnAccel = TurnAccel;
         scanReach = 300f; // round the route's own height (a point's z): roofs and ledges above aren't the way
         teleportLift = 6f;
     }
@@ -543,10 +544,12 @@ public class RouteRunner : MonoBehaviour
 
     const float MaxTurn = 12f;         // degrees the view turns per frame at most (a mouse, not a teleport)
     const float TurnAccel = 3f;        // how much that turn rate changes per frame: the view eases in and out of turns
+    // Route files ease turns; eazy's built-in route was tuned without easing (any rate change, as before).
+    static float turnAccel = 2f * MaxTurn;
 
     /// <summary>The turn rates (degrees per frame) reachable from `rate` this frame.</summary>
-    static float RateMin(float rate) { return Mathf.Clamp(rate - TurnAccel, -MaxTurn, MaxTurn); }
-    static float RateMax(float rate) { return Mathf.Clamp(rate + TurnAccel, -MaxTurn, MaxTurn); }
+    static float RateMin(float rate) { return Mathf.Clamp(rate - turnAccel, -MaxTurn, MaxTurn); }
+    static float RateMax(float rate) { return Mathf.Clamp(rate + turnAccel, -MaxTurn, MaxTurn); }
 
     /// <summary>The view after easing one frame towards `look`, turning at `rate` before.</summary>
     static float Ease(float yaw, float rate, float look)

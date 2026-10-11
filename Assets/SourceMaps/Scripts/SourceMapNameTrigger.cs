@@ -36,8 +36,15 @@ public class SourceMapNameTrigger : UdonSharpBehaviour
     public void Touching(bool now, bool before)
     {
         if (now) { if (!before) next = 0f; Fire(); return; }
-        if (!before || blocks == null || leaveNames == null || !Allowed()) return;
+        if (!before || spent || blocks == null || leaveNames == null || !Allowed()) return; // a spent trigger_once is gone
         for (int i = 0; i < leaveNames.Length; i++) blocks.SetNameLater(leaveNames[i], leaveDelays[i], leaveIsClass[i]);
+    }
+
+    /// <summary>The map was switched on again (SourceMapBlocks): a trigger_once can fire again.</summary>
+    public void _ResetState()
+    {
+        spent = false;
+        next = 0f;
     }
 
     void Fire()

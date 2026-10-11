@@ -232,8 +232,8 @@ public class SourceMovement : UdonSharpBehaviour
     /// <summary>
     /// Teleport the local player, optionally keeping their Source velocity (portals, stage teleports).
     /// Plain VRCPlayerApi.TeleportTo works too, but only a long jump (over 64 units plus how far the player moves
-    /// in a physics step or two) is taken as a teleport that resets velocity: after a plain TeleportTo, call
-    /// ResetVelocity (SendCustomEvent works) to stop the player like Source's trigger_teleport.
+    /// in a physics step or two) is taken as a teleport that resets velocity; a shorter one is followed only as far
+    /// as the hull fits (not through a wall). Scripts without a SourceMovement reference can use _Teleport.
     /// </summary>
     public void TeleportPlayer(Vector3 position, Quaternion rotation, bool keepVelocity)
     {
@@ -251,6 +251,12 @@ public class SourceMovement : UdonSharpBehaviour
         PlaceAt(position / metersPerUnit);
         teleportWait = TeleportWaitFrames;
     }
+
+    /// <summary>TeleportPlayer for scripts that find SourceMovement by name: set these, then SendCustomEvent("_Teleport").</summary>
+    [System.NonSerialized] public Vector3 teleportPosition;
+    [System.NonSerialized] public Quaternion teleportRotation = Quaternion.identity;
+    [System.NonSerialized] public bool teleportKeepVelocity;
+    public void _Teleport() { TeleportPlayer(teleportPosition, teleportRotation, teleportKeepVelocity); }
 
     /// <summary>
     /// trigger_push (SourcePushTrigger): entering one adds its push velocity (Source units/s), leaving takes it off.
@@ -280,7 +286,7 @@ public class SourceMovement : UdonSharpBehaviour
         if (push != Vector3.zero) AddPush(push);
     }
 
-    /// <summary>Stop: Source velocity to zero (call after a plain TeleportTo, like Source's trigger_teleport).</summary>
+    /// <summary>Stop: Source velocity to zero (e.g. after a plain TeleportTo shorter than a teleport jump).</summary>
     public void ResetVelocity() { velocity = Vector3.zero; }
 
     /// <summary>A new map (map rotation): no velocity, no pushes, normal gravity, like a CS:S map change.</summary>

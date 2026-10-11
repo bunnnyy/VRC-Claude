@@ -102,7 +102,9 @@ public static class PracticeCourses
         startZone.autoLeaderboard = auto;
         startZone.respawnPoint = startPoint;
         UdonSharpEditorUtility.CopyProxyToUdon(startZone);
-        Zone(course, "EndZone", TimerZoneType.End, timer, end + new Vector3(0, 64, 0), new Vector3(256, 128, 256), new Color(1f, 0.25f, 0.2f, 0.25f));
+        var endZone = Zone(course, "EndZone", TimerZoneType.End, timer, end + new Vector3(0, 64, 0), new Vector3(256, 128, 256), new Color(1f, 0.25f, 0.2f, 0.25f));
+        endZone.leaderboard = legit; // only this course's runs end here
+        UdonSharpEditorUtility.CopyProxyToUdon(endZone);
         var reset = Zone(course, "ResetZone", TimerZoneType.Reset, timer, resetCenter, resetSize, Color.clear);
         Object.DestroyImmediate(reset.GetComponent<MeshRenderer>());
     }

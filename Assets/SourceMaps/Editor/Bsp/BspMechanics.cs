@@ -85,6 +85,15 @@ namespace SourceMaps.Bsp
             return w == 0f ? 0.2f : w;
         }
 
+        /// <summary>
+        /// Does this trigger act on players? Source's PassesTriggerFilters: a trigger_* needs spawnflag 1 (clients) or
+        /// 64 (everything), else it ignores players (bhop_kitsune's push 324 over a level start). Not a trigger: yes.
+        /// </summary>
+        public static bool TouchesPlayers(Entity e)
+        {
+            return !e.ClassName.StartsWith("trigger_") || (e.GetInt("spawnflags") & (1 | 64)) != 0;
+        }
+
         /// <summary>A func_door that opens when touched (spawnflag 1024): the bhop block kind.</summary>
         public static bool IsTouchDoor(Entity e)
         {
