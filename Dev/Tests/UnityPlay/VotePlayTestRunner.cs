@@ -139,8 +139,32 @@ public class VotePlayTestRunner : MonoBehaviour
         yield return OwnerChanges();
         yield return Practice("PracticeBhop", "practice_bhop");
         yield return Practice("PracticeSurf", "practice_surf");
+        yield return DraggedPrefabs();
 
         Finish();
+    }
+
+    /// <summary>The menu and scoreboard prefabs dragged into the scene as they are (SourceMapsTestScene, no wiring)
+    /// work: someone making their own lobby just drags them in.</summary>
+    IEnumerator DraggedPrefabs()
+    {
+        Press("forcelobby", -1);
+        yield return Seconds(0.3f);
+        var menu = GameObject.Find("DraggedVoteMenu");
+        var panel = GameObject.Find("DraggedMapMenu");
+        var board = GameObject.Find("DraggedScoreboard");
+        Check(menu != null && panel != null && board != null, "prefabs: VoteMenu, MapMenu and Scoreboard dragged into the scene");
+        if (menu == null || panel == null || board == null) yield break;
+        string status = menu.transform.Find("Menu/Status").GetComponent<TMPro.TextMeshProUGUI>().text;
+        Check(status.Contains("timer starts"), $"prefab: a dragged-in VoteMenu finds the manager and shows the vote ('{status.Replace("\n", " | ")}')");
+        string panelStatus = panel.transform.Find("Menu/Status").GetComponent<TMPro.TextMeshProUGUI>().text;
+        Check(panelStatus != "", $"prefab: a dragged-in MapMenu shows the state ('{panelStatus.Replace("\n", " | ")}')");
+        Click(menu.transform, "Menu/Cards/Slot2");
+        yield return Seconds(0.3f);
+        Check((int)manager.GetProgramVariable("localVote") == 1, "prefab: a vote from the dragged-in menu counts");
+        string rows = board.transform.Find("Canvas/Rows").GetComponent<TMPro.TextMeshProUGUI>().text;
+        string title = board.transform.Find("Canvas/Title").GetComponent<TMPro.TextMeshProUGUI>().text;
+        Check(title == "Best times" && rows.Contains("No times yet"), $"prefab: a dragged-in Scoreboard shows its title and 'No times yet' ('{title}', '{rows}')");
     }
 
     /// <summary>
@@ -261,6 +285,7 @@ public class VotePlayTestRunner : MonoBehaviour
         Check(after == before + 1, $"{courseName}: the run is on the course's legit board ({before} -> {after})");
         float last = (float)Loaded2(FindUdon("RunTimer")).GetProgramVariable("lastTime");
         Check(hasSaved && Mathf.Abs(saved - last) < 0.001f, $"{courseName}: best time saved with Persistence ({(hasSaved ? saved.ToString("F2") + " s" : "nothing")})");
+        if (key == "practice_bhop") yield return Shot("scoreboard", legit.transform, new Vector3(0, 0, -2.4f), 55);
         if (movement != null) movement.SetProgramVariable("autoBhop", true);
     }
 

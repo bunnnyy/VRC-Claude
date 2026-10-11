@@ -109,31 +109,8 @@ public static class PracticeCourses
 
     static Leaderboard Board(Transform course, string title, string key, Vector3 positionMetres, int side)
     {
-        var go = new GameObject("Board " + title);
-        go.transform.SetParent(course, false);
-        go.transform.localPosition = positionMetres;
-        go.transform.localRotation = Quaternion.Euler(0, 90 * side, 0); // text faces back toward the course
-        var board = go.AddUdonSharpComponent<Leaderboard>();
-        board.title = title;
-        board.saveKey = key;
-        var canvas = new GameObject("Canvas", typeof(Canvas));
-        canvas.transform.SetParent(go.transform, false);
-        canvas.transform.localPosition = new Vector3(0, 1.5f, 0);
-        canvas.GetComponent<Canvas>().renderMode = RenderMode.WorldSpace;
-        var rect = canvas.GetComponent<RectTransform>();
-        rect.sizeDelta = new Vector2(200, 220);
-        rect.localScale = Vector3.one * 0.01f;
-        var text = new GameObject("Text", typeof(RectTransform)).AddComponent<TextMeshProUGUI>();
-        text.transform.SetParent(canvas.transform, false);
-        text.rectTransform.anchorMin = Vector2.zero;
-        text.rectTransform.anchorMax = Vector2.one;
-        text.rectTransform.sizeDelta = Vector2.zero;
-        text.fontSize = 12;
-        text.alignment = TextAlignmentOptions.Top;
-        text.text = title;
-        board.board = text;
-        UdonSharpEditorUtility.CopyProxyToUdon(board);
-        return board;
+        // The Scoreboard prefab, its middle 1.5 m up, facing back toward the course.
+        return ScoreboardPrefab.Place(course, title, key, positionMetres + new Vector3(0, 1.5f, 0), Quaternion.Euler(0, 90 * side, 0));
     }
 
     static TimerZone Zone(Transform course, string name, TimerZoneType type, RunTimer timer, Vector3 center, Vector3 size, Color color)

@@ -38,6 +38,7 @@ The three are independent; a bhop world uses all three.
 | 3 | Try it: open `Assets/SourceMovement/SourceTestMap.unity` (bhop lane, surf ramp, ladder, pools, boosters, timer) |
 | 4 | In your scene: drag in `SourceMovement.prefab` (and `SourceTimer.prefab` for timing) |
 | 5 | For a map-vote world with CS:S maps, follow the **[setup guide](docs/GUIDE.md)** |
+| 6 | Own lobby layout: drag in the `VoteMenu`, `MapMenu` and `Scoreboard` prefabs ([guide, step 8](docs/GUIDE.md#8-create-the-lobby)) |
 
 ## 3. Documentation
 

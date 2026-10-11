@@ -391,6 +391,18 @@ public class SourceMapManager : UdonSharpBehaviour
         foreach (var s in screens) if (s != null) s.Refresh();
     }
 
+    /// <summary>A screen that found this manager itself (a menu prefab dragged in) joins the ones refreshed.</summary>
+    public void _AddScreen(SourceMapScreen screen)
+    {
+        if (screen == null) return;
+        if (screens == null) screens = new SourceMapScreen[0];
+        foreach (var s in screens) if (s == screen) return;
+        var grown = new SourceMapScreen[screens.Length + 1];
+        for (int i = 0; i < screens.Length; i++) grown[i] = screens[i];
+        grown[screens.Length] = screen;
+        screens = grown;
+    }
+
     // ------------------------------------------------------------------ helpers for screens
 
     /// <summary>Instance owner, or the master when the instance has no owner (public and group instances).</summary>

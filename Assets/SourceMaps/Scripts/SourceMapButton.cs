@@ -14,6 +14,11 @@ public class SourceMapButton : UdonSharpBehaviour
 
     public void Click()
     {
+        if (manager == null) // dragged in from a prefab: the lobby's manager, by name
+        {
+            GameObject found = GameObject.Find("SourceMapManager");
+            if (found != null) manager = found.GetComponent<SourceMapManager>();
+        }
         if (manager != null) manager.Press(action, slot);
     }
 

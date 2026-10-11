@@ -39,6 +39,15 @@ public static class SourceMapsTestScene
         var movement = AssetDatabase.LoadAssetAtPath<GameObject>("Assets/SourceMovement/SourceMovement.prefab");
         if (movement != null) PrefabUtility.InstantiatePrefab(movement); // optional: works without it
         SourceMapsSetup.CreateLobby(Vector3.zero);
+        // Like someone building their own lobby: the menu and scoreboard prefabs dragged in as they are (no wiring),
+        // behind the lobby spawn. The vote test checks they find the manager and work.
+        string[] prefabs = { "Assets/SourceMaps/Prefabs/VoteMenu.prefab", "Assets/SourceMaps/Prefabs/MapMenu.prefab", "Assets/SourceTimer/Scoreboard.prefab" };
+        for (int i = 0; i < prefabs.Length; i++)
+        {
+            var go = (GameObject)PrefabUtility.InstantiatePrefab(AssetDatabase.LoadAssetAtPath<GameObject>(prefabs[i]));
+            go.name = "Dragged" + System.IO.Path.GetFileNameWithoutExtension(prefabs[i]);
+            go.transform.position = new Vector3(-20 + i * 8, i == 2 ? 1.5f : 0f, -20);
+        }
         EditorSceneManager.SaveScene(scene, "Assets/SourceMaps/SourceMapsTest.unity");
     }
 }

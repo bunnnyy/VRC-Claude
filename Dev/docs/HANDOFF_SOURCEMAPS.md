@@ -64,7 +64,7 @@ All commands and last results: [TESTING.md](TESTING.md#1-test-suites). The ones 
 | Command | Last result |
 |---|---|
 | `dotnet run --project Dev/Tests/Bsp` | 98/98 |
-| `Dev/Tests/UnityPlay/run.sh vote` | 47/47 (votes through the real UI buttons) |
+| `Dev/Tests/UnityPlay/run.sh vote` | 52/52 (votes through the real UI buttons; dragged-in prefabs) |
 | `Dev/Tests/UnityPlay/run.sh map <bsp>` | eazy all passed; monster_jam all but one pyramid surf |
 | `SM_CSS=... Dev/Tests/UnityPlay/run.sh sample` | 63/65 (2 known drop-probe misses: arcane, japan) |
 | `SM_CSS=... SM_SHOT_DESTS=... LightingShots.Run` | Screenshots; use these instead of recordings to check visuals |
@@ -112,5 +112,6 @@ All commands and last results: [TESTING.md](TESTING.md#1-test-suites). The ones 
 | uSource | Needs `allowUnsafeCode`; clears the previous map on load (detach `BSP_WorldSpawn`); adds MeshColliders everywhere (removed); drops its file providers after LoadMap (reopened for sounds/sky); 3D skybox off (adds a fly camera) |
 | Lighting | uSource's shader decides what gets lightmaps (`LightmappedShaders`): `$detail` = DetailGeneric, `$translucent` = TranslucentGeneric. Water (Water shader or `%compilewater`) has no lightmap. Sky faces are its hidden `TOOLS/TOOLSSKYBOX` meshes |
 | Menus | Canvas + VRCUiShape + a trigger BoxCollider (what the pointer raycast hits); Buttons call `SendCustomEvent("Click")`. VRChat's UnityEventFilter drops those without the `UDON` define |
+| Prefabs | `Prefabs/VoteMenu`, `MapMenu` (SourceMaps) and `SourceTimer/Scoreboard` are built by code (Create Menu Prefabs / Create Scoreboard Prefab) in the test project and copied back with their `.meta`s. Unwired, they find "SourceMapManager" by name and register (`_AddScreen`). Udon objects made by `Object.Instantiate` from a MonoBehaviour aren't initialised: test drag-in by placing them at edit time |
 | VRChat | Respawn below `RespawnHeightY` (Create Lobby lowers it); boards in switched-off maps can't sync (they live in the lobby); ClientSim persistence needs `VRC_ENABLE_PLAYER_PERSISTENCE` |
 | Shell | `pgrep -f` / `pkill -f` match the calling shell: wait on background tasks instead, never `pkill -f xvfb-run` |

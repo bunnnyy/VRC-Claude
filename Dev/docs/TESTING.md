@@ -25,7 +25,7 @@ Source's own maths. Back to the [README](../../README.md).
 | 4 | `Dev/Tests/UnityPlay/run.sh 90` | Unity + ClientSim | Movement suite at one frame rate (no argument: 30, 90, 144, 300 fps) | All passed |
 | 5 | `dotnet run --project Dev/Tests/Bsp` | .NET | BSP reader and collision on the 6 real maps, boosters, breakable glass | 98/98 |
 | 6 | `Dev/Tests/UnityPlay/run.sh map <bsp>` | Unity + ClientSim | One map: glass, stand at every destination, teleports, bhop blocks, bhop/surf runs | eazy all passed; monster_jam all but one pyramid surf |
-| 7 | `Dev/Tests/UnityPlay/run.sh vote` | Unity + ClientSim | Map rotation: voting through the UI menus, owner changes, practice courses | 47/47 |
+| 7 | `Dev/Tests/UnityPlay/run.sh vote` | Unity + ClientSim | Map rotation: voting through the UI menus, owner changes, practice courses, menu and scoreboard prefabs dragged in unwired | 52/52 |
 | 8 | `SM_CSS=... Dev/Tests/UnityPlay/run.sh sample` | Unity + ClientSim | Whole sample world (6 maps with uSource visuals, skies, sounds, zones) | 63/65 (2 known drop-probe misses) |
 
 > [!NOTE]

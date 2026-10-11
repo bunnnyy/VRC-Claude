@@ -139,19 +139,21 @@ A trigger Box Collider plus this.
 
 ## 6. Leaderboard
 
-Top 10, one time per player.
+Top 10, one time per player. `Assets/SourceTimer/Scoreboard.prefab` is a ready board: drag it in.
 
 | Setting | Default | What it does |
 |---|---|---|
 | Title | "Best times" | Heading |
-| Board | set by the prefab | The board's text |
+| Board | set by the prefab | The rows' text |
+| Title Label | set by the Scoreboard prefab | Heading text; when set, Board shows the rows as rank / name / time columns |
 | Save Key | empty | Saves each player's best with VRChat Persistence under this key (e.g. `bhop_japan_legit`); one key per board. Empty = this instance only |
 
 ---
 
 ## 7. SourceMapManager
 
-Under "SourceMaps Lobby". The vote settings (Choices, Vote Seconds, Rtv Ratio, Time Limit Minutes, Extend Minutes)
+Under "SourceMaps Lobby", named **SourceMapManager**: the menu prefabs (`Assets/SourceMaps/Prefabs/VoteMenu`,
+`MapMenu`) find it by that name when their **Manager** is empty, so they work dragged in. The vote settings (Choices, Vote Seconds, Rtv Ratio, Time Limit Minutes, Extend Minutes)
 are in [guide step 8](GUIDE.md#8-create-the-lobby). The rest is wiring Create Lobby fills in:
 
 | Setting | What it is |

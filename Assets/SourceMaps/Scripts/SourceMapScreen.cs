@@ -7,7 +7,7 @@ using VRC.SDKBase;
 /// <summary>
 /// Shows SourceMapManager's state: the lobby board (map slots with thumbnail, name, author, votes) or a small panel
 /// inside a map (time left, rtv count). Every field is optional, so one script serves both.
-/// Buttons are SourceMapButtons in it.
+/// Buttons are SourceMapButtons in it. Without a Manager it finds the object named "SourceMapManager" (prefab use).
 /// </summary>
 [UdonBehaviourSyncMode(BehaviourSyncMode.None)]
 public class SourceMapScreen : UdonSharpBehaviour
@@ -26,6 +26,21 @@ public class SourceMapScreen : UdonSharpBehaviour
     [Header("Shown only to the instance owner / master")]
     public GameObject adminRoot;
     public TextMeshProUGUI adminText;
+
+    private void Start()
+    {
+        // Dragged in from the prefab: find the lobby's manager by name and register, so it gets refreshed.
+        if (manager == null)
+        {
+            GameObject found = GameObject.Find("SourceMapManager");
+            if (found != null) manager = found.GetComponent<SourceMapManager>();
+        }
+        if (manager != null)
+        {
+            manager._AddScreen(this);
+            Refresh();
+        }
+    }
 
     public void Refresh()
     {

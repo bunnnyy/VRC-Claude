@@ -129,9 +129,21 @@ everyone plays the winner, **Back to lobby** leaves it, **Rejoin map** goes back
 > [!NOTE]
 > Worlds built before 2026-10-11 have cube buttons: run **Create Lobby** again to get the menus.
 
+**Your own lobby:** the pieces are prefabs. Drag them in anywhere; they need no wiring.
+
+| Prefab | What it is | Needs |
+|---|---|---|
+| `Assets/SourceMaps/Prefabs/VoteMenu.prefab` | The vote menu | An object named **SourceMapManager** in the scene (Create Lobby makes it) |
+| `Assets/SourceMaps/Prefabs/MapMenu.prefab` | The in-map menu (time left, rock the vote, back to lobby) | Same; put it inside a map |
+| `Assets/SourceTimer/Scoreboard.prefab` | A top-10 board | Set **Title** and **Save Key**; point a Start zone's **Leaderboard** / **Auto Leaderboard** at it |
+
+**Tools > Source Maps > Create Menu Prefabs** and **Tools > Source Timer > Create Scoreboard Prefab** make them again.
+
 ![The vote menu during a vote (test maps with plain colour thumbnails)](images/lobby_vote.png)
 
 ![The menu next to a map's spawn](images/map_panel.png)
+
+![A practice course's scoreboards: one run on the legit board, the auto-bhop board still empty](images/scoreboard.png)
 
 **SourceMapManager** settings (under "SourceMaps Lobby"):
 

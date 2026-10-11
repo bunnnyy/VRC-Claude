@@ -13,6 +13,9 @@ using UnityEngine.UI;
 ///   Tools > Source Maps > Add Selected Map To Rotation   (on an imported map root: SourceMapInfo + spawn)
 ///   Tools > Source Maps > Create Lobby                    (vote manager, lobby board, a panel in every map)
 ///   Tools > Source Maps > Build Test Scene                (6 small box maps + lobby, for trying it out)
+///   Tools > Source Maps > Create Menu Prefabs             (Prefabs/VoteMenu and MapMenu, made again from this code)
+/// The menus are prefabs: drag VoteMenu (lobby) or MapMenu (in a map) into a custom lobby; they find the object
+/// named "SourceMapManager" themselves.
 /// </summary>
 public static class SourceMapsSetup
 {
@@ -122,11 +125,18 @@ public static class SourceMapsSetup
     /// </summary>
     static SourceMapScreen CreateBoard(Transform parent, SourceMapManager manager, Vector3 at)
     {
-        var board = new GameObject("VoteBoard");
-        board.transform.SetParent(parent, false);
+        var board = (GameObject)PrefabUtility.InstantiatePrefab(MenuPrefab(VoteMenuPath, BuildVoteMenu), parent);
+        board.name = "VoteBoard";
         board.transform.localPosition = at;
+        return Wire(board, manager);
+    }
+
+    /// <summary>The vote menu prefab's content (its manager is found at runtime, or set by Create Lobby).</summary>
+    static GameObject BuildVoteMenu()
+    {
+        var board = new GameObject("VoteMenu");
         var screen = board.AddUdonSharpComponent<SourceMapScreen>();
-        screen.manager = manager;
+        SourceMapManager manager = null; // set per instance (Wire), or found by name at runtime
         // 1600 x 900 units of 4 mm (6.4 x 3.6 m), its middle 1.9 m up. Unrotated, its front faces the spawn.
         var menu = Menu(board.transform, new Vector2(1600, 900), 0.004f, new Vector3(0, 1.9f, 0));
         screen.status = Label(menu, "Status", "Vote for the next map", new Vector2(0, 345), new Vector2(1500, 150), 44, TextColor, FontStyles.Bold);
@@ -175,7 +185,7 @@ public static class SourceMapsSetup
         UiButton(menu, "Rejoin", "Rejoin map", manager, "rejoin", -1, new Vector2(650, -360), new Vector2(220, 64), Accent, TextColor);
 
         UdonSharpEditorUtility.CopyProxyToUdon(screen);
-        return screen;
+        return board;
     }
 
     /// <summary>Menu at a map's spawn: status (time left, rtv), Rock the vote and Back to lobby, owner controls.</summary>
@@ -183,14 +193,21 @@ public static class SourceMapsSetup
     {
         var old = map.transform.Find("SourceMapPanel");
         if (old != null) Object.DestroyImmediate(old.gameObject);
-        var panel = new GameObject("SourceMapPanel");
-        panel.transform.SetParent(map.transform, false);
+        var panel = (GameObject)PrefabUtility.InstantiatePrefab(MenuPrefab(MapMenuPath, BuildMapMenu), map.transform);
+        panel.name = "SourceMapPanel";
         // 1.5 m to the right of the spawn, facing it.
         panel.transform.position = map.spawn.position + map.spawn.right * 1.5f + map.spawn.forward * 1.0f;
         Vector3 away = panel.transform.position - map.spawn.position;
         panel.transform.rotation = Quaternion.LookRotation(new Vector3(away.x, 0, away.z), Vector3.up); // front faces the spawn
+        return Wire(panel, manager);
+    }
+
+    /// <summary>The map menu prefab's content.</summary>
+    static GameObject BuildMapMenu()
+    {
+        var panel = new GameObject("MapMenu");
         var screen = panel.AddUdonSharpComponent<SourceMapScreen>();
-        screen.manager = manager;
+        SourceMapManager manager = null; // set per instance (Wire), or found by name at runtime
         // 640 x 400 units of 2.5 mm (1.6 x 1 m), its middle 1.45 m up.
         var menu = Menu(panel.transform, new Vector2(640, 400), 0.0025f, new Vector3(0, 1.45f, 0));
         screen.status = Label(menu, "Status", "", new Vector2(0, 125), new Vector2(600, 110), 28, TextColor, FontStyles.Bold);
@@ -200,6 +217,45 @@ public static class SourceMapsSetup
         screen.adminRoot = admin.gameObject;
         UiButton(admin, "ForceLobby", "Everyone to lobby", manager, "forcelobby", -1, new Vector2(-150, -115), new Vector2(280, 64), OwnerFill, OwnerText);
         UiButton(admin, "AddTime", "+ time", manager, "addtime", -1, new Vector2(150, -115), new Vector2(280, 64), OwnerFill, OwnerText);
+        UdonSharpEditorUtility.CopyProxyToUdon(screen);
+        return panel;
+    }
+
+    const string VoteMenuPath = "Assets/SourceMaps/Prefabs/VoteMenu.prefab", MapMenuPath = "Assets/SourceMaps/Prefabs/MapMenu.prefab";
+
+    [MenuItem("Tools/Source Maps/Create Menu Prefabs")]
+    public static void CreateMenuPrefabs()
+    {
+        AssetDatabase.DeleteAsset(VoteMenuPath);
+        AssetDatabase.DeleteAsset(MapMenuPath);
+        MenuPrefab(VoteMenuPath, BuildVoteMenu);
+        Selection.activeObject = MenuPrefab(MapMenuPath, BuildMapMenu);
+    }
+
+    /// <summary>A menu prefab asset, built and saved if it isn't there.</summary>
+    static GameObject MenuPrefab(string path, System.Func<GameObject> build)
+    {
+        var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(path);
+        if (prefab != null) return prefab;
+        SourceMapImporter.EnsureProgramAssets();
+        EnsureTextMeshPro();
+        System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(path));
+        var root = build();
+        prefab = PrefabUtility.SaveAsPrefabAsset(root, path);
+        Object.DestroyImmediate(root);
+        return prefab;
+    }
+
+    /// <summary>Points a menu instance's screen and buttons at the manager.</summary>
+    static SourceMapScreen Wire(GameObject menu, SourceMapManager manager)
+    {
+        foreach (var button in menu.GetComponentsInChildren<SourceMapButton>(true))
+        {
+            button.manager = manager;
+            UdonSharpEditorUtility.CopyProxyToUdon(button);
+        }
+        var screen = menu.GetComponent<SourceMapScreen>();
+        screen.manager = manager;
         UdonSharpEditorUtility.CopyProxyToUdon(screen);
         return screen;
     }
@@ -431,7 +487,7 @@ public static class SourceMapsSetup
     /// <summary>The menus' rounded corner sprite (white, 9-sliced; 16 unit corners), made once as an asset.</summary>
     static Sprite RoundedSprite()
     {
-        const string path = "Assets/SourceMaps/Materials/rounded.png";
+        const string path = "Assets/SourceMaps/Prefabs/rounded.png";
         var sprite = AssetDatabase.LoadAssetAtPath<Sprite>(path);
         if (sprite != null) return sprite;
         const int n = 64, r = 16;
@@ -444,7 +500,7 @@ public static class SourceMapsSetup
                 float a = Mathf.Clamp01(r + 0.5f - Mathf.Sqrt(dx * dx + dy * dy));
                 tex.SetPixel(x, y, new Color(1, 1, 1, a));
             }
-        System.IO.Directory.CreateDirectory("Assets/SourceMaps/Materials");
+        System.IO.Directory.CreateDirectory("Assets/SourceMaps/Prefabs");
         System.IO.File.WriteAllBytes(path, tex.EncodeToPNG());
         Object.DestroyImmediate(tex);
         AssetDatabase.ImportAsset(path);

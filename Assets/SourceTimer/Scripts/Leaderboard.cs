@@ -19,6 +19,8 @@ public class Leaderboard : UdonSharpBehaviour
 {
     [Tooltip("Optional text that shows the board")]
     public TextMeshProUGUI board;
+    [Tooltip("Optional heading text (the Scoreboard prefab's): then Board shows only the rows, in columns")]
+    public TextMeshProUGUI titleLabel;
     public string title = "Best times";
     [Tooltip("Save each player's best under this key (e.g. bhop_japan_legit). Empty = this instance only.")]
     public string saveKey = "";
@@ -108,10 +110,20 @@ public class Leaderboard : UdonSharpBehaviour
 
     private void Refresh()
     {
+        if (titleLabel != null) titleLabel.text = title;
         if (board == null) return;
-        string text = title;
+        if (titleLabel == null)
+        {
+            string plain = title;
+            for (int i = 0; i < count; i++)
+                plain += "\n" + (i + 1) + ". " + names[i] + "  " + RunTimer.FormatTime(times[i]);
+            board.text = plain;
+            return;
+        }
+        // Columns: rank (grey), name, time (right).
+        string text = count == 0 ? "<color=#8b93a3>No times yet</color>" : "";
         for (int i = 0; i < count; i++)
-            text += "\n" + (i + 1) + ". " + names[i] + "  " + RunTimer.FormatTime(times[i]);
+            text += (i > 0 ? "\n" : "") + "<color=#8b93a3>" + (i + 1) + "</color><pos=12%>" + names[i] + "<pos=70%>" + RunTimer.FormatTime(times[i]);
         board.text = text;
     }
 }
