@@ -89,7 +89,7 @@ Download from GameBanana, unzip (7-Zip opens .zip, .rar and .7z) and put the `.b
 1. **Tools > Source Maps > Build Sample World...**
 2. Pick the folder with the `.bsp` files.
 3. Pick your **Counter-Strike Source** folder, the one with `cstrike` and `hl2` in it, e.g.
-   `C:\Program Files (x86)\Steam\steamapps\common\Counter-Strike Source` (asked once).
+   `C:\Program Files (x86)\Steam\steamapps\common\Counter-Strike Source` (asked once; change it with **Tools > Source Maps > Set CS:S Folder...**).
 4. Continue at [step 9](#9-movement-and-timer).
 
 It does steps 7 and 8 for every map: visuals, collision, markers, timer zones, a thumbnail from the spawn, the lobby
@@ -231,7 +231,7 @@ everyone plays the winner, **Back to lobby** leaves it, **Rejoin map** goes back
 | # | Problem | Fix |
 |---|---|---|
 | 1 | Players fall through a map | Run **Import BSP** ([step 7.1](#7-manual-way-one-map-at-a-time)): uSource's visuals have no collision |
-| 2 | Map looks white | Set the CS:S folder (with `cstrike` and `hl2`) and import again: materials saved without textures are rebuilt |
+| 2 | Map looks white | Set the CS:S folder (with `cstrike` and `hl2`) with **Tools > Source Maps > Set CS:S Folder...** and import again: materials saved without textures are rebuilt |
 | 3 | Map looks pink | Shader problem: import the map again |
 | 4 | Black walls, floors or water | Imported before 2026-10-11: import the map again |
 | 5 | Another stage shows through the sky | Imported before 2026-10-11: import the map again |
