@@ -118,7 +118,7 @@ public static class SourceMapVisuals
         // Sounds and the sky: uSource drops its file providers after loading a map, so open them again (the CS:S
         // folder with its VPKs, and the map's pakfile first) while they're read.
         var missing = new List<string>();
-        int sounds;
+        int sounds, water;
         string skyName = bsp.Entities.Count > 0 ? bsp.Entities[0].Get("skyname") : "";
         Material sky;
         byte[] file = File.ReadAllBytes(bspPath);
@@ -132,6 +132,7 @@ public static class SourceMapVisuals
             sounds = SourceMapSounds.Add(parent.gameObject, "Assets/SourceMapsImported/" + mapName + "/Sounds", scale,
                 path => ReadGameFile(resources, path), missing);
             sky = SaveSky(resources, skyName, "Assets/SourceMapsImported/" + mapName, mapName);
+            water = ApplyWater(visuals, resources, "Assets/SourceMapsImported/" + mapName + "/Water", sky);
         }
         finally
         {
@@ -140,7 +141,7 @@ public static class SourceMapVisuals
         }
         RenderSettings.skybox = sky != null ? sky : worldSky;
         Debug.Log($"[Source Maps] {mapName} visuals: {visuals.GetComponentsInChildren<MeshRenderer>(true).Length} renderers, " +
-                  $"{removed} tool surfaces removed, {strayColliders} uSource colliders removed, {lit} surfaces with Source lightmaps, {propsLit} props lit, {doors} door blocks linked, {glass} breakable glass linked, {propColliders} solid props given colliders, {meshes} meshes saved, {textures} textures kept that only uSource's memory had, " +
+                  $"{removed} tool surfaces removed, {strayColliders} uSource colliders removed, {lit} surfaces with Source lightmaps, {water} water surfaces, {propsLit} props lit, {doors} door blocks linked, {glass} breakable glass linked, {propColliders} solid props given colliders, {meshes} meshes saved, {textures} textures kept that only uSource's memory had, " +
                   $"{sounds} sounds" + (missing.Count > 0 ? $" ({missing.Count} sound files missing: {string.Join(", ", missing)})" : "") +
                   $", sky {skyName}" + (sky == null ? " missing (HL2 skies need the CS:S folder's hl2)" : "") +
                   (css == "" ? " (no CS:S folder set: stock textures missing)" : ""));
@@ -234,9 +235,34 @@ public static class SourceMapVisuals
         return faces.GetChild(model);
     }
 
-    // uSource's shaders for surfaces Source draws with a lightmap (LightmappedGeneric, WorldVertexTransition, alpha tested).
+    // uSource's shaders for surfaces Source draws with a lightmap (LightmappedGeneric, WorldVertexTransition, alpha
+    // tested, with a $detail texture, translucent).
     static readonly string[] LightmappedShaders = { "Legacy Shaders/Diffuse", "USource/Lightmapped/Generic",
-        "USource/Lightmapped/WorldVertexTransition", "USource/CutoutGeneric" };
+        "USource/Lightmapped/WorldVertexTransition", "USource/CutoutGeneric", "USource/DetailGeneric", "USource/TranslucentGeneric" };
+
+    /// <summary>A uSource material's texture, colour, alpha test, $detail (Source's default blend only) and translucency
+    /// onto one of ours.</summary>
+    static void CopySurface(Material src, Material mat)
+    {
+        mat.SetTexture("_MainTex", src.mainTexture);
+        mat.mainTextureScale = src.mainTextureScale;
+        mat.mainTextureOffset = src.mainTextureOffset;
+        if (src.HasProperty("_Color")) mat.SetColor("_Color", src.GetColor("_Color"));
+        if (src.shader.name == "USource/CutoutGeneric") mat.SetFloat("_Cutoff", 0.5f);
+        if (src.shader.name == "USource/DetailGeneric" && src.GetTexture("_Detail") != null && src.GetFloat("_DetailBlendMode") == 0f)
+        {
+            mat.SetTexture("_Detail", src.GetTexture("_Detail"));
+            mat.SetTextureScale("_Detail", src.GetTextureScale("_Detail"));
+            mat.SetFloat("_DetailFactor", src.GetFloat("_DetailFactor"));
+        }
+        if (src.shader.name == "USource/TranslucentGeneric")
+        {
+            mat.SetFloat("_SrcBlend", (float)UnityEngine.Rendering.BlendMode.SrcAlpha);
+            mat.SetFloat("_DstBlend", (float)UnityEngine.Rendering.BlendMode.OneMinusSrcAlpha);
+            mat.SetFloat("_ZWrite", 0f);
+            mat.renderQueue = (int)UnityEngine.Rendering.RenderQueue.Transparent;
+        }
+    }
 
     /// <summary>
     /// Moves the lightmaps uSource read (LightmapSettings.lightmaps, one per surface group, index on the renderer) onto
@@ -271,12 +297,8 @@ public static class SourceMapVisuals
                 tex = saved[index] = AssetDatabase.LoadAssetAtPath<Texture2D>(path);
             }
             var mat = new Material(shader) { name = src.name };
-            mat.SetTexture("_MainTex", src.mainTexture);
-            mat.mainTextureScale = src.mainTextureScale;
-            mat.mainTextureOffset = src.mainTextureOffset;
-            if (src.HasProperty("_Color")) mat.SetColor("_Color", src.GetColor("_Color"));
+            CopySurface(src, mat);
             if (src.HasProperty("_SecondTex")) { mat.SetTexture("_SecondTex", src.GetTexture("_SecondTex")); mat.SetFloat("_Blend", 1); }
-            if (src.shader.name == "USource/CutoutGeneric") mat.SetFloat("_Cutoff", 0.5f);
             mat.SetTexture("_LightMap", tex);
             AssetDatabase.CreateAsset(mat, $"{folder}/{lit}_{Path.GetFileName(src.name)}.mat");
             r.sharedMaterial = mat;
@@ -352,11 +374,7 @@ public static class SourceMapVisuals
                     if (!materials.TryGetValue(mats[i], out var m))
                     {
                         m = new Material(shader) { name = mats[i].name };
-                        m.SetTexture("_MainTex", mats[i].mainTexture);
-                        m.mainTextureScale = mats[i].mainTextureScale;
-                        m.mainTextureOffset = mats[i].mainTextureOffset;
-                        if (mats[i].HasProperty("_Color")) m.SetColor("_Color", mats[i].GetColor("_Color"));
-                        if (mats[i].shader.name == "USource/CutoutGeneric") m.SetFloat("_Cutoff", 0.5f);
+                        CopySurface(mats[i], m);
                         AssetDatabase.CreateAsset(m, $"{folder}/{materials.Count}_{Path.GetFileName(mats[i].name)}.mat");
                         materials[mats[i]] = m;
                     }
@@ -364,8 +382,8 @@ public static class SourceMapVisuals
                     any = true;
                 }
                 if (!any) continue;
-                // Leaves and other alpha-tested cards are seen from both sides: light them from the brighter side.
-                bool twoSided = mats.Any(m => m != null && m.GetFloat("_Cutoff") > 0f);
+                // Leaves and other alpha-tested or translucent cards are seen from both sides: light them from the brighter side.
+                bool twoSided = mats.Any(m => m != null && m.shader == shader && (m.GetFloat("_Cutoff") > 0f || m.GetFloat("_ZWrite") == 0f));
                 var mesh = Object.Instantiate(src);
                 mesh.name = src.name + " lit";
                 var normals = mesh.normals;
@@ -543,6 +561,83 @@ public static class SourceMapVisuals
     /// faces saved as textures; null if a face is missing. Faces as uSource maps them: rt front, lf back, ft left,
     /// bk right.
     /// </summary>
+    /// <summary>
+    /// Water: Source draws it with its own Water shader (what's below, the sky reflected, its $fogcolor), which uSource
+    /// leaves white and unlit (black here). Every surface whose material uses it gets a SourceMaps/Water material with
+    /// that fog colour and the sky's colour at the horizon. Returns the surfaces done.
+    /// </summary>
+    static int ApplyWater(GameObject visuals, System.Type resources, string folder, Material sky)
+    {
+        var shader = Shader.Find("SourceMaps/Water");
+        if (shader == null) return 0;
+        AssetDatabase.DeleteAsset(folder); // a re-import starts clean
+        Color skyColor = Horizon(sky);
+        var made = new Dictionary<string, Material>();
+        int done = 0;
+        foreach (var r in visuals.GetComponentsInChildren<MeshRenderer>(true))
+        {
+            // Brush faces are grouped by material, the group named by its path ("LIQUIDS/MILITIAWATER").
+            string name = r.gameObject.name.Contains("/") ? r.gameObject.name.ToLowerInvariant() : r.sharedMaterial != null ? r.sharedMaterial.name : "";
+            if (name == "") continue;
+            if (!made.TryGetValue(name, out var mat))
+            {
+                byte[] vmt = ReadGameFile(resources, "materials/" + name + ".vmt");
+                string text = vmt != null ? System.Text.Encoding.UTF8.GetString(vmt).TrimStart('\uFEFF', ' ', '\t', '\r', '\n', '"') : "";
+                mat = null;
+                if (text.StartsWith("water", System.StringComparison.OrdinalIgnoreCase))
+                {
+                    Directory.CreateDirectory(folder);
+                    mat = new Material(shader) { name = name };
+                    mat.SetColor("_FogColor", VmtColor(text, "$fogcolor", new Color(0.07f, 0.14f, 0.12f)));
+                    mat.SetColor("_SkyColor", skyColor);
+                    AssetDatabase.CreateAsset(mat, $"{folder}/{made.Count}_{Path.GetFileName(name)}.mat");
+                }
+                made[name] = mat;
+            }
+            if (mat == null) continue;
+            var mats = r.sharedMaterials;
+            for (int i = 0; i < mats.Length; i++) mats[i] = mat;
+            r.sharedMaterials = mats;
+            done++;
+        }
+        return done;
+    }
+
+    /// <summary>A VMT colour: "[0.07 0.14 0.12]" (0..1) or "{18 36 31}" (0..255).</summary>
+    static Color VmtColor(string vmt, string key, Color fallback)
+    {
+        var m = System.Text.RegularExpressions.Regex.Match(vmt, "\"?" + System.Text.RegularExpressions.Regex.Escape(key) +
+            "\"?\\s+\"?([\\[{])\\s*([0-9.]+)\\s+([0-9.]+)\\s+([0-9.]+)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        if (!m.Success) return fallback;
+        float k = m.Groups[1].Value == "{" ? 1f / 255f : 1f;
+        return new Color(Parse(m.Groups[2].Value) * k, Parse(m.Groups[3].Value) * k, Parse(m.Groups[4].Value) * k);
+    }
+
+    static float Parse(string s) { return float.Parse(s, System.Globalization.CultureInfo.InvariantCulture); }
+
+    /// <summary>The sky's average colour round the horizon (the middle of its four side faces).</summary>
+    static Color Horizon(Material sky)
+    {
+        if (sky == null) return new Color(0.5f, 0.55f, 0.6f);
+        Color sum = Color.black;
+        int n = 0;
+        var rt = RenderTexture.GetTemporary(4, 4, 0, RenderTextureFormat.ARGB32);
+        var read = new Texture2D(4, 4, TextureFormat.RGB24, false);
+        foreach (string slot in new[] { "_FrontTex", "_BackTex", "_LeftTex", "_RightTex" })
+        {
+            var tex = sky.GetTexture(slot);
+            if (tex == null) continue;
+            Graphics.Blit(tex, rt);
+            RenderTexture.active = rt;
+            read.ReadPixels(new Rect(0, 0, 4, 4), 0, 0);
+            RenderTexture.active = null;
+            for (int x = 0; x < 4; x++) { sum += read.GetPixel(x, 1) + read.GetPixel(x, 2); n += 2; }
+        }
+        RenderTexture.ReleaseTemporary(rt);
+        Object.DestroyImmediate(read);
+        return n > 0 ? sum / n : new Color(0.5f, 0.55f, 0.6f);
+    }
+
     static Material SaveSky(System.Type resources, string skyName, string folder, string mapName)
     {
         if (skyName == "") return null;

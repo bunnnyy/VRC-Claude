@@ -1,5 +1,6 @@
 // A static prop lit like CS:S lights models: SourceMapVisuals bakes the map's ambient cube and its visible lights into
 // the vertex colours (half brightness, so up to 2x fits), and this shader multiplies the texture by them.
+// Translucent models ($translucent) blend.
 Shader "SourceMaps/Prop"
 {
     Properties
@@ -7,12 +8,17 @@ Shader "SourceMaps/Prop"
         _Color ("Color", Color) = (1,1,1,1)
         _MainTex ("Texture", 2D) = "white" {}
         _Cutoff ("Alpha cutoff (0 = off)", Range(0,1)) = 0
+        [Enum(UnityEngine.Rendering.BlendMode)] _SrcBlend ("Source blend", Float) = 1
+        [Enum(UnityEngine.Rendering.BlendMode)] _DstBlend ("Destination blend", Float) = 0
+        [Toggle] _ZWrite ("Depth write", Float) = 1
     }
     SubShader
     {
         Tags { "RenderType" = "Opaque" "Queue" = "Geometry" }
         Pass
         {
+            Blend [_SrcBlend] [_DstBlend]
+            ZWrite [_ZWrite]
             CGPROGRAM
             #pragma vertex vert
             #pragma fragment frag
@@ -43,7 +49,7 @@ Shader "SourceMaps/Prop"
                 clip(c.a - _Cutoff);
                 c.rgb *= i.light;
                 UNITY_APPLY_FOG(i.fogCoord, c);
-                return fixed4(c.rgb, 1);
+                return fixed4(c.rgb, _SrcBlend == 1 ? 1 : c.a);
             }
             ENDCG
         }
