@@ -157,8 +157,11 @@ section 5120   # i, g, f: market, plank corridor, slab corridor, brick corridor,
 2240 -4560 5168
 1312 -4160 5000
 
-section 7264   # en: orange rooms, down to en2, then its blocks (MapView blocks) past en3 to the exit
+section 7264   # en: orange rooms, through the doorway down to the ledge (MapView route), en2, then its blocks (MapView blocks) past en3 to the exit
 672 -6400 7232
+376 -6664 6656
+376 -6696 6656
+632 -6920 6304
 688 -6944 6320
 856 -7128 6284
 760 -7368 6284

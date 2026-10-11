@@ -19,7 +19,7 @@ using VRC.Udon;
 /// "distance left / time left", and the key + view direction that give that wish direction.
 ///
 /// With -smRecord dir it renders a first person camera (smoothed view direction) to dir/f00000.jpg... every other
-/// frame, and writes dir/hud.txt (speed and the map timer's text per frame) for the overlay.
+/// frame, and writes dir/hud.txt (speed and the map timer's text per frame, and the view's yaw) for the overlay.
 /// </summary>
 public class RouteRunner : MonoBehaviour
 {
@@ -124,7 +124,7 @@ public class RouteRunner : MonoBehaviour
     bool hopping, hasTarget, wasOnGround, wasLanded;
     Spot target;
     int hops, fails, frame;
-    float viewYaw, camYaw, camYawVel;
+    float viewYaw, turnRate, camYaw, camYawVel;
     Camera cam;
     RenderTexture rt;
     Texture2D shot;
@@ -150,6 +150,7 @@ public class RouteRunner : MonoBehaviour
         hull = (float)movement.GetProgramVariable("hullHeight");
         duckHull = (float)movement.GetProgramVariable("duckHullHeight");
         jumpImpulse = (float)movement.GetProgramVariable("jumpImpulse");
+        foreach (var blk in FindObjectsOfType<SourceMapBlocks>()) triggerGrow = blk.triggerGrow / U;
 
         InputSystem.settings.backgroundBehavior = InputSettings.BackgroundBehavior.IgnoreFocus;
         InputSystem.settings.editorInputBehaviorInPlayMode = InputSettings.EditorInputBehaviorInPlayMode.AllDeviceInputAlwaysGoesToGameView;
@@ -201,7 +202,7 @@ public class RouteRunner : MonoBehaviour
         section = startSection;
         scanFloor = floors[section];
         Vector2 a = route[section][0], b = route[section][1];
-        viewYaw = camYaw = Yaw(b - a);
+        viewYaw = camYaw = Yaw(b - a); turnRate = 0f;
         movement.SetProgramVariable("__0_position__param", new Vector3(a.x, floors[section] + 49f, a.y) * U);
         movement.SetProgramVariable("__0_rotation__param", Quaternion.Euler(0, viewYaw, 0));
         movement.SetProgramVariable("__0_keepVelocity__param", false);
@@ -321,7 +322,7 @@ public class RouteRunner : MonoBehaviour
         if (!hopping)
         {
             // From a standstill (start, a teleport): run until fast, or until the floor ahead ends.
-            Record(0, lookYaw);
+            Record(0, Ease(viewYaw, turnRate, lookYaw));
             heldKey = 0;
             Crouch(false);
             SetYaw(viewYaw);
@@ -357,7 +358,7 @@ public class RouteRunner : MonoBehaviour
         if (onGround && runOnLanding)
         {
             runOnLanding = false; hopping = false; hasTarget = false;
-            Record(0, lookYaw);
+            Record(0, Ease(viewYaw, turnRate, lookYaw));
             Keys(Key.W);
             return;
         }
@@ -426,7 +427,7 @@ public class RouteRunner : MonoBehaviour
         Vector2 centre = c.centre + new Vector2(c.down.y, -c.down.x).normalized * (radius * circleTurn);
         if (takeoff && Mathf.Abs(Mathf.DeltaAngle(Yaw(v), Yaw(c.down))) < 60f && (v.magnitude >= c.speed || Time.time - circleSince > 20f))
         {
-            var from = new Takeoff { pos = pos, vel = vel, yaw = viewYaw, held = heldKey, heldFor = heldFrames, ducked = (bool)movement.GetProgramVariable("ducked") };
+            var from = new Takeoff { pos = pos, vel = vel, yaw = viewYaw, rate = turnRate, held = heldKey, heldFor = heldFrames, ducked = (bool)movement.GetProgramVariable("ducked") };
             if (Search(from, Mathf.Max(progress, c.fromS - 24f), false, out Spot spot, out Flight f, out float miss, out _, c.untilS) == 2)
             {
                 circleTurn = 0;
@@ -447,7 +448,7 @@ public class RouteRunner : MonoBehaviour
         bool turn = Mathf.DeltaAngle(travel, round) * circleTurn > 0f;
         // The view along that velocity: a view even a few degrees behind it makes the push add nothing (Source caps
         // the speed along the push at 30), one ahead of it pushes a little backwards.
-        Act(turn ? circleTurn : 0, Mathf.MoveTowardsAngle(viewYaw, travel, MaxTurn), true);
+        Act(turn ? circleTurn : 0, Ease(viewYaw, turnRate, travel), true);
         return true;
     }
 
@@ -483,11 +484,11 @@ public class RouteRunner : MonoBehaviour
         }
         // Surfing: look along the ridge, A pushes into the face (it lifts us), let go near the top or rising fast.
         bool push = (vel.y < 0f || pos.y < RidgeFeet - 8f) && pos.y < RidgeFeet + 4f;
-        Act(push ? -1 : 0, Mathf.MoveTowardsAngle(viewYaw, 0f, MaxTurn), true); // along the ridge (Source +x)
+        Act(push ? -1 : 0, Ease(viewYaw, turnRate, 0f), true); // along the ridge (Source +x)
         // From the middle on, fly off it as soon as the model finds a way round the end wall onto what follows.
         if (here.y > RidgeFrom.y + 230f && frame % 2 == 0)
         {
-            var from = new Takeoff { pos = pos, vel = vel, yaw = viewYaw, held = heldKey, heldFor = heldFrames, ducked = (bool)movement.GetProgramVariable("ducked") };
+            var from = new Takeoff { pos = pos, vel = vel, yaw = viewYaw, rate = turnRate, held = heldKey, heldFor = heldFrames, ducked = (bool)movement.GetProgramVariable("ducked") };
             int found = Search(from, progress, true, out Spot spot, out Flight f, out float miss, out _);
             if (found == 2 || (found == 1 && here.y > RidgeFrom.y + 330f))
             {
@@ -541,6 +542,18 @@ public class RouteRunner : MonoBehaviour
     float appliedYaw;
 
     const float MaxTurn = 12f;         // degrees the view turns per frame at most (a mouse, not a teleport)
+    const float TurnAccel = 3f;        // how much that turn rate changes per frame: the view eases in and out of turns
+
+    /// <summary>The turn rates (degrees per frame) reachable from `rate` this frame.</summary>
+    static float RateMin(float rate) { return Mathf.Clamp(rate - TurnAccel, -MaxTurn, MaxTurn); }
+    static float RateMax(float rate) { return Mathf.Clamp(rate + TurnAccel, -MaxTurn, MaxTurn); }
+
+    /// <summary>The view after easing one frame towards `look`, turning at `rate` before.</summary>
+    static float Ease(float yaw, float rate, float look)
+    {
+        float wantRate = Mathf.Clamp(Mathf.DeltaAngle(yaw, look) * 0.15f, -MaxTurn, MaxTurn);
+        return yaw + Mathf.Clamp(wantRate, RateMin(rate), RateMax(rate));
+    }
 
     void Strafe(Vector2 v, Vector2 want, bool coast, Vector2 toAim, bool jump)
     {
@@ -553,7 +566,7 @@ public class RouteRunner : MonoBehaviour
         }
         if (coast) want = vp;
         float look = vp.magnitude > 50f ? Yaw(vp) : toAim.magnitude > 1f ? Yaw(toAim) : viewYaw;
-        var d = Decide(vp, want, coast, look, heldKey, heldFrames, viewYaw, Directions);
+        var d = Decide(vp, want, coast, look, heldKey, heldFrames, viewYaw, turnRate, Directions);
         Act(d.key, d.yaw, jump);
     }
 
@@ -578,13 +591,14 @@ public class RouteRunner : MonoBehaviour
     /// <summary>
     /// One tick's strafe: the key (-1 A, 0 none, 1 D) and view that bring the velocity (after this push and the best
     /// next one) closest to `want`. The view stays within 100 degrees of `look` (the direction of travel) and turns
-    /// at most MaxTurn from `yaw`; a key stays down MinHold ticks; no push that loses speed unless we're too fast.
+    /// at most MaxTurn from `yaw`, its turn rate changing at most TurnAccel from `rate` (smooth, like a mouse); a key
+    /// stays down MinHold ticks; no push that loses speed unless we're too fast.
     /// Coasting: no key if allowed, else a view where the held key adds nothing.
     /// </summary>
-    static Decision Decide(Vector2 vp, Vector2 want, bool coast, float look, int held, int heldFor, float yaw, int dirs)
+    static Decision Decide(Vector2 vp, Vector2 want, bool coast, float look, int held, int heldFor, float yaw, float rate, int dirs)
     {
         bool mayChange = heldFor >= MinHold || held == 0;
-        var best = new Decision { key = held, yaw = Mathf.MoveTowardsAngle(yaw, look, MaxTurn) };
+        var best = new Decision { key = held, yaw = Ease(yaw, rate, look) };
         float bestScore = float.MaxValue;
         if (mayChange) { best.key = 0; bestScore = coast || (want - vp).magnitude <= 4f ? 0f : Best2(vp, want, dirs); }
         if (bestScore == 0f) return best;
@@ -593,7 +607,7 @@ public class RouteRunner : MonoBehaviour
             if (!mayChange && key != held) continue;
             for (int i = 0; i < dirs; i++)
             {
-                float y = yaw + (i - dirs / 2) * (2f * MaxTurn / dirs);
+                float y = yaw + Mathf.Lerp(RateMin(rate), RateMax(rate), i / (dirs - 1f));
                 float dev = Mathf.Abs(Mathf.DeltaAngle(y, look));
                 if (dev > 100f) continue; // never look backwards
                 Vector2 v1 = PushAt(vp, y + 90f * key);
@@ -610,6 +624,7 @@ public class RouteRunner : MonoBehaviour
     {
         keyQueue[frame % 32] = key;
         yawQueue[frame % 32] = yaw;
+        turnRate = Mathf.DeltaAngle(viewYaw, yaw);
         viewYaw = yaw;
     }
 
@@ -688,12 +703,12 @@ public class RouteRunner : MonoBehaviour
 
     /// <summary>A hop's start: feet and velocity at takeoff, the view, the strafe key held (and for how many frames),
     /// ducked or not.</summary>
-    struct Takeoff { public Vector3 pos, vel; public float yaw; public int held, heldFor; public bool ducked; }
+    struct Takeoff { public Vector3 pos, vel; public float yaw, rate; public int held, heldFor; public bool ducked; }
 
     /// <summary>The landing spot for this takeoff, logged.</summary>
     bool PickTarget(Vector3 pos, Vector3 vel, out Spot best, out Flight path, float maxS = float.MaxValue)
     {
-        var from = new Takeoff { pos = pos, vel = vel, yaw = viewYaw, held = heldKey, heldFor = heldFrames, ducked = (bool)movement.GetProgramVariable("ducked") };
+        var from = new Takeoff { pos = pos, vel = vel, yaw = viewYaw, rate = turnRate, held = heldKey, heldFor = heldFrames, ducked = (bool)movement.GetProgramVariable("ducked") };
         float speed = Flat(vel).magnitude;
         int found = Search(from, progress, true, out best, out path, out float miss, out int count, maxS);
         if (found == 2)
@@ -853,7 +868,7 @@ public class RouteRunner : MonoBehaviour
         miss = float.MaxValue;
         land = default;
         Vector2 p = Flat(from.pos), v = Flat(from.vel);
-        float y = from.pos.y, vy = from.vel.y, yaw = from.yaw, shift = (hull - duckHull) * 0.5f;
+        float y = from.pos.y, vy = from.vel.y, yaw = from.yaw, rate = from.rate, shift = (hull - duckHull) * 0.5f;
         bool ducked = from.ducked;
         int held = from.held, heldFor = from.heldFor, lag = Mathf.Max(keyLag, yawLag);
         var pending = new Queue<Decision>();
@@ -865,8 +880,9 @@ public class RouteRunner : MonoBehaviour
             bool coast;
             Vector2 want = WantVelocity(p, y, vp, vy, true, tgt, path, tick * Dt, Vector2.zero, out coast);
             if (coast) want = vp;
-            var d = Decide(vp, want, coast, vp.magnitude > 50f ? Yaw(vp) : Yaw(new Vector2(tgt.p.x, tgt.p.z) - p), held, heldFor, yaw, 24);
+            var d = Decide(vp, want, coast, vp.magnitude > 50f ? Yaw(vp) : Yaw(new Vector2(tgt.p.x, tgt.p.z) - p), held, heldFor, yaw, rate, 24);
             if (d.key != held) { held = d.key; heldFor = 0; } else heldFor++;
+            rate = Mathf.DeltaAngle(yaw, d.yaw);
             yaw = d.yaw;
             pending.Enqueue(d);
             var now = pending.Dequeue();
@@ -886,7 +902,7 @@ public class RouteRunner : MonoBehaviour
             {
                 // Landed: auto bhop jumps on the next tick, keeping the speed (no friction on a jump tick).
                 miss = (p - new Vector2(tgt.p.x, tgt.p.z)).magnitude;
-                land = new Takeoff { pos = new Vector3(p.x, tgt.p.y, p.y), vel = new Vector3(v.x, jumpImpulse, v.y), yaw = yaw, held = held, heldFor = heldFor, ducked = ducked };
+                land = new Takeoff { pos = new Vector3(p.x, tgt.p.y, p.y), vel = new Vector3(v.x, jumpImpulse, v.y), yaw = yaw, rate = rate, held = held, heldFor = heldFor, ducked = ducked };
                 return true;
             }
             if (y > tgt.p.y + 2f && HullHits(p, y, h))
@@ -1255,7 +1271,7 @@ public class RouteRunner : MonoBehaviour
     static bool TouchesTeleport(Vector2 p, float feet, float h)
     {
         feet += teleportLift - 1f;
-        foreach (var c in Physics.OverlapBox(HullCenter(p, feet, h), HullHalf(0f, h), Quaternion.identity, ~0, QueryTriggerInteraction.Collide))
+        foreach (var c in Physics.OverlapBox(HullCenter(p, feet, h), HullHalf(0f, h) - new Vector3(triggerGrow, 0f, triggerGrow) * U, Quaternion.identity, ~0, QueryTriggerInteraction.Collide))
             if (c.isTrigger && c.GetComponent<SourceMapTeleport>() != null) return true;
         // From 1 unit up, like the hull: the capsule rides a little over the floor (the map's floor teleports are
         // raised to exactly the top of the blocks between them).
@@ -1271,6 +1287,7 @@ public class RouteRunner : MonoBehaviour
     // it) are safe in play: 6 for other maps' routes (the raise less the 2 units the player hovers, as the importer's
     // blocks.hullBottom); eazy's tuned run keeps 1 (its teleports sit at its block tops).
     static float teleportLift = 1f;
+    static float triggerGrow; // how much wider the importer made the triggers each way (units): the hull is that less
 
     /// <summary>Whether the hull (with feet at y) overlaps the map at `p`.</summary>
     bool HullHits(Vector2 p, float y, float h)
@@ -1395,7 +1412,7 @@ public class RouteRunner : MonoBehaviour
         System.IO.File.WriteAllBytes(System.IO.Path.Combine(recordDir, $"f{shotNumber++:D5}.jpg"), shot.EncodeToJPG(88));
         string keys = sentKeys[(frame - keyLag + 32) % 32] ?? "";
         if ((bool)movement.GetProgramVariable("ducked")) keys += "+Duck";
-        hud.Append(Mathf.RoundToInt(v.magnitude)).Append('\t').Append(timer != null ? Label() : "").Append('\t').Append(keys).Append('\n');
+        hud.Append(Mathf.RoundToInt(v.magnitude)).Append('\t').Append(timer != null ? Label() : "").Append('\t').Append(keys).Append('\t').Append(camYaw.ToString("F1", System.Globalization.CultureInfo.InvariantCulture)).Append('\n');
         if (shotNumber % 500 == 0) FlushHud(); // a run stopped early keeps its overlay up to here
     }
 

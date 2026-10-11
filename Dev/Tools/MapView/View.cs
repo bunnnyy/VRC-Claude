@@ -11,11 +11,13 @@ using SourceMaps.Bsp; using System; using System.IO; using System.Linq; using Sy
 //       block within reach (default 420) that gets closer to the exit; prints "x y z" (block tops) for a route file
 //   dotnet run -- brushes map.bsp x y z r        solid brushes with sloped faces near a point, and displacements
 //   dotnet run -- props map.bsp x0 y0 x1 y1      static props in an area
+//   dotnet run -- model map.bsp n                the brushes of brush model *n (e.g. a trigger made of several)
 static class View
 {
     static void Main(string[] a)
     {
         if (a[0] == "brushes") { Brushes(a); return; }
+        if (a[0] == "model") { Model(a); return; }
         if (a[0] == "route") { RouteFind(a); return; }
         if (a[0] == "blocks") { Blocks(a); return; }
         if (a[0] == "props")
@@ -99,6 +101,18 @@ static class View
         var hdr = System.Text.Encoding.ASCII.GetBytes($"P6\n{W} {H}\n255\n"); f.Write(hdr); f.Write(img);
         Console.WriteLine($"{W}x{H}, floors {floors.Count}, z {zmin}..{zmax}");
     }
+    // model bsp n: the bounds of each brush of brush model *n (relative to its entity's origin when it has one)
+    static void Model(string[] a)
+    {
+        var bsp = BspFile.Load(a[1]);
+        foreach (int b in bsp.ModelBrushes(int.Parse(a[2])))
+        {
+            var all = BspGeometry.BrushFaces(bsp, b).SelectMany(f => f.Key).ToList();
+            if (all.Count == 0) continue;
+            Console.WriteLine($"brush {b} contents {bsp.Brushes[b].Contents:X} bounds ({all.Min(p => p.X):F0}, {all.Min(p => p.Y):F0}, {all.Min(p => p.Z):F0}) - ({all.Max(p => p.X):F0}, {all.Max(p => p.Y):F0}, {all.Max(p => p.Z):F0})");
+        }
+    }
+
     // brushes bsp x y z r: solid world brushes with a sloped face (0.2 < nz < 0.8) within r of the point, their faces
     static void Brushes(string[] a)
     {

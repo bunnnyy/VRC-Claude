@@ -30,6 +30,8 @@ public class SourceMapBlocks : UdonSharpBehaviour
              "(set by the importer). With SourceMovement its current hull is used (standing or ducked).")]
     public Vector3 hullHalf = new Vector3(0.3048f, 0.5906f, 0.3048f);
     public float hullBottom = 0.1143f;
+    [Tooltip("How much wider the importer made the triggers each way (metres, for VRChat's thinner capsule)")]
+    public float triggerGrow;
     [Tooltip("Metres per Source unit (set by the importer)")]
     public float unitScale = 0.01905f;
 
@@ -136,6 +138,8 @@ public class SourceMapBlocks : UdonSharpBehaviour
         var player = Networking.LocalPlayer;
         if (player == null) return null;
         Vector3 half = CurrentHalf();
+        half.x = Mathf.Max(half.x - triggerGrow, 0.01f); // the triggers are already that much wider
+        half.z = Mathf.Max(half.z - triggerGrow, 0.01f);
         Vector3 center = player.GetPosition() + Vector3.up * (hullBottom + half.y);
         return Physics.OverlapBox(center, half, Quaternion.identity, -1, QueryTriggerInteraction.Collide);
     }

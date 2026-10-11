@@ -38,15 +38,16 @@ namespace SourceMaps.Bsp
         /// <summary>
         /// Faces of one brush as polygons (Source space): each non-bevel side's plane, clipped by all other sides.
         /// Side normals point out of the brush; inside is dot(n, p) &lt;= dist.
-        /// raiseTop moves upward-facing sides out by that many units (used to thicken triggers, see AddBrush).
+        /// raiseTop moves upward-facing sides out by that many units, grow the sides out sideways (a box that much
+        /// wider each way, like Source's hull touching it) (both used to fit triggers to VRChat's player, see AddBrush).
         /// </summary>
-        public static List<Vector3[]> BrushPolygons(BspFile bsp, int brushIndex, float raiseTop = 0f)
+        public static List<Vector3[]> BrushPolygons(BspFile bsp, int brushIndex, float raiseTop = 0f, float grow = 0f)
         {
-            return BrushFaces(bsp, brushIndex, raiseTop).Select(f => f.Key).ToList();
+            return BrushFaces(bsp, brushIndex, raiseTop, grow).Select(f => f.Key).ToList();
         }
 
         /// <summary>BrushPolygons with each face's plane, exact from the BSP (the clipped corners carry float error).</summary>
-        public static List<KeyValuePair<Vector3[], BspFile.Plane>> BrushFaces(BspFile bsp, int brushIndex, float raiseTop = 0f)
+        public static List<KeyValuePair<Vector3[], BspFile.Plane>> BrushFaces(BspFile bsp, int brushIndex, float raiseTop = 0f, float grow = 0f)
         {
             var brush = bsp.Brushes[brushIndex];
             var result = new List<KeyValuePair<Vector3[], BspFile.Plane>>();
@@ -55,33 +56,36 @@ namespace SourceMaps.Bsp
                 var side = bsp.BrushSides[brush.FirstSide + s];
                 if (side.Bevel) continue;
                 var plane = bsp.Planes[side.Plane];
-                var poly = BasePolygon(plane.Normal, Dist(plane, raiseTop));
+                var poly = BasePolygon(plane.Normal, Dist(plane, raiseTop, grow));
                 for (int o = 0; o < brush.NumSides && poly.Count >= 3; o++)
                 {
                     if (o == s) continue;
                     var other = bsp.Planes[bsp.BrushSides[brush.FirstSide + o].Plane];
                     if (bsp.BrushSides[brush.FirstSide + o].Plane == side.Plane) continue;
-                    poly = Clip(poly, other.Normal, Dist(other, raiseTop));
+                    poly = Clip(poly, other.Normal, Dist(other, raiseTop, grow));
                 }
-                if (poly.Count >= 3) result.Add(new KeyValuePair<Vector3[], BspFile.Plane>(poly.ToArray(), new BspFile.Plane { Normal = plane.Normal, Dist = Dist(plane, raiseTop) }));
+                if (poly.Count >= 3) result.Add(new KeyValuePair<Vector3[], BspFile.Plane>(poly.ToArray(), new BspFile.Plane { Normal = plane.Normal, Dist = Dist(plane, raiseTop, grow) }));
             }
             return result;
         }
 
-        static float Dist(BspFile.Plane plane, float raiseTop)
+        static float Dist(BspFile.Plane plane, float raiseTop, float grow)
         {
-            // Out along the normal, so sloped tops get just as much thicker as flat ones.
-            return plane.Normal.Z > 0.7f ? plane.Dist + raiseTop : plane.Dist;
+            // Out along the normal, so sloped tops get just as much thicker as flat ones; sideways as a square of
+            // half-width `grow` swept around the brush would.
+            float d = plane.Dist + grow * (System.Math.Abs(plane.Normal.X) + System.Math.Abs(plane.Normal.Y));
+            return plane.Normal.Z > 0.7f ? d + raiseTop : d;
         }
 
         /// <summary>
         /// Adds a brush's faces to a mesh (Unity space). raiseTop (units) lifts its top: Source touches triggers
         /// with a flat-bottomed box, VRChat's player is a rounded capsule floating a few cm above the ground, so a
-        /// thin trigger lying on a floor would never fire without it.
+        /// thin trigger lying on a floor would never fire without it. grow (units) widens it the same way: the
+        /// capsule is thinner than Source's 32 unit box.
         /// </summary>
-        public static void AddBrush(MeshData mesh, BspFile bsp, int brushIndex, float scale, float raiseTop = 0f)
+        public static void AddBrush(MeshData mesh, BspFile bsp, int brushIndex, float scale, float raiseTop = 0f, float grow = 0f)
         {
-            foreach (var poly in BrushPolygons(bsp, brushIndex, raiseTop))
+            foreach (var poly in BrushPolygons(bsp, brushIndex, raiseTop, grow))
             {
                 Vector3 outward = DirectionToUnity(PlaneOf(poly));
                 for (int i = 1; i + 1 < poly.Length; i++)

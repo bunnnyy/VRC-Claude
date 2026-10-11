@@ -29,6 +29,13 @@ public static class SourceMapImporter
     /// </summary>
     const float TriggerRaiseTop = 8f;
 
+    /// <summary>
+    /// And this much wider each way (units at this scale): Source touches a trigger with its 32 unit wide box, VRChat
+    /// with a capsule 0.2 m in radius, so a thin trigger behind a sign or in a doorway (bhop_monster_jam's Egypt exit)
+    /// would be out of reach without it.
+    /// </summary>
+    static float TriggerGrow(float scale) { return Mathf.Max(0f, 16f - 0.2f / scale); }
+
     // Brush entities that don't block players (everything else named func_* does).
     static readonly HashSet<string> NonSolid = new HashSet<string>
     {
@@ -294,6 +301,7 @@ public static class SourceMapImporter
             blocks.hullHalf = new Vector3(16f, 31f, 16f) * scale; // CS:S standing (SourceMovement's own hull when present)
             blocks.unitScale = scale;
             blocks.hullBottom = (TriggerRaiseTop - 2f) * scale;
+            blocks.triggerGrow = TriggerGrow(scale) * scale;
             blocks.gated = gated.ToArray();
             blocks.gatedNames = gatedNames.ToArray();
             blocks.gatedNegate = gatedNegate.ToArray();
@@ -333,7 +341,7 @@ public static class SourceMapImporter
         foreach (int brush in bsp.ModelBrushes(e.BrushModel))
         {
             var mesh = new MeshData();
-            BspGeometry.AddBrush(mesh, bsp, brush, scale, TriggerRaiseTop);
+            BspGeometry.AddBrush(mesh, bsp, brush, scale, TriggerRaiseTop, TriggerGrow(scale));
             if (mesh.Triangles.Count == 0) continue;
             var col = go.AddComponent<MeshCollider>();
             col.sharedMesh = ToMesh(mesh, go.name + " brush " + brush, meshes);
