@@ -138,6 +138,13 @@ public class Rig
     public void Teleport(Vector3 units) => position = units * U;
     public void SetVelocity(Vector3 v) => SetVar("velocity", v);
     public void SetPush(Vector3 units) { SetVar("__0_push__param", units); RunEvent("__0_SetPush"); }
+    public void AddPush(Vector3 units) { SetVar("__0_entered__param", units); RunEvent("__0_AddPush"); }
+    public void RemovePush(Vector3 units) { SetVar("__0_left__param", units); RunEvent("__0_RemovePush"); }
+    public void ResetVelocity() => RunEvent("ResetVelocity");
+    public void ZoneEnter() => RunEvent("_ZoneEnter");
+    public void ZoneExit() => RunEvent("_ZoneExit");
+    public bool Active => GetVar<bool>("active");
+    public void SetPlayerWalk(float v) => walk = v; // another script (VRCWorld's settings) sets it
     public void AddVelocity(Vector3 units) { SetVar("__0_impulse__param", units); RunEvent("__0_AddVelocity"); }
     public void SetGravityScale(float scale) { SetVar("__0_scale__param", scale); RunEvent("__0_SetGravityScale"); }
     public void TeleportPlayer(Vector3 units, float yaw, bool keepVelocity)

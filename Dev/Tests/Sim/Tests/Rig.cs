@@ -107,6 +107,13 @@ public class Rig
     public float Speed => move.GetSpeed();
     public bool OnGround => move.IsOnGround();
     public void SetPush(Vector3 units) => move.SetPush(units);
+    public void AddPush(Vector3 units) => move.AddPush(units);
+    public void RemovePush(Vector3 units) => move.RemovePush(units);
+    public void ResetVelocity() => move.ResetVelocity();
+    public void ZoneEnter() => move._ZoneEnter();
+    public void ZoneExit() => move._ZoneExit();
+    public bool Active => move.IsMovementActive();
+    public void SetPlayerWalk(float v) => player.walk = v; // another script (VRCWorld's settings) sets it
     public void AddVelocity(Vector3 units) => move.AddVelocity(units);
     public void SetGravityScale(float scale) => move.SetGravityScale(scale);
     public bool OnLadder => Get<bool>("onLadder");

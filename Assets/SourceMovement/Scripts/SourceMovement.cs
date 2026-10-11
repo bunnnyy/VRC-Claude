@@ -89,7 +89,7 @@ public class SourceMovement : UdonSharpBehaviour
     private const float SeamLift = 1f;            // how far off a face to re-sweep past a mesh seam
     private const int MaxBumps = 4;
     private const int MaxClipPlanes = 5;
-    private const int MaxTicksPerFrame = 8;
+    private const int MaxTicksPerFrame = 34;      // Unity's Time.maximumDeltaTime (0.333 s) at 100 tick: a hitch drops no time
 
     private VRCPlayerApi localPlayer;
     private bool active;
@@ -107,7 +107,10 @@ public class SourceMovement : UdonSharpBehaviour
     private Vector3 velocity;
     private bool onGround;
     private bool onLadder;
-    private Vector3 pushVelocity;  // trigger_push we're inside (Source's base velocity)
+    private Vector3 pushVelocity;  // trigger_pushes we're inside, added up (Source's base velocity)
+    private int pushCount;         // how many trigger_pushes we're inside
+    private int zoneCount;         // SourceMovementZone colliders we're inside
+    private float lagCarry;        // drift allowance carried over from earlier frames (after a hitch)
     private float gravityScale = 1f; // player gravity from map triggers (AddOutput gravity, trigger_gravity)
     private int waterLevel;        // 0 dry, 1 feet, 2 waist, 3 eyes
     private float waterJumpTime;
@@ -158,6 +161,7 @@ public class SourceMovement : UdonSharpBehaviour
     {
         if (localPlayer == null || on == active) return;
         active = on;
+        teleportWait = 0;
         SetHullOnly(on);
         if (on)
         {
@@ -227,11 +231,20 @@ public class SourceMovement : UdonSharpBehaviour
 
     /// <summary>
     /// Teleport the local player, optionally keeping their Source velocity (portals, stage teleports).
-    /// Plain VRCPlayerApi.TeleportTo works too: a jump over 64 units resets velocity, smaller ones keep it.
+    /// Plain VRCPlayerApi.TeleportTo works too, but only a long jump (over 64 units plus how far the player moves
+    /// in a physics step or two) is taken as a teleport that resets velocity: after a plain TeleportTo, call
+    /// ResetVelocity (SendCustomEvent works) to stop the player like Source's trigger_teleport.
     /// </summary>
     public void TeleportPlayer(Vector3 position, Quaternion rotation, bool keepVelocity)
     {
         if (localPlayer == null) return;
+        if (!active)
+        {
+            Vector3 keep = localPlayer.GetVelocity();
+            localPlayer.TeleportTo(position, rotation);
+            localPlayer.SetVelocity(keepVelocity ? keep : Vector3.zero);
+            return;
+        }
         localPlayer.TeleportTo(position, rotation);
         localPlayer.SetVelocity(Vector3.zero); // VRChat keeps the old velocity through a teleport
         if (!keepVelocity) velocity = Vector3.zero;
@@ -240,16 +253,48 @@ public class SourceMovement : UdonSharpBehaviour
     }
 
     /// <summary>
-    /// trigger_push (SourcePushTrigger): push velocity in Source units/s while inside, Vector3.zero when leaving.
-    /// Like Source, a sideways push moves you without becoming your speed until you leave; then it is added as
-    /// momentum. An upward push accelerates you (against gravity) and keeps you off the ground.
+    /// trigger_push (SourcePushTrigger): entering one adds its push velocity (Source units/s), leaving takes it off.
+    /// Like Source, overlapping pushes add up; a sideways push moves you without becoming your speed until you leave
+    /// the last push, then what was pushing you is added as momentum. An upward push accelerates you (against
+    /// gravity) and keeps you off the ground.
     /// </summary>
+    public void AddPush(Vector3 entered) // (parameter names differ per method: Udon names them by name)
+    {
+        pushVelocity += entered;
+        pushCount++;
+        if (pushVelocity.y > 0f) onGround = false;
+    }
+
+    public void RemovePush(Vector3 left)
+    {
+        if (pushCount <= 0) return;
+        if (--pushCount > 0) { pushVelocity -= left; return; }
+        velocity += new Vector3(pushVelocity.x, 0f, pushVelocity.z);
+        pushVelocity = Vector3.zero; // exactly, so no rounding leftover keeps us off the ground
+    }
+
+    /// <summary>One push replacing any others (older scripts); Vector3.zero leaves it, keeping a sideways push as momentum.</summary>
     public void SetPush(Vector3 push)
     {
-        if (push == Vector3.zero) velocity += new Vector3(pushVelocity.x, 0f, pushVelocity.z);
-        pushVelocity = push;
-        if (push.y > 0f) onGround = false;
+        if (pushCount > 0) { pushCount = 1; RemovePush(pushVelocity); }
+        if (push != Vector3.zero) AddPush(push);
     }
+
+    /// <summary>Stop: Source velocity to zero (call after a plain TeleportTo, like Source's trigger_teleport).</summary>
+    public void ResetVelocity() { velocity = Vector3.zero; }
+
+    /// <summary>A new map (map rotation): no velocity, no pushes, normal gravity, like a CS:S map change.</summary>
+    public void ResetMapState()
+    {
+        velocity = Vector3.zero;
+        pushVelocity = Vector3.zero;
+        pushCount = 0;
+        gravityScale = 1f;
+    }
+
+    /// <summary>SourceMovementZone: Source movement is on while the player is inside any zone collider.</summary>
+    public void _ZoneEnter() { if (zoneCount++ == 0) SetMovementActive(true); }
+    public void _ZoneExit() { if (zoneCount > 0 && --zoneCount == 0) SetMovementActive(false); }
 
     /// <summary>Booster (AddOutput basevelocity, SourceBoostTrigger): add this velocity once, in Source units/s.</summary>
     public void AddVelocity(Vector3 impulse)
@@ -258,8 +303,8 @@ public class SourceMovement : UdonSharpBehaviour
         if (impulse.y > 0f) onGround = false;
     }
 
-    /// <summary>Player gravity multiplier (AddOutput gravity, trigger_gravity). 1 is normal.</summary>
-    public void SetGravityScale(float scale) { gravityScale = scale; }
+    /// <summary>Player gravity multiplier (AddOutput gravity, trigger_gravity). 1 is normal; 0 also means normal, as in Source.</summary>
+    public void SetGravityScale(float scale) { gravityScale = scale != 0f ? scale : 1f; }
 
     public void _ToggleAutoBhop() { autoBhop = !autoBhop; }
 
@@ -277,11 +322,11 @@ public class SourceMovement : UdonSharpBehaviour
     public override void OnPlayerRespawn(VRCPlayerApi player)
     {
         if (!player.isLocal) return;
-        velocity = Vector3.zero;
-        pushVelocity = Vector3.zero;
-        gravityScale = 1f;
+        ResetMapState();
         pendingResync = true;
     }
+
+    void OnDisable() { SetMovementActive(false); }
 
     private void Update()
     {
@@ -289,6 +334,7 @@ public class SourceMovement : UdonSharpBehaviour
         float dt = Time.deltaTime;
         if (dt <= 0f) return;
 
+        KeepVRChatMovementOff();
         if (Input.GetKeyDown(autoBhopToggleKey)) _ToggleAutoBhop();
         if (Input.GetAxis("Mouse ScrollWheel") != 0f) scrollJump = true;
         duckHeld = Input.GetKey(duckKey) || HeadCrouched();
@@ -312,7 +358,10 @@ public class SourceMovement : UdonSharpBehaviour
         // Follow the real player if something else moved them (teleport, respawn, blocked). Above the physics rate
         // VRChat moves them once per physics step, so they trail us by up to a step's travel between steps.
         float step = Mathf.Max(dt, Time.fixedDeltaTime);
-        float lag = velocity.magnitude * step * 2f;
+        float lag = Mathf.Max((velocity + new Vector3(pushVelocity.x, 0f, pushVelocity.z)).magnitude * step * 2f, lagCarry);
+        // After a hitch the player may be far from us (VRChat moved them on with the last velocity, through
+        // Walkthrough walls on a hullOnly map): the allowance fades as the drive brings them back.
+        lagCarry = lag * Mathf.Pow(0.5f, dt / step);
         // VRChat's player capsule (about 84 units) is taller than the hull (62, ducked 45): under a low ceiling it
         // bumps its head first and lags below us for a moment. Don't count that as being blocked.
         Vector3 off = actual - lastTarget;
@@ -327,7 +376,10 @@ public class SourceMovement : UdonSharpBehaviour
         }
         else if (drift > ResyncDistance + lag)
         {
-            PlaceAt(actual);
+            TraceHull(origin, actual);
+            origin = trEnd;
+            prevOrigin = origin;
+            lastTarget = origin;
         }
 
         // Run fixed Source ticks, turning the view smoothly across them.
@@ -359,6 +411,22 @@ public class SourceMovement : UdonSharpBehaviour
         Vector3 drive = (target - lastTarget) / dt + (lastTarget - actual) * (0.5f / step);
         lastTarget = target;
         localPlayer.SetVelocity(drive * metersPerUnit);
+    }
+
+    /// <summary>
+    /// VRChat's own walking, jumping and gravity stay off while Source movement is on. Another script (VRCWorld's
+    /// world settings, whose Start can run after ours) may set them again: keep its values for when we turn off.
+    /// </summary>
+    private void KeepVRChatMovementOff()
+    {
+        float walk = localPlayer.GetWalkSpeed(), run = localPlayer.GetRunSpeed(), strafe = localPlayer.GetStrafeSpeed();
+        float jump = localPlayer.GetJumpImpulse(), grav = localPlayer.GetGravityStrength();
+        if (walk == 0f && run == 0f && strafe == 0f && jump == 0f && grav == 0f) return;
+        if (walk != 0f) { savedWalk = walk; localPlayer.SetWalkSpeed(0f); }
+        if (run != 0f) { savedRun = run; localPlayer.SetRunSpeed(0f); }
+        if (strafe != 0f) { savedStrafe = strafe; localPlayer.SetStrafeSpeed(0f); }
+        if (jump != 0f) { savedJump = jump; localPlayer.SetJumpImpulse(0f); }
+        if (grav != 0f) { savedGravity = grav; localPlayer.SetGravityStrength(0f); }
     }
 
     private void UpdateHull()
@@ -405,6 +473,12 @@ public class SourceMovement : UdonSharpBehaviour
 
     private void PlayerMove(float dt)
     {
+        if (Physics.CheckBox((origin + hullCenter) * metersPerUnit, hullHalf * metersPerUnit, Quaternion.identity,
+            collisionLayers, QueryTriggerInteraction.Ignore))
+        {
+            TraceHull(origin + Vector3.up * stepSize, origin); // stuck in something (a door rising): step up out of it
+            origin = trEnd;
+        }
         Duck(dt);
         CategorizePosition();
         if (LadderMove()) MoveWithPush(dt); // FullLadderMove: no gravity, no friction
@@ -444,6 +518,7 @@ public class SourceMovement : UdonSharpBehaviour
                 Quaternion.identity, collisionLayers, QueryTriggerInteraction.Ignore)) return false;
         }
         prevOrigin += to - origin; // keep this frame's interpolation in step with the feet moving
+        lastTarget += to - origin; // and the drive: the jump is corrected over a physics step, not flung in one frame
         origin = to;
         ducked = duck;
         duckTimer = 0f;
@@ -508,8 +583,11 @@ public class SourceMovement : UdonSharpBehaviour
     private void FullWalkMove(float dt)
     {
         // StartGravity (not when swimming)
-        if (waterLevel < 2) velocity.y -= gravity * gravityScale * 0.5f * dt;
-        velocity.y += pushVelocity.y * dt; // an upward trigger_push accelerates you
+        if (waterLevel < 2)
+        {
+            velocity.y -= gravity * gravityScale * 0.5f * dt;
+            velocity.y += pushVelocity.y * dt; // an upward trigger_push accelerates you (swimming: WaterMove adds it)
+        }
         CheckVelocity();
 
         // Climbing out of water onto a ledge.
@@ -579,7 +657,8 @@ public class SourceMovement : UdonSharpBehaviour
         if (oldJump) return; // don't pogo stick
 
         onGround = false;
-        velocity.y += jumpImpulse;
+        if (ducked || duckHeld) velocity.y = jumpImpulse; // CS:S: ducked or ducking sets it, standing adds it
+        else velocity.y += jumpImpulse;
         velocity.y -= gravity * gravityScale * 0.5f * dt; // FinishGravity
         oldJump = true;
     }
@@ -759,7 +838,7 @@ public class SourceMovement : UdonSharpBehaviour
         TraceHull(origin, origin + Vector3.up * (stepSize + DistEpsilon));
         origin = trEnd;
         TryPlayerMove(dt);
-        TraceHull(origin, origin - Vector3.up * (stepSize + DistEpsilon));
+        TraceHull(origin, origin - Vector3.up * (stepSize + DistEpsilon + Skin));
 
         // Landed on something too steep (or nothing): keep the plain slide move.
         if (trNormal.y < WalkableNormal)
@@ -798,6 +877,7 @@ public class SourceMovement : UdonSharpBehaviour
 
     private void CategorizePosition()
     {
+        surfaceFriction = 1f; // Source resets it every time (else jumping into water stays slippery)
         CheckWater();
         if (velocity.y > NonJumpVelocity || pushVelocity.y > 0f)
         {
@@ -815,7 +895,6 @@ public class SourceMovement : UdonSharpBehaviour
         {
             onGround = true;
             velocity.y = 0f;
-            surfaceFriction = 1f;
         }
     }
 

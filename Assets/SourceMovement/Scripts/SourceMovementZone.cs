@@ -2,8 +2,9 @@ using UdonSharp;
 using VRC.SDKBase;
 
 /// <summary>
-/// Optional: Source movement is on only while the local player is inside this object's trigger
-/// collider (e.g. a Box Collider with Is Trigger). Turn off Active On Start on SourceMovement when using it.
+/// Optional: Source movement is on only while the local player is inside a zone: this object's trigger colliders
+/// (e.g. a Box Collider with Is Trigger), or any other SourceMovementZone's. Turn off Active On Start on
+/// SourceMovement when using it. SourceMovement counts the colliders the player is in, so overlapping zones work.
 /// </summary>
 [UdonBehaviourSyncMode(BehaviourSyncMode.None)]
 public class SourceMovementZone : UdonSharpBehaviour
@@ -12,11 +13,11 @@ public class SourceMovementZone : UdonSharpBehaviour
 
     public override void OnPlayerTriggerEnter(VRCPlayerApi player)
     {
-        if (player.isLocal && movement != null) movement.SetMovementActive(true);
+        if (player.isLocal && movement != null) movement._ZoneEnter();
     }
 
     public override void OnPlayerTriggerExit(VRCPlayerApi player)
     {
-        if (player.isLocal && movement != null) movement.SetMovementActive(false);
+        if (player.isLocal && movement != null) movement._ZoneExit();
     }
 }

@@ -93,6 +93,7 @@ namespace UnityEngine
         public static int Min(int a, int b) => Math.Min(a, b);
         public static int Max(int a, int b) => Math.Max(a, b);
         public static float Sqrt(float v) => (float)Math.Sqrt(v);
+        public static float Pow(float v, float p) => (float)Math.Pow(v, p);
         public static float Sin(float v) => (float)Math.Sin(v);
         public static float Cos(float v) => (float)Math.Cos(v);
         public static float Atan2(float y, float x) => (float)Math.Atan2(y, x);
@@ -158,6 +159,7 @@ namespace UnityEngine
         internal GameObject owner;
         public GameObject gameObject => owner ??= new GameObject();
         public Transform transform => this as Transform ?? gameObject.transform;
+        public T[] GetComponents<T>() => new T[0];
     }
     public class Transform : Component
     {
@@ -167,7 +169,7 @@ namespace UnityEngine
     }
     public class Behaviour : Component { public bool enabled = true; }
     public class MonoBehaviour : Behaviour { }
-    public class Collider : Component { public bool isTrigger; }
+    public class Collider : Component { public bool isTrigger, enabled = true; }
 
     public struct RaycastHit
     {

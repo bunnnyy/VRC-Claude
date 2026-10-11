@@ -54,7 +54,15 @@ public static class MovementTests
         Test("Push: sideways trigger_push moves you, leaving keeps the speed", PushSideways);
         Test("Push: upward trigger_push lifts you (push - gravity)", PushUp);
         Test("Boost: basevelocity booster launches you once", BoostUp);
+        Test("Push: overlapping pushes add up, momentum comes when leaving the last one", PushesAddUp);
+        Test("Push: a 1500 u/s push moves you at 1500 u/s at 300 and 600 fps", FastPushTracking);
         Test("Gravity: half gravity doubles the jump height", HalfGravity);
+        Test("Gravity: 0 means normal gravity, as in Source", ZeroGravityIsNormal);
+        Test("Duck: a ducked jump peaks at 57 (CS:S sets the speed, wiping the start gravity step)", DuckedJump);
+        Test("Duck: ducking in the air at 600 fps keeps the player with the simulation", AirDuckTracking);
+        Test("Step: walks up a 16 unit step from any approach distance", StepApproaches);
+        Test("A rising platform lifts you instead of swallowing you", RisingPlatform);
+        Test("Water: jumping into deep water slows the plunge like Source", WaterPlunge);
         Test("Teleport resets velocity", TeleportResets);
         Test("Teleport onto the floor stands on it (no sinking)", TeleportOntoFloor);
         Test("TeleportPlayer can keep velocity (portals)", TeleportKeepsVelocity);
@@ -62,10 +70,15 @@ public static class MovementTests
         Test("Short teleport (100 u) moves the player and keeps speed", ShortTeleport);
         Test("Teleport still works if VRChat applies it 3 frames late", DelayedTeleport);
         Test("Respawn resets velocity", RespawnResets);
+        Test("ResetVelocity after a short plain TeleportTo stops the player", ResetAfterShortTeleport);
+        Test("TeleportPlayer while turned off, then on again, is not frozen", TeleportWhileOff);
+        Test("A frame hitch (0.25 s) falling onto a block lands on it", HitchLanding);
         Test("Same result at 45, 90 and 144 fps", FrameRateIndependent);
         Test("Tracks the player with one frame of VRChat latency", LatencyTolerant);
         Test("Tracks the player at 240 and 800 fps when VRChat moves it only on 50 Hz physics steps", PhysicsStepTracking);
         Test("Turning off restores VRChat movement and keeps momentum", Deactivate);
+        Test("VRChat speeds set by another script after Start are zeroed and restored on turning off", LateWorldSettings);
+        Test("Movement zones: on while inside any zone collider", ZoneCount);
         Test("Collision cost per tick fits Udon", CastBudget);
         extraTests?.Invoke(Test);
 
@@ -846,6 +859,220 @@ public static class MovementTests
         r.SetActive(false);
         Check(r.PlayerWalk == 2 && r.PlayerRun == 4 && r.PlayerGravity == 1, "not restored");
         Check(Math.Abs(r.PlayerVelocity.magnitude / Rig.U - 250) < 1, "momentum lost");
+    }
+
+    static void PushesAddUp()
+    {
+        var r = OnFloor();
+        r.AddPush(new Vector3(0, 0, 300));
+        r.AddPush(new Vector3(300, 0, 0));
+        Vector3 p0 = r.Origin;
+        r.Run(0.5f);
+        Vector3 moved = r.Origin - p0;
+        r.RemovePush(new Vector3(300, 0, 0));
+        r.Frame();
+        Vector3 afterOne = r.Vel;
+        p0 = r.Origin;
+        r.Run(0.5f);
+        float movedZ = r.Origin.z - p0.z, movedX = r.Origin.x - p0.x;
+        r.RemovePush(new Vector3(0, 0, 300));
+        r.Frame();
+        Note($"both: moved ({moved.x:F0}, {moved.z:F0}) in 0.5 s; one left: own speed {afterOne.magnitude:F1}, moved ({movedX:F0}, {movedZ:F0}); out: speed {r.Vel.z:F1}");
+        Check(Math.Abs(moved.x - 150) < 3 && Math.Abs(moved.z - 150) < 3, "pushes did not add up");
+        Check(afterOne.magnitude < 1 && Math.Abs(movedX) < 3 && Math.Abs(movedZ - 150) < 3, "leaving one push");
+        Check(r.Vel.z > 280 && r.Vel.z <= 300 && Math.Abs(r.Vel.x) < 1, "momentum after leaving the last " + r.Vel);
+        r.RemovePush(new Vector3(0, 0, 300)); // an extra leave (a trigger switched off) does nothing
+        Check(r.Vel.z <= 300, "extra leave added momentum");
+    }
+
+    static void FastPushTracking()
+    {
+        foreach (float fps in new[] { 300f, 600f })
+        {
+            var r = OnFloor();
+            r.frameTime = 1f / fps;
+            r.movesOnPhysicsSteps = true;
+            r.AddPush(new Vector3(0, 0, 1500));
+            r.Run(0.1f);
+            float z0 = r.Origin.z, worst = 0;
+            r.Run(1f, () => worst = Math.Max(worst, (r.Pos - r.Origin).magnitude));
+            Note($"{fps} fps: moved {r.Origin.z - z0:F0} u in 1 s, worst player/simulation gap {worst:F1} u");
+            Check(Math.Abs(r.Origin.z - z0 - 1500) < 20, $"{fps} fps moved {r.Origin.z - z0}");
+            Check(worst < 70, $"{fps} fps gap {worst}");
+        }
+    }
+
+    static float JumpPeak(Rig r)
+    {
+        float y0 = r.Origin.y, maxY = y0;
+        r.Jump(true);
+        r.Frame();
+        r.Jump(false);
+        r.Run(1f, () => maxY = Math.Max(maxY, r.Origin.y));
+        return maxY - y0;
+    }
+
+    static void ZeroGravityIsNormal()
+    {
+        var r = OnFloor();
+        r.SetGravityScale(0f);
+        float h = JumpPeak(r);
+        Note($"gravity 0: jump peak {h:F1} u");
+        Check(Math.Abs(h - 55.5f) < 0.5f, "gravity 0 jump " + h);
+    }
+
+    static void DuckedJump()
+    {
+        var r = OnFloor();
+        r.HoldKey(KeyCode.LeftControl, true);
+        r.Run(0.5f);
+        Check(r.Ducked, "not ducked");
+        float h = JumpPeak(r);
+        Note($"ducked jump peak {h:F1} u (standing 55.5)");
+        Check(Math.Abs(h - 57f) < 0.3f, "ducked jump " + h);
+    }
+
+    static void AirDuckTracking()
+    {
+        var r = OnFloor();
+        r.frameTime = 1f / 600f;
+        r.movesOnPhysicsSteps = true;
+        r.Run(0.1f);
+        float worst = 0;
+        r.Jump(true);
+        r.Run(0.1f, () => worst = Math.Max(worst, (r.Pos - r.Origin).magnitude));
+        r.HoldKey(KeyCode.LeftControl, true);
+        r.Run(0.3f, () => worst = Math.Max(worst, (r.Pos - r.Origin).magnitude));
+        r.HoldKey(KeyCode.LeftControl, false);
+        r.Run(0.6f, () => worst = Math.Max(worst, (r.Pos - r.Origin).magnitude));
+        Note($"worst player/simulation gap {worst:F1} u");
+        Check(worst < 15, "gap " + worst);
+    }
+
+    static void StepApproaches()
+    {
+        int failed = 0;
+        string first = "";
+        for (int offset = 0; offset < 26; offset++)
+        {
+            var r = new Rig(new Vector3(-offset, 0, 0));
+            Rig.Floor();
+            Rig.Box(new Vector3(300, 8, 0), new Vector3(400, 16, 1000));
+            r.Run(0.1f);
+            r.Yaw = 90;
+            r.Move(1, 0);
+            r.Run(1f);
+            if (r.Origin.x > 150 && Math.Abs(r.Origin.y - 16) < 1f && r.OnGround) continue;
+            failed++;
+            if (first == "") first = $"from {offset} back: {r.Origin}";
+        }
+        Note($"{26 - failed}/26 approach distances stepped up");
+        Check(failed == 0, "did not step up " + first);
+    }
+
+    static void RisingPlatform()
+    {
+        foreach (float perTick in new[] { 0.2f, 1f })
+        {
+            var r = OnFloor();
+            Rig.Box(new Vector3(0, -8, 0), new Vector3(400, 16, 400)); // top at 0, under the player
+            CollisionWorld.Box door = CollisionWorld.boxes[CollisionWorld.boxes.Count - 1];
+            float worst = 0;
+            for (int i = 0; i < 100; i++) // 1 s: up 20 or 100 units
+            {
+                door.center += new Vector3(0, perTick * Rig.U, 0);
+                r.Frame();
+                float top = door.center.y / Rig.U + 8;
+                worst = Math.Max(worst, top - r.Origin.y);
+            }
+            float topNow = door.center.y / Rig.U + 8;
+            Note($"{perTick} u/tick: top {topNow:F1}, feet {r.Origin.y:F1}, deepest {worst:F2} u inside");
+            Check(Math.Abs(r.Origin.y - topNow) < 2 && worst < 2, $"{perTick} u/tick: sank into the platform");
+        }
+    }
+
+    static void WaterPlunge()
+    {
+        var r = new Rig(new Vector3(0, 150, 0));
+        Rig.Floor(-1000);
+        Rig.Water(new Vector3(0, -450, 0), new Vector3(4000, 1100, 4000)); // surface at 100
+        r.SetVelocity(new Vector3(0, 300, 0)); // as if jumping off a ledge
+        int frames = 0;
+        while (r.WaterLevel < 2 && frames++ < 300) r.Frame();
+        float entry = r.Vel.y;
+        r.Run(0.5f);
+        Note($"hit the water at {entry:F0} u/s, 0.5 s later {r.Vel.y:F0} u/s (Source: friction 4/s brings it to the 48 u/s sink)");
+        Check(r.WaterLevel >= 2 && entry < -150, "did not plunge in");
+        Check(Math.Abs(r.Vel.y) < 70, "plunge too fast " + r.Vel.y);
+    }
+
+    static void ResetAfterShortTeleport()
+    {
+        var r = Running();
+        Vector3 to = r.Origin + new Vector3(30, 0, 0);
+        r.Teleport(to);
+        r.ResetVelocity();
+        r.Frame();
+        r.Frame();
+        Note($"after a 30 u TeleportTo + ResetVelocity: speed {r.Speed:F1}, at {r.Pos}");
+        Check(r.Speed < 1, "speed " + r.Speed);
+        Check(Math.Abs(r.Pos.x - to.x) < 5, "not at destination " + r.Pos);
+    }
+
+    static void TeleportWhileOff()
+    {
+        var r = OnFloor();
+        r.SetActive(false);
+        r.TeleportPlayer(new Vector3(3000, 0, 0), 0, false);
+        r.Frame();
+        r.SetActive(true);
+        r.Move(1, 0);
+        r.Run(1f);
+        Note($"after turning back on: at {r.Pos}, speed {r.Speed:F0}");
+        Check(Math.Abs(r.Pos.x - 3000) < 5 && r.Pos.z > 150, "frozen or lost: " + r.Pos);
+        Check(Math.Abs(r.Speed - 250) < 1, "speed " + r.Speed);
+    }
+
+    static void HitchLanding()
+    {
+        var r = new Rig(new Vector3(0, 100, 0));
+        Rig.Floor();
+        Rig.Box(new Vector3(0, 8, 0), new Vector3(200, 16, 200)); // a 16 unit block under the player
+        r.oneFrameLatency = true;
+        r.Run(0.1f);
+        r.frameTime = 0.25f;
+        r.Run(1f);
+        r.frameTime = 0.01f;
+        r.Run(0.5f);
+        Note($"after four 0.25 s frames: feet {r.Origin.y:F1}, player {r.Pos.y:F1}, ground {r.OnGround}");
+        Check(r.OnGround && Math.Abs(r.Origin.y - 16) < 1 && Math.Abs(r.Pos.y - 16) < 3, "fell off or through the block");
+    }
+
+    static void LateWorldSettings()
+    {
+        var r = OnFloor();
+        r.SetPlayerWalk(2f); // VRCWorld's settings script starting after SourceMovement
+        r.Frame();
+        Check(r.PlayerWalk == 0, "walk speed left on: " + r.PlayerWalk);
+        r.SetPlayerWalk(3f);
+        r.Frame();
+        r.SetActive(false);
+        Check(r.PlayerWalk == 3, "not restored to the world's walk speed: " + r.PlayerWalk);
+    }
+
+    static void ZoneCount()
+    {
+        var r = OnFloor();
+        r.SetActive(false);
+        r.ZoneEnter();
+        r.ZoneEnter(); // two overlapping zone colliders
+        r.ZoneExit();
+        bool afterOne = r.Active;
+        r.ZoneExit();
+        bool afterBoth = r.Active;
+        r.ZoneExit(); // a stray exit
+        r.ZoneEnter();
+        Check(afterOne && !afterBoth && r.Active, $"inside one of two: {afterOne}, outside both: {afterBoth}, back in: {r.Active}");
     }
 
     static void CastBudget()
