@@ -1,412 +1,192 @@
-# SourceMaps (multi-map bhop world): plan, verification and questionnaire
+# SourceMaps: plan and history
 
-(File name kept as MAPVOTE_PLAN.md so earlier links still work.)
+The multi-map bhop world: what was asked, what was decided, and what each step built and measured. (File name kept as
+MAPVOTE_PLAN.md so older links work.) Current state and rules: [handoff](HANDOFF_SOURCEMAPS.md); tests:
+[TESTING.md](TESTING.md).
 
-Handoff from the session that built and Unity-tested the Source movement. Nothing here is built yet.
-Answer the questionnaire (bottom) before building.
+## Contents
 
-## What the user wants (summary)
+1. [Goal](#1-goal)
+2. [Decisions](#2-decisions)
+3. [Design](#3-design)
+4. [Risks and how they turned out](#4-risks-and-how-they-turned-out)
+5. [Progress](#5-progress): [1](#step-1-bsp-reader-markers-collision) · [2](#step-2-converter-comparison) · [3](#step-3-map-rotation) · [4](#step-4-sample-world) · [5](#step-5-lightmaps-runs-final-checks) · [6](#step-6-bhop-blocks-prop-lighting) · [7](#step-7-breakable-glass) · [8](#step-8-bhop_monster_jam-sounds-skies-route-bot)
+6. [Context for a new session](#6-context-for-a-new-session)
 
-A CS:S bhop-server style VRChat world, made with the VRChat Creator Companion, plus a reusable prefab:
+---
 
-1. **Lobby.** Players join in a lobby. A screen shows 4-6 random maps from a large pool, each with
-   name, thumbnail and live vote count.
-2. **Two modes, picked in the Inspector:** *vote* (everyone votes, winner is played by all) or *choose*
-   (each player picks the map they want to play).
-3. **Travel.** Players are teleported into the map. In a map they can vote to change map or go back
-   to the lobby; the instance owner can force a return to the lobby.
-4. **Own prefab system with a sample world.** Independent of SourceMovement / SourceTimer, but works
-   with them (e.g. teleports through `SourceMovement.TeleportPlayer`, timer zones per map).
-5. **Map conversion** from CS:S BSPs with one of two converters, whichever works best:
-   [DeadZoneLuna/uSource](https://github.com/DeadZoneLuna/uSource) or [Shane-SDK/USource](https://github.com/Shane-SDK/USource).
-6. **Auto-conversion of gameplay entities** into empty marker objects: fall/respawn teleports, timer
-   start/end/checkpoints, speed boosters, jump boosters, etc. Markers keep the original data so the
-   movement script can implement them later.
-7. **Maps from GameBanana:** bhop_japan, bhop_kitsune, plus 3 other popular CS:S bhop maps.
-8. **Everything tested with the existing movement system** (Dev/Tests/UnityPlay with ClientSim).
+## 1. Goal
 
-## Verification: what holds up, what doesn't
+A CS:S bhop-server style VRChat world plus a reusable package:
 
-### Fine as planned
-- Creator Companion: on Linux only the CLI exists (`vpm`, `dotnet tool install --global vrchat.vpm.cli`).
-  `Dev/Tests/UnityPlay/run.sh` already creates projects from VRChat's official World template with it.
-  On Windows the user uses the normal VCC app; same template.
-- Scale: the movement already works in Source units (1 u = 0.01905 m), so converted maps at that scale
-  play with CS:S distances and jump heights.
-- Separate prefab: the map system only needs to teleport players and toggle map objects. It can call
-  `SourceMovement.TeleportPlayer` when present, or plain `TeleportTo` + `SetVelocity(0)`.
+| # | Wanted |
+|---|---|
+| 1 | Lobby with a vote screen: random maps from a pool, each with name, thumbnail, live votes |
+| 2 | Players teleported into the winning map; vote to change map or go back; owner can force a return |
+| 3 | Own package, independent of SourceMovement/SourceTimer but working with them |
+| 4 | Map conversion from CS:S BSPs ([uSource](https://github.com/DeadZoneLuna/uSource) or [USource](https://github.com/Shane-SDK/USource), whichever is better) |
+| 5 | Gameplay entities as markers keeping their data (teleports, zones, boosters...) |
+| 6 | Maps from GameBanana, all tested with the movement in Unity + ClientSim |
 
-### Problems / risks found
-1. **Neither converter imports triggers.** Shane-SDK/USource: brush entities are "in the future",
-   displacements are buggy, "not production ready". DeadZoneLuna/uSource: lists BSP entities and
-   props but not brush entities/keyvalues (1.1 beta). Neither README states a license.
-   **Suggestion:** use a converter only for visible geometry and textures, and write our own small
-   editor-side BSP reader for the entity lump plus brush model bounds. That gives the markers
-   (point 6) and is independent of the converter. Compare the converters on geometry, textures,
-   displacements and collision quality.
-2. **Collision.** Bhop maps rely on invisible `playerclip`/`clip` brushes and on `nodraw` faces.
-   Converters often drop tool brushes. Collision must include clip brushes, and surf ramps need clean
-   mesh colliders (the movement's BoxCast sweeps work against mesh colliders, but this needs testing).
-   The BSP reader could build collision from the brush lump (contents SOLID | PLAYERCLIP) directly.
-3. **Timer zones mostly aren't in the maps.** On CS:S bhop servers, start/end zones usually come from the
-   timer plugin's database (shavit/bhoptimer, Influx), not the BSP. Some maps have named triggers
-   (e.g. `climb_startzone` / `climb_endzone`) that timers pick up. Plan for: auto-detect when present,
-   plus an editor tool to place zones by hand. Possibly import public zone dumps (to verify).
-4. **Map-specific mechanics** that markers must capture: `trigger_teleport` + `info_teleport_destination`
-   (fall respawns, often filtered), `trigger_push` (boosters), `trigger_multiple` with outputs like
-   `AddOutput basevelocity ...` or `gravity` (jump/speed boosters), `trigger_gravity`, and
-   `func_door`/`func_button` "bhop blocks" (platforms that drop or teleport you if you stand too
-   long). Servers often neutralise bhop blocks; decide behaviour per map.
-5. **Textures are not all in the BSP.** Custom textures are usually packed into the BSP, but stock
-   CS:S textures and models come from the game's VPKs. Either the user supplies them from their CS:S
-   install, or try the CS:S dedicated server through SteamCMD (anonymous login, app 232330), which may
-   include the needed VPKs (to verify).
-6. **Rights.** The maps belong to their authors, stock textures to Valve. Fine for private testing;
-   for a public VRChat world, get author permission and consider replacing Valve textures.
-7. **GameBanana was unreachable from the cloud container** (HTTP 503 / Cloudflare 522 on site and
-   API on 2026-10-09). Found so far: *Bunny-Hop Kitsune* (CS:S) at gamebanana.com/mods/126424.
-   bhop_japan (by Tony Montana) exists in many places (Steam Workshop ports, 17buddies), but no
-   GameBanana page was confirmed. Retry later, use archive.org's GameBanana mirror, or have the user
-   upload the BSPs.
-   **Update 2026-10-09 (resolved for bhop_japan, checked by the previous session):** bhop_japan is
-   gamebanana.com/mods/125304 (CS:S, by tmontana, 5,552 downloads), file `bhop_japan.zip` (75.7 MB,
-   gamebanana.com/dl/283793) with one `bhop_japan.bsp` (159 MB, VBSP v20). GameBanana's API answers
-   with a browser User-Agent (`/apiv11/Mod/<id>/ProfilePage`); from this container it returned 403
-   once, so downloads may need retries or the user's help. Entity lump: 90 `trigger_teleport`,
-   37 `info_teleport_destination`, 39 `trigger_multiple`, 2 `trigger_push`, 4 `func_button`,
-   3 `filter_activator_name`, 96 `prop_physics_override`, 79 `prop_dynamic`, 48 `move_rope`,
-   66 `info_player_counterterrorist`, `point_clientcommand`, `env_entity_maker`/`point_template`.
-   **No named triggers** (no `climb_startzone` etc.), so timer zones need manual placement (risk 3).
-   No basevelocity/gravity outputs. Pakfile lump is 108 MB (412 materials, 201 models), so most custom
-   content is packed in the BSP (helps with risk 5).
-8. **Several maps in one world.** In *choose* mode players can be in different maps at once, so maps
-   must sit at different offsets (Source maps are up to ±16384 u ≈ ±312 m) and each client enables only
-   its own map's renderers. Watch world size and memory: PC only is realistic, Quest (100 MB limit)
-   is not.
-9. **Large pool vs. world size.** "A large pool" in one upload costs download size and build time.
-   Every map lives in the world; nothing streams in. Realistically 5-15 maps per world.
+## 2. Decisions
 
-### Popular CS:S bhop map candidates (pick 3 in the questionnaire)
-Classics often found on CS:S bhop servers: bhop_eazy_v2, bhop_arcane_v1, bhop_badges, bhop_monster_jam,
-bhop_exodus, bhop_cobblestone, bhop_lego2. (Popularity not verified on GameBanana yet, because it was down.)
+Answered 2026-10-09 (updates later marked).
 
-## Proposed architecture (to confirm)
-- `Assets/MapVote/` (separate from SourceMovement/SourceTimer), sample scene `MapVoteSample.unity`.
-- `MapInfo` (per map): name, thumbnail, spawn point, map root object, optional author/tier.
-- `MapVoteManager` (synced, owner = instance master): picks N random maps, holds votes in synced arrays,
-  timer, starts the map, handles rock-the-vote and owner force-lobby.
-- `MapVoteScreen`: world UI with 4-6 buttons (thumbnail, name, votes), VR friendly.
-- `MapTravel`: local teleport + enabling the right map root; uses SourceMovement when present.
-- Editor: `Tools > Map Vote > Import BSP Entities` creates markers (`SourceEntityMarker` with
-  classname, targetname, keyvalues, outputs and bounds), and optionally creates TimerZones and
-  teleport triggers from them.
-- Tests: ClientSim play tests per map (spawn, walk the start, a fall respawn, a booster marker exists),
-  plus vote logic tests in the simulation harness.
-
-## Questionnaire
-
-1. **Mode default:** should *vote* or *choose* be the default? In *vote* mode, does everyone get pulled
-   into the winning map, or only players standing in the lobby?
-2. **Vote rules:** vote timer length? Ties broken randomly? Minimum players? Show the same 4-6 maps to
-   everyone (synced), re-rolled each round?
-3. **In-map voting:** CS:S style rock-the-vote (e.g. 60% of players `rtv` starts a new vote) plus a map
-   time limit (e.g. 30 min)? Or only owner-forced return?
-4. **Instance owner powers:** force lobby only, or also force a specific map, extend time, skip vote?
-   Who counts as owner: instance creator, or the master (oldest player)?
-5. **Pool size:** how many maps do you realistically want in one world? Is PC-only OK?
-6. **Map list:** confirm bhop_japan and bhop_kitsune, and pick 3 more (suggested: bhop_eazy_v2,
-   bhop_arcane_v1, bhop_badges). Should surf maps be in the same pool?
-7. **Game content:** can you provide the CS:S `cstrike` VPKs from your install, or should we try the
-   dedicated server download? Or replace stock textures?
-8. **Public or private world?** If public: will you ask map authors for permission?
-9. **Bhop blocks** (func_door platforms): keep their drop/teleport behaviour, make them static
-   (common on servers), or decide per map?
-10. **Markers:** besides teleports, timer zones, speed and jump boosters, should markers also cover
-    gravity changes, ladders, water, `func_door`s, and buttons? Any to turn into working TimerZones
-    straight away?
-11. **Timer zones:** OK to place start/end zones by hand (editor tool) when the map has none?
-12. **Leaderboards:** per map (one board per map in the lobby) and per category (auto/legit)? Should
-    times persist across sessions (VRChat Persistence) or only per instance?
-13. **Thumbnails:** GameBanana screenshots (rights?), or render them automatically in the editor from a
-    camera at the map's start?
-14. **Converter choice:** fine to use the converter only for visuals and our own BSP reader for
-    collision and entities, if testing shows that works better?
-
-## Context the new session needs
-- Repo: `bunnnyy/vrc-claude`. Read `README.md` first. Previous work is on branch
-  `claude/vrchat-source-movement-mn0xl0`.
-- Tests: `dotnet run --project Dev/Tests/Sim`, `UDON_TEST=1 Dev/Tests/UdonCompile/compile.sh` (with
-  `Dev/Tests/UdonCompile/setup.sh`), `Dev/Tests/UnityPlay/run.sh` (real Unity + ClientSim at 30/90/144/300 fps,
-  47 checks).
-- Unity: download 2022.3.22f1 from
-  `https://download.unity3d.com/download_unity/887be4894c44/LinuxEditorInstaller/Unity.tar.xz`, extract to
-  `/opt/unity`. License: env vars `UNITY_EMAIL` / `UNITY_PASSWORD` (never print them).
-  `Editor/Data/Resources/Licensing/Client/Unity.Licensing.Client --activate-ulf --username ... --password ...`
-  activates the Personal license; `--return-ulf` returns it at the end. The editor's own
-  `-username/-password` does not activate Personal licenses.
-- Run Unity headless with `xvfb-run -a Unity -batchmode ...`. ClientSim needs its startup menu accepted
-  and the Input System told to ignore focus (see `Dev/Tests/UnityPlay/PlayTestRunner.cs`).
-- vpm: `dotnet tool install --global vrchat.vpm.cli`, `vpm install templates`,
-  `vpm new <name> World -p <dir>`, `vpm add package com.vrchat.worlds@3.10.5 -p <project>`.
-- Lessons from Unity testing: PhysX treats an exactly touching box as starting inside (BoxCast ignores it);
-  VRChat keeps velocity through `TeleportTo` (call `SetVelocity(0)`); new U# program assets need
-  `ScriptVersion = CurrentVersion`; UdonSharp is the constraint reference
-  (https://github.com/niaka3dayo/agent-skills-vrc-udon).
-- How the user works: short check-ins at each stage with numbers, simplest code that works, Source/CS:S
-  behaviour as the reference, honest about what was tested in Unity vs simulated, ask before big design
-  changes.
-
-## Answers (2026-10-09)
-
-1. **Mode:** *vote*; the winning map pulls **everyone** in the instance. **Update:** *choose* mode was
-   removed: only one map is active at a time; the lobby is always reachable (Back to lobby / Rejoin map).
-2. **Vote rules:** 60 s timer, starts on the first vote. Same 5 random maps for everyone (synced),
-   re-rolled each round, ties broken at random, no minimum players. The master can **lock** the vote:
-   the timer stops and the vote only ends when the master presses **Start**.
-3. **In-map voting:** rock-the-vote (60% of players) **plus** a map time limit (default 30 min, with
-   "extend" in the vote). Inspector option for **RTV only** (no time limit).
-4. **Owner:** full admin (force lobby, force a map, extend, skip vote). Owner = instance creator;
-   the master when the instance has no creator (public/group).
-5. **Pool:** 5 maps to start, PC only. Add more after measuring world size.
-6. **Maps:** bhop_japan, bhop_kitsune, bhop_eazy_v2, bhop_arcane_v1, bhop_badges. No surf maps for now.
-7. **Game content:** the importer reads stock textures/models from the **world creator's own CS:S
-   folder** (path set in the import window), as uSource does. In this container there is no CS:S, so
-   tests run with **placeholder textures** (geometry, collision and entities are still tested).
-8. **Public world:** the user will ask map authors for permission. Map screen credits each author.
-9. **Bhop blocks:** imported as markers with their data, solid by default, per-map toggle for the
-   original drop/teleport behaviour once the movement supports it.
-10. **Markers:** everything: teleports, timer zones, boosters, gravity, ladders, water, doors, buttons
-    and every other entity with its keyvalues and outputs.
-11. **Fall teleports work now**, through a small teleport trigger that is **part of MapVote** (uses
-    `SourceMovement.TeleportPlayer` when present, else `TeleportTo` + `SetVelocity(0)`).
-    Timer zones: placed by hand with an editor tool when the map has none (bhop_japan has none).
-12. **Leaderboards:** per map and per category (auto/legit), shown in the lobby, best times persisted
-    with VRChat Persistence. **Update:** the lobby also gets a small practice bhop lane and surf ramp, each
-    with its own saved legit/auto boards. (Persistence is per player: boards show the saved bests of
-    players who have been in the instance.)
-13. **Thumbnails:** rendered in the editor from the map spawn, with a per-map override slot.
-14. **Converter:** hybrid: converter for visible geometry and textures, our own BSP reader for
-    collision (incl. clip brushes) and entities. Both converters compared and reported.
-
-## Final design (approved 2026-10-09)
-
-**Renamed to SourceMaps** (user: "MapVote" sounds like only the voting; the package also has the
-importer). Folder `Assets/SourceMaps/`, menu `Tools > Source Maps`. Class names below keep their roles.
-
-`Assets/SourceMaps/` (no dependency on SourceMovement/SourceTimer; it finds them by name if present):
-- `MapInfo`: name, author, thumbnail (rendered or override), spawn, map root, time limit, bhop-block toggle.
-- `MapVoteManager` (synced, owned by the master): state Lobby -> Voting -> Playing; 5 random maps,
-  synced vote array, 60 s timer, master lock + Start, RTV 60%, time limit + extend, owner admin
-  actions, vote/choose mode. Owner = creator, else master.
-- `MapVoteScreen`: lobby world UI (5 buttons: thumbnail, name, author, votes) plus master controls.
-- `MapTeleport`: trigger for fall respawns / `trigger_teleport` destinations.
-- `MapTravel`: local teleport + enable only the current map's root (one map at a time in vote mode).
-- Editor `Tools > Map Vote`: *Import BSP Entities* (own BSP reader: entity lump + brush model bounds ->
-  `SourceEntityMarker`s, working `MapTeleport`s), *Build Collision* (brush lump, SOLID|PLAYERCLIP),
-  *Place Timer Zone*, *Render Thumbnails*, *Build Sample Scene*.
-- Leaderboard: per map/category boards using SourceTimer's Leaderboard where present, extended with
-  Persistence (PlayerData) for personal bests.
-
-Order of work, with a check-in after each:
-1. BSP reader + entity markers + collision on bhop_japan (simulation tests on the real BSP).
-2. Converter comparison (uSource vs USource) on bhop_japan visuals, in real Unity.
-3. MapVote runtime (manager, screen, travel, teleport) + vote logic tests in Dev/Tests/Sim + Udon compile.
-4. Sample world with the 5 maps; ClientSim play tests per map with SourceMovement.
-5. Persistent per-map leaderboards, thumbnails, docs.
-
-## Progress
-
-### Step 1: BSP reader, markers, collision (done 2026-10-09)
-- `Assets/SourceMaps/Editor/Bsp/` reads VBSP 19-21 (entities, brushes, brush models, displacements);
-  `SourceMapImporter` builds collision (player-solid world brushes incl. clips + displacements), one
-  `SourceEntity` marker per entity, and working `SourceMapTeleport`s.
-- bhop_japan: 3,142 solid brushes + 980 displacements = 176,733 collision triangles, 540 markers,
-  56 working teleports, 34 filtered "bhop block" teleports kept as markers (need the movement script).
-- Tests: `Dev/Tests/Bsp` 18/18 (simulated, real BSP). Real Unity 2022.3.22f1 + ClientSim + SourceMovement
-  (`run.sh map`): player stands on the floor at 40/40 destinations/spawns, 55/55 reachable teleports send
-  the player to their destination (1 trigger lies under the ground everywhere, so it can't be touched in
-  Source either).
-- Found while testing: thin floor triggers never fire for VRChat's capsule player, so teleport triggers
-  are 8 units thicker on top. bhop_japan's tele_dest_33/34 hover over pillars that teleport you back to
-  the same spot (you bounce until you strafe off, as in Source).
-- Not done yet: static prop collision (248 static props in bhop_japan, needs the converter's models),
-  displacement "no collision" flags (all 0 in bhop_japan, bit meaning not verified).
-
-### Step 2: converter comparison on bhop_japan (done 2026-10-09)
-Real Unity 2022.3.22f1 (VRChat world project), `Dev/Tests/Converters/compare.sh`. Stock CS:S content isn't
-available here, so only what's packed in the BSP can show (white = stock texture, missing = stock model).
-Alignment = 2,575 vertical rays around every spawn/destination, visual geometry vs SourceMaps collision.
-
-| | DeadZoneLuna/uSource (2022-02) | Shane-SDK/USource (2025-02) |
+| # | Question | Answer |
 |---|---|---|
-| Gets running in a VRChat project | 2 fixes (asmdef "unsafe" flag, call setup its window does) | 6 fixes (Git LFS DLLs, unused PlasticPipe using, settings fail on first launch, URP shaders x3, no materials by default) |
-| Render pipeline | Built-in (its own shaders), what VRChat needs | URP shader graphs, pink in VRChat without replacing |
+| 1 | Mode | **Vote**; the winner pulls everyone. *Choose* mode removed: one map active at a time, lobby always open (Back to lobby / Rejoin map) |
+| 2 | Vote rules | 60 s from the first vote; the same 5 random maps for everyone, re-rolled each round; ties at random; no minimum. Owner can **lock** (only Start ends it) |
+| 3 | In-map voting | Rock the vote at 60% **plus** a time limit (30 min, "extend" in the vote); Inspector option for RTV only |
+| 4 | Owner | Full admin (force lobby, force a map, extend, start). Owner = instance creator, else the master |
+| 5 | Pool | 5 maps to start (now 6 with monster_jam), PC only |
+| 6 | Maps | bhop_japan, bhop_kitsune, bhop_eazy_v2, bhop_arcane_v1, bhop_badges; later bhop_monster_jam. No surf maps |
+| 7 | Game content | Read from the world creator's own CS:S folder (as uSource does) |
+| 8 | Public world | The user asks map authors; the vote menu credits them |
+| 9 | Bhop blocks | Work as on CS:S servers, with a per-map **On** switch |
+| 10 | Markers | Every entity with its keyvalues and outputs; working teleports, boosters, water, ladders |
+| 11 | Timer zones | From [zones-cstrike](https://github.com/srcwr/zones-cstrike); by hand when a map has none |
+| 12 | Records | Per map and per category (auto/legit) in the lobby, saved with VRChat Persistence; plus practice bhop/surf courses |
+| 13 | Thumbnails | Rendered from the spawn, with an override slot |
+| 14 | Converter | Hybrid: converter for visible geometry and textures, our BSP reader for collision and entities |
+
+## 3. Design
+
+Renamed from MapVote to **SourceMaps** (the user: "MapVote" sounds like only the voting). Folder `Assets/SourceMaps`,
+menu **Tools > Source Maps**; no dependency on SourceMovement/SourceTimer (found by name when present).
+
+| Part | Role |
+|---|---|
+| `Editor/Bsp/*` | Own BSP reader (VBSP 19-21): entities, brushes, displacements, lightmap/ambient lumps, static props |
+| `SourceMapImporter` | Collision, markers (`SourceEntity`), teleports, pushes, boosters, water, ladders, bhop blocks, glass |
+| `SourceMapVisuals` | Drives uSource; lightmaps, water, sky faces, prop lighting, sounds (`SourceMapSounds`), sky |
+| `SourceMapManager` | Synced vote, timer, RTV, time limit, owner actions, travel |
+| `SourceMapScreen`, `SourceMapButton` | Vote menu and map menus (UI), their buttons |
+| `SourceMapInfo` | Per map: name, author, thumbnail, sky, spawn, time limit |
+| `SourceMapsSetup` | Add To Rotation, Create Lobby, Build Sample World, Build Test Scene |
+
+## 4. Risks and how they turned out
+
+| # | Risk found at the start | Outcome |
+|---|---|---|
+| 1 | Neither converter imports triggers | Own BSP reader for entities and collision (step 1) |
+| 2 | Bhop maps rely on clip/nodraw brushes | Collision built from the brush lump incl. clips; touching faces trimmed (step 5) |
+| 3 | Timer zones aren't in the maps | zones-cstrike has them for all six maps (step 4) |
+| 4 | Map mechanics (filtered teleports, pushes, boosters, bhop blocks) | All working (steps 3, 6) |
+| 5 | Stock textures live in CS:S's VPKs | Read from the creator's CS:S folder; tests use a git-ignored copy (step 8) |
+| 6 | Rights | Fine for private testing; public world needs author permission |
+| 7 | GameBanana unreachable from the container | Resolved: downloads work with retries (`get_maps.sh`) |
+| 8 | Several maps in one world | Maps 700 m apart, one active at a time |
+| 9 | World size with a large pool | 5-15 maps realistic; PC only |
+
+## 5. Progress
+
+### Step 1: BSP reader, markers, collision
+
+Done 2026-10-09.
+
+| | |
+|---|---|
+| Built | BSP reader; collision from player-solid world brushes (incl. clips) and displacements; a marker per entity; working teleports |
+| bhop_japan | 3,142 brushes + 980 displacements = 176,733 triangles, 540 markers, 56 teleports |
+| Results | `Dev/Tests/Bsp` 18/18; real Unity: stands at 40/40 destinations, 55/55 reachable teleports work |
+| Found | Thin floor triggers never fire for VRChat's floating capsule: triggers raised 8 units |
+
+### Step 2: converter comparison
+
+Done 2026-10-09 on bhop_japan in real Unity (`Dev/Tests/Converters/compare.sh`). Alignment = 2,575 vertical rays round
+every spawn/destination, visual geometry vs our collision.
+
+| | DeadZoneLuna/uSource | Shane-SDK/USource |
+|---|---|---|
+| Fixes to run in a VRChat project | 2 | 6 |
+| Render pipeline | Built-in (what VRChat needs) | URP shader graphs (pink) |
 | Import time | 136 s | 177-353 s |
-| Output | 476 renderers, 649k triangles, 144 materials (44 stock, no texture), packed textures and models (trees) load | 1,664 renderers, 159k triangles, **0 materials** |
-| Alignment with our collision | **79% within 5 cm, median 0 cm**; the rest are invisible clip/nodraw brushes and props | 5% (after turning it 90°: it maps axes as (x, z, y)), median 1.4 m |
-| Saves to project | materials + PNG textures as assets, meshes inside the scene | ScriptedImporter asset (prefab) |
-| Static prop collision | no (render meshes only) | yes (MDL physics), untested here |
-| License | none stated | none stated |
+| Output | 476 renderers, 649k triangles, 144 materials | 1,664 renderers, 159k triangles, 0 materials |
+| Alignment with our collision | **79% within 5 cm**, median 0 | 5%, median 1.4 m |
+| Licence | none stated | none stated |
 
-**Choice: uSource** for the visuals (built-in pipeline, lines up with the collision, textures work).
-Not distributed with SourceMaps (no license): the world creator installs uSource; SourceMaps drives it
-(scale 0.01905, the creator's CS:S folder) and saves meshes as assets. Static prop collision: generate from
-the render meshes (needs a test). I did not dig into why USource's geometry doesn't line up.
+**Choice: uSource** for visuals, installed by the world creator (not distributed).
 
-### Step 3: map rotation runtime (done 2026-10-10)
-- `SourceMapManager` (vote, 60 s timer from the first vote, owner lock/start/force/everyone-to-lobby/+time,
-  rock the vote 60%, time limit with "extend", random ties, map just played not offered again),
-  `SourceMapScreen` (lobby board, panel at each map's spawn), `SourceMapButton` (Interact, desktop and VR),
-  `SourceMapInfo` (per map). Editor: Add Selected Map To Rotation, Create Lobby, Build Test Scene.
-- Changes asked for during the step: choose mode removed (one active map at a time, lobby always open);
-  practice bhop lane and surf ramp beside the lobby with their own saved legit/auto boards (SourceTimer:
-  per-course boards on start zones, Leaderboard save key with VRChat PlayerData).
-- Owner changes: all vote state is synced, so a new owner carries on; leavers' votes and rtv are dropped
-  (recount a frame after OnPlayerLeft / ownership transfer); admin = instance owner, else the master
-  (`Networking.InstanceOwner` is null when the owner is away, per VRChat's docs).
-- Importer additions for SourceMovement (by name, so SourceMaps compiles without it): trigger_push ->
-  SourcePushTrigger, basevelocity/gravity boosters and trigger_gravity -> SourceBoostTrigger, water ->
-  layer 4 trigger boxes, ladders -> layer 22. Filtered ones stay markers. bhop_japan: 5 water volumes, its
-  2 pushes are filtered.
-- Tests: real Unity + ClientSim `run.sh vote` 44/44 (voting flow, owner changes with ClientSim's simulated
-  remote players, practice runs and saved bests); `run.sh 90` (movement) all passed; `run.sh map` bhop_japan
-  40/40 + 55/55; `Dev/Tests/Bsp` 24/24 (incl. booster/push parsing); `Dev/Tests/Sim` all passed.
-  Not testable here: two real VRChat clients at once (ClientSim is one client).
+### Step 3: map rotation
 
-### Step 4: the sample world with all 5 maps (2026-10-10)
-- Maps from GameBanana (`Dev/Tests/Bsp/get_maps.sh`, zip/rar/7z): bhop_japan, bhop_kitsune, bhop_eazy_v2,
-  bhop_arcane_v1, bhop_badges. `Dev/Tests/Bsp` 56/56 on all five (arcane's 91 `*_stop` destinations sit inside
-  player clips and kitsune has 7 teleports without a target: both map design, counted separately).
-- Timer zones: not in the BSPs, but the zone files CS:S bhop servers use exist for all five
-  ([srcwr/zones-cstrike](https://github.com/srcwr/zones-cstrike), downloaded at import, not stored here):
-  start/end per track, stages as checkpoints, bonus tracks as their own courses.
-- New: static props from the game lump (japan 89 solid of 248, arcane 114 of 288), `SourceMapVisuals` (runs uSource,
-  removes tool surfaces Source doesn't draw, solid props get colliders, saves meshes), `SourceMapZones`,
-  SourceTimer `CourseBoards` (records wall in the lobby; boards can't live in switched-off maps),
-  `Build Sample World` (maps 700 m apart, thumbnails rendered from the spawn), respawn height below the deepest map.
-- Real Unity + ClientSim + SourceMovement (`run.sh sample`): 34/35. Per map: forced from the board, player stands
-  at the spawn, visuals without tool surfaces, sampled teleports (japan 15/15, badges 14/14, kitsune 10/10,
-  eazy 7/7, arcane 3/4), start -> end run timed onto the map's saved board. The arcane miss: the player falls
-  through a huge (54 x 88 x 47 m) out-of-bounds teleport without it firing; single-map arcane test: stand 185/185,
-  teleports 20/27 tested (118 not reachable by the test's drop-in probe). Not fully explained yet.
-- Known gaps: stock CS:S textures/models aren't available here (white surfaces, missing stock props); no lighting
-  is imported (indoor maps are dark until lighting is baked; uSource can read the maps' lightmaps, untried).
+Done 2026-10-10.
 
-### Step 5: lighting, bhop/surf runs, final checks (2026-10-10)
-- **Lighting: the maps' own Source lightmaps, nothing to bake.** uSource can read them (`ParseLightmaps`) but only into
-  Unity's runtime lightmap list, which isn't saved with the scene (so VRChat would never see it). `SourceMapVisuals` now
-  saves each lightmap as a texture and gives each lit surface a material with `SourceMaps/Lightmapped` (texture x
-  lightmap x 2, Source's overbright; unlit like CS:S world brushes). arcane: 329 surfaces lit, eazy_v2: 484. Props keep
-  Unity lighting (Source lights them per vertex). Screenshot in the guide.
-- **Collision: faces where brushes touch are dropped** (`BspGeometry.AddSolidBrushes`). Source collides with whole
-  brushes and never meets them; in a triangle mesh their edges sit in the surface (a ramp made of brushes side by side)
-  and stopped a surfer on bhop_eazy_v2. Also fewer triangles (kitsune 70.9k -> 41.9k brush triangles).
-- **Bhop and surf runs** in `run.sh map` (real Unity + ClientSim + SourceMovement): from up to 12 destinations, the
-  longest open floor, W for prespeed, then jump + air strafe (A/D while turning); surf on the map's largest slopes too
-  steep to stand on, holding into the ramp. A stall = speed falls > 100 u/s in a frame with no vertical wall ahead.
-  Two seam stalls (a seam across a ramp, a seam along a wall) were SourceMovement's; the movement session fixed both.
-- **The open arcane miss, explained:** trigger_teleport 423175 (out of bounds, to `bonus_stop`) shares its box with a
-  trigger_push straight up at 1250 u/s (hammerid 422061): an updraft, so a player there is pushed up and never falls
-  into the teleport's bottom slab, as in Source. Map design, not a bug. Also found: the test's drop point could start
-  inside a solid block (hollow collision mesh, no face to overlap); it now checks that (`InsideSolid`), tries the 3
-  best spots per teleport and follows relay teleports at the destination.
-- **Results (real Unity 2022.3.22f1 + ClientSim + SourceMovement):** `run.sh sample` all passed (5 maps, lightmaps,
-  sampled teleports 89/89). `run.sh map` per map: stand at every destination/spawn (japan 40/40, eazy 46/46, badges
-  55/55, kitsune 20/20, arcane 185/185); teleports japan 55/55, eazy 44/44, badges 134/134, kitsune 28/29, arcane 22/25;
-  bhop runs 0 stalls on 4 maps (top speeds 300-530 u/s), surf runs 0 stalls on all. `Dev/Tests/Bsp` 57/57 (incl. the trimmed
-  ramp seam), `Dev/Tests/Sim` all passed, `run.sh 90` all passed, UdonSharp compile OK.
-- **Still open:** arcane's 3 remaining misses are huge out-of-bounds `*_stop` volumes (326264, 326616, 326929) where
-  every drop spot the test finds ends up pushed out of geometry (was 7 misses before this step). kitsune: one tiny
-  trigger (0.6 m) the falling player slides off; one grounded stop at a 2 u diagonal lip near `restartred`, reported to
-  the movement session (step-up). Faint lines can show where two lightmapped faces meet (lightmap atlas edges).
+| | |
+|---|---|
+| Built | `SourceMapManager`, `SourceMapScreen`, `SourceMapButton`, `SourceMapInfo`; Add To Rotation, Create Lobby, Build Test Scene; practice courses with saved boards (SourceTimer) |
+| Owner changes | All vote state synced; leavers' votes dropped; admin = instance owner, else master |
+| Importer | `trigger_push`, basevelocity/gravity boosters, `trigger_gravity`, water (layer 4), ladders (layer 22) |
+| Results | `run.sh vote` 44/44; movement suite all passed; bhop_japan 40/40 + 55/55 |
 
+### Step 4: sample world
 
-### Step 6: bhop blocks and prop lighting (2026-10-10, asked by the user after step 5)
-- **Bhop blocks, as on CS:S servers** (`SourceMapBlocks`, one "Bhop Blocks" object per map with an **On** switch):
-  - Name blocks (japan, arcane, badges): a `trigger_multiple` on the block renames the player ("!activator AddOutput
-    targetname activator" at 0.09 s, "default" at 0.1 s, refiring every `wait`), and a teleport filtered on that name
-    (`filter_activator_name`) covers the block. `SourceMapNameTrigger` + filtered `SourceMapTeleport`; also
-    `filter_activator_class` (japan's beginner mode) and name-gated pushes/boosters (badges: 58 brushes).
-  - Door blocks (eazy_v2, 259): `func_door` with "touch opens" sinks 9 units at 20 u/s and returns after 0.5 s
-    (`SourceMapDoor`, collider and visuals move; local per player). Over a teleport it stops being solid when fully
-    open, so the player drops into it (in CS:S they sink into it).
-  - Touches of name triggers and filtered teleports are tested with Source's player box (32 x 32 x 72), not with
-    VRChat's capsule: the capsule floats about 6 units above the floor (2 hover + skin), which is why all triggers are
-    raised 8 units, and with capsule events the timing went wrong (a player who jumped off was still "inside").
-- **Prop lighting like CS:S lights models**: the ambient cube VRAD stored in the prop's leaf (LUMP_LEAF_AMBIENT_*), plus
-  the 4 strongest world lights that reach the prop (ray against the collision; the sun only if the ray ends in a sky
-  brush), N.L per vertex, baked into vertex colours (`SourceMaps/Prop`); alpha-tested foliage lit from both sides.
-  Ambient values are c * 2^exp (not / 255 as lightmaps are). japan: 148 of 168 prop renderers (the rest are unlit).
-- **Results (real Unity + ClientSim + SourceMovement, `run.sh map`)**, bhop blocks (stand 1 s / bounce with jump held /
-  blocks off): japan 6/6, 5/5, 6/6; badges 6/6, 6/6, 6/6; arcane 4/4, 3/3, 4/4; eazy doors 6/6, -, 6/6. Bounce is only
-  tested on blocks whose teleport reaches at most 20 units above them (arcane has 65-unit ones that catch bouncers
-  in CS:S too). badges and eazy_v2 all passed; `Dev/Tests/Bsp` 74/74.
-- Collision trim fix: touching faces are now matched by the BSP's exact plane (the clipped corners can be ~0.1 unit off,
-  e.g. 6847.913 vs 6848, which kept some wall joins' hidden end faces). With the movement session's e069413 the arcane
-  wall-slide stalls are gone; the runs ignore speed changes inside pushes/boosters (arcane's launch pads).
-- Still open: arcane's 3 out-of-bounds teleports and one japan/kitsune teleport per run in the drop-in test (the probe,
-  not the triggers); kitsune's 2-unit diagonal lip (movement session).
+2026-10-10.
 
-### Step 7: breakable glass (2026-10-10, asked by the user; done by the movement session)
-- **Why**: bhop_eazy_v2's red lanes 3 and 4 have glass doors (`func_breakable`, glass, health 1) with player clip
-  either side, z 72..168. In CS:S you knife or shoot the glass; imported as a plain solid, nobody could get through.
-- **Rule** (`BspMechanics.BreaksOnApproach`, one CS:S knife hit): `func_breakable` with a brush model, not "Only
-  Break on Trigger" (spawnflag 1), not unbreakable glass (material 7), 0 < health <= 15, minhealthdmg <= 15, no prop
-  data; `func_breakable_surf` always (window glass breaks on any hit); neither with a damage filter. The importer
-  only does upright panes (flat ones you could land on stay solid). eazy_v2: 4 of 6 (red lane 3, lane 4 twice, the
-  bonus door); `glass_to_m249` (trigger only, health 0, broken by a shot button) and the health-170 plate under a
-  spawn stay solid; arcane's wood crate (health 100) too.
-- **How** (user's choice): `SourceMapBreakable` on the glass's "Break" child. Its trigger box (256 u round the glass)
-  only switches the check on; every frame there it breaks the glass once CS:S's player box is within knife reach
-  (48 u) beside it, plus how far the player gets in a physics step and a frame (VRChat's player trails the hull by up
-  to a step: a capsule trigger alone let the hull hit the glass first above ~1000 u/s). Breaking switches off the
-  collider and the uSource model (linked like door visuals). Local per player; nothing resets it, so it stays broken
-  until you leave the instance (map rotation only switches maps off and on). The doors need Hull Only: VRChat's 84 u
-  capsule doesn't fit through them over the (raised) teleport strip under the glass.
-- **Results**: `Dev/Tests/Bsp` 87/87 (13 new); U# compile OK. Real Unity + ClientSim + SourceMovement (`run.sh map`
-  eazy_v2; `SM_ONLY=glass` for just this), flying at each pane with Hull Only: 4/4 break with the hull 50-58 u away at
-  400 u/s and 39-69 u at 1500 u/s, flown through without losing speed, 4/4 still broken after the map is switched off
-  and on, the 2 others stay solid; the rest of eazy's map test still passes (stand 46/46, teleports 44/44, blocks,
-  runs). Route build with uSource: 4/4 glass models linked (each model centred on its collider, glass textures).
-  `run.sh sample` (uSource visuals, the real lobby): eazy's 4/4 glass linked, beside one it breaks and its model
-  goes, still broken after Back to lobby and Rejoin map; 44/46 (the 2 known drop-probe teleport misses). Vote 44/44.
-  A multi-lens review (12 findings, each checked by a skeptic) led to the hull-based check, the surf, damage filter
-  and prop data rules, and upright panes only.
-- Still open: the route bot's plan treats the glass as a wall, so it doesn't get through red lanes 3 and 4 yet.
+| | |
+|---|---|
+| Built | Static props, `SourceMapVisuals`, `SourceMapZones` (zones-cstrike), course boards in the lobby, Build Sample World |
+| Results | `Dev/Tests/Bsp` 56/56; `run.sh sample` 34/35 (one arcane out-of-bounds teleport, explained in step 5) |
 
-### Step 8: bhop_monster_jam, map sounds and skies, a recorded run (2026-10-11, asked by the user overnight)
-- **Map**: bhop_monster_jam (Aoki, GameBanana 125558) added to `get_maps.sh`: 2706 brushes, 131 displacements, 62
-  teleports, 454 func_door bhop blocks, 25 sounds (its music and voice clips are in its pakfile), sky `sky_day01_01`
-  (HL2). Stage order from Carmac's 2:50 run (the user's reference video, `Dev/docs/media/Monster jam-compressed.mp4`):
-  c (dirt yards) > r (white corridor) > ch (castle trench) > e (Egypt, pyramid) > i/g/f (corridors) > en (orange rooms)
-  > o (rooftops, pier, a long surf over water) > d (caves) > b (grass, black blocks) > fl (forest, ladder climb) >
-  the tower push > s (the moon, 0.17 gravity) > end.
-- **Sounds** (`SourceMapSounds`, run by the visuals import): every `ambient_generic` is an AudioSource on its marker,
-  heard within its radius (linear fade), so each area has its own music; loops when the wav has a loop point (as
-  Source); start silent unless a logic_auto plays it at spawn; play everywhere = 2D; volume/pitch from the entity;
-  triggers with PlaySound/StopSound outputs get `SourceMapSoundTrigger` (plays for the local player walking in).
-  Files from the map's pakfile, the CS:S folder or its VPKs (uSource's providers, opened again after its LoadMap).
-- **Skies**: the map's `skyname` saved as `<map>_sky.mat` (6 faces from uSource's VTF reader, flipped upright); on
-  `SourceMapInfo.skybox`; `SourceMapManager` shows it while you're in that map, the world's sky in the lobby. HL2 skies
-  come from the CS:S folder's `hl2`.
-- **Fixes on the way**: old-style leaf ambient light (no index lumps, one cube per leaf: monster_jam's props had none);
-  uSource reused materials it had saved without their texture (an import before the HL2 folder was there): those are
-  dropped before an import so they're rebuilt, and textures only in uSource's memory are saved with the map. White
-  dirt and grass on monster_jam's displacements came from this.
-- **Route bot on other maps** (`RouteRunner` with a route file, see the handoff): per-point heights, a floor scan that
-  sees under roofs, teleports touched like the raised triggers, real gravity, pushes count as progress, pad sections.
-  `Dev/Tools/MapView` draws stages, finds paths over safe floors and chains bhop blocks into route lines.
-- **Results** (real Unity + ClientSim): `Dev/Tests/Bsp` 98/98 (monster_jam added); Sim all passed; U# compile OK;
-  vote all passed; `run.sh map` eazy all passed, monster_jam: teleports 50/50, blocks, bhop runs pass, stand passes with
-  the push launcher (s1) skipped, one pyramid surf stalls (below); `SM_CSS=... run.sh sample` 63/65 (the 2 known
-  drop-probe teleports): every map's sky shown in it, sounds play (monster_jam: 25, its 10 looping ones from the start,
-  walking into a trigger plays its sound). eazy's built-in route: sections 1-4 done, red lanes (5) still open as before.
-- **Route bot on monster_jam** (each stage started at its teleport destination): r, o (2), b (3) and the tower push run
-  to their exit; c runs from the start zone past c75 (first fall before c8), then from c8 falls before c10; the others fall early or stop: ch and
-  o (3) are surfs (not done by the bot), e (Egypt) runs its block chain round the pyramid to its last segment and then
-  stops at the exit wall, en stops at its first drop (en2), oa/d/b (1)/b (2) fall on their first gaps, fl needs
-  its ladder climb, s (the moon) falls early. Video: `Dev/docs/media/bhop_monster_jam_bot.mp4` (2:38, the stages that
-  run, in Carmac's order, the map's music mixed in at the importer's volumes; the recorder has no audio).
-- Still open: one of the map test's pyramid surfs (Egypt) loses speed with nothing ahead and moving away from both
-  faces (the other 3 surf fine); the bot stages above; the route bot doesn't press buttons (monster_jam's are side
-  events: a monster truck show, explosions, voice clips).
+### Step 5: lightmaps, runs, final checks
+
+2026-10-10.
+
+| | |
+|---|---|
+| Lighting | The maps' own lightmaps saved as textures on `SourceMaps/Lightmapped` (uSource's runtime list isn't saved with the scene) |
+| Collision | Faces where brushes touch dropped (they stopped surfers) |
+| Runs | Bhop and surf runs in `run.sh map`: 0 stalls on every map after two movement fixes |
+| Arcane miss | A teleport sharing its box with an updraft push: map design, not a bug |
+| Results | `run.sh sample` all passed (teleports 89/89); stand japan 40/40, eazy 46/46, badges 55/55, kitsune 20/20, arcane 185/185 |
+
+### Step 6: bhop blocks, prop lighting
+
+2026-10-10.
+
+| | |
+|---|---|
+| Name blocks | `SourceMapNameTrigger` renames the player; a filtered teleport catches who stays (japan, arcane, badges) |
+| Door blocks | `SourceMapDoor`: `func_door` sinks 9 units and returns; over a teleport it drops you in (eazy_v2) |
+| Touches | Tested with Source's player box, not VRChat's capsule (timing) |
+| Prop lighting | Ambient cube + 4 strongest visible lights, baked into vertex colours (`SourceMaps/Prop`) |
+| Results | Blocks (stand / bounce / off) pass on japan, badges, arcane, eazy; `Dev/Tests/Bsp` 74/74 |
+
+### Step 7: breakable glass
+
+2026-10-10, by the movement session.
+
+| | |
+|---|---|
+| Why | eazy_v2's red lanes 3 and 4 have glass doors you knife in CS:S |
+| Rule | `func_breakable` with 0 < health ≤ 15 (one knife hit), not trigger-only or unbreakable; `func_breakable_surf` always; upright panes only |
+| How | `SourceMapBreakable`: breaks when CS:S's box is within knife reach (48 units), locally, until you leave |
+| Results | `Dev/Tests/Bsp` 87/87; 4/4 panes break at 400 and 1500 u/s and stay broken; sample 44/46 |
+
+### Step 8: bhop_monster_jam, sounds, skies, route bot
+
+2026-10-11 (overnight request).
+
+| | |
+|---|---|
+| Map | bhop_monster_jam (Aoki, GameBanana 125558): 2,706 brushes, 131 displacements, 62 teleports, 454 door blocks, 25 sounds, sky `sky_day01_01` (HL2) |
+| Stages | Carmac's 2:50 run (`Dev/docs/media/Monster jam-compressed.mp4`): c > r > ch > e > i/g/f > en > o > d > b > fl > tower > s (moon) > end |
+| Sounds | `SourceMapSounds`: `ambient_generic` → AudioSource within its radius; loops with a cue chunk; triggers play them |
+| Skies | `<map>_sky.mat` on `SourceMapInfo`, shown in that map |
+| Route bot | Route files, floor scan under roofs, real gravity, push progress; `Dev/Tools/MapView` |
+| Results | `Dev/Tests/Bsp` 98/98; monster_jam map test: teleports 50/50, blocks, bhop runs pass, one pyramid surf stalls; sample 63/65 |
+| Bot | r, o (2), b (3), tower done; c to c8; e to its last jump; others fall early. Video `Dev/docs/media/bhop_monster_jam_bot.mp4` (2:38) |
+
+**After step 8** (same day): lighting like CS:S (detail/translucent surfaces lightmapped, water shader, sky faces
+hiding other stages, no Unity shadows; 702 lit surfaces on monster_jam, was 383), triggers widened to the CS:S hull,
+lobby and map panels as UI menus (vote test 47/47). Open items: [handoff](HANDOFF_SOURCEMAPS.md#5-open-issues).
+
+## 6. Context for a new session
+
+| Topic | |
+|---|---|
+| Repo | `bunnnyy/vrc-claude`, branch `claude/vrchat-source-movement-mn0xl0`; read the [README](../../README.md) first |
+| Unity | 2022.3.22f1 from `https://download.unity3d.com/download_unity/887be4894c44/LinuxEditorInstaller/Unity.tar.xz` into `/opt/unity`; run with `xvfb-run -a Unity -batchmode ...` |
+| Licence | `Editor/Data/Resources/Licensing/Client/Unity.Licensing.Client --activate-ulf --username ... --password ...` (env `UNITY_EMAIL`/`UNITY_PASSWORD`, never printed); `--return-ulf` at the end. The editor's own `-username/-password` don't activate Personal licences |
+| vpm | `dotnet tool install --global vrchat.vpm.cli`, `vpm install templates`, `vpm new <name> World -p <dir>`, `vpm add package com.vrchat.worlds@3.10.5 -p <project>` |
+| ClientSim | Needs its startup menu accepted and the Input System told to ignore focus (`PlayTestRunner.cs`) |
+| Unity lessons | PhysX treats an exactly touching box as starting inside; VRChat keeps velocity through `TeleportTo`; new U# program assets need `ScriptVersion = CurrentVersion`; UdonSharp limits: [agent-skills-vrc-udon](https://github.com/niaka3dayo/agent-skills-vrc-udon) |

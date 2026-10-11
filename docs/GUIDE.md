@@ -1,242 +1,238 @@
 # Setup guide: a CS:S bhop world in VRChat
 
-Step by step, from nothing to an uploaded VRChat world with Source movement, a timer and a lobby where
-players vote between imported CS:S bhop maps. Kept up to date as features are finished.
+From an empty project to an uploaded VRChat world with Source movement, a run timer and a lobby where players vote
+between imported CS:S bhop maps. Every setting is in the [settings reference](SETTINGS.md); back to the
+[README](../README.md).
 
-> **Status (2026-10-11).** Done and tested: movement, timer, map import (visuals with uSource and the maps' own
-> lightmaps, sounds and music, skies, collision, prop collision, markers, teleports, boosters, water, ladders, breakable glass), bhop and surf runs on every map, timer zones from zones-cstrike, map rotation (vote, rock the
-> vote, time limit, owner controls), lobby practice courses, saved records per map. The quickest way to a full world is
-> the **sample world builder** (step 5b). Pictures come from Unity itself; editor windows can't be screenshotted on the
-> build machine, so menus are described in words.
+> [!NOTE]
+> **Status (2026-10-11).** Done and tested in Unity with ClientSim: movement, timer, map import (collision, visuals,
+> lightmaps, water, sky, sounds, bhop blocks, breakable glass, boosters, ladders), timer zones, map rotation with
+> UI menus, practice courses, saved records. Pictures are rendered by Unity; menus are described in words.
+
+## Contents
+
+| Part | Steps |
+|---|---|
+| **A. Set up the project** | [1. What you need](#1-what-you-need) · [2. Create the project](#2-create-the-project) · [3. Add the packages](#3-add-the-packages) · [4. Install uSource](#4-install-usource) · [5. Get the maps](#5-get-the-maps) |
+| **B. Build the world** | [6. Quick way: the sample world](#6-quick-way-the-sample-world) · [7. Manual way: one map at a time](#7-manual-way-one-map-at-a-time) · [8. Create the lobby](#8-create-the-lobby) · [9. Movement and timer](#9-movement-and-timer) |
+| **C. Test and upload** | [10. Test in Unity](#10-test-in-unity) · [11. Upload](#11-upload) |
+| **D. Reference** | [12. Playing it](#12-playing-it) · [13. What the import gives you](#13-what-the-import-gives-you) · [14. Troubleshooting](#14-troubleshooting) |
+
+---
+
+# A. Set up the project
 
 ## 1. What you need
 
-| | Why |
+| Item | Why |
 |---|---|
-| A Windows PC | VRChat's Creator Companion and world uploads are Windows-first |
-| A VRChat account that can upload worlds | Uploading needs the "New User" trust rank or higher |
-| [VRChat Creator Companion (VCC)](https://vrchat.com/home/download) | Creates the Unity project with the VRChat SDK |
-| Unity Hub + **Unity 2022.3.22f1** | The VCC tells you to install this exact version (it opens Unity Hub for you) |
-| **Counter-Strike: Source** (Steam) | The maps use CS:S's stock textures and models; the importer reads them from your game folder |
-| This repository | Download it as a zip from GitHub (green "Code" button > Download ZIP) |
-| [uSource](https://github.com/DeadZoneLuna/uSource) (DeadZoneLuna) | Converts the maps' visible geometry and textures (see step 4) |
+| Windows PC | The Creator Companion and world uploads are Windows-first |
+| VRChat account that can upload | Needs the "New User" trust rank or higher |
+| [VRChat Creator Companion](https://vrchat.com/home/download) | Creates the Unity project with the VRChat SDK |
+| Unity Hub + **Unity 2022.3.22f1** | The Creator Companion asks for this exact version |
+| **Counter-Strike: Source** (Steam) | The maps use its stock textures, models and sounds |
+| [This repository](https://github.com/bunnnyy/vrc-claude) | **Code > Download ZIP** |
+| [uSource](https://github.com/DeadZoneLuna/uSource) | Converts the maps' visible geometry and textures ([step 4](#4-install-usource)) |
 
-## 2. Create the world project
+## 2. Create the project
 
-1. Open the Creator Companion, **Projects > Create New Project**.
-2. Pick the **World** template (Udon, with UdonSharp and ClientSim), give it a name, **Create Project**.
-3. **Open Project**. Unity starts (first start takes a few minutes).
+1. Creator Companion: **Projects > Create New Project**.
+2. Pick the **World** template (Udon, UdonSharp, ClientSim), name it, **Create Project**.
+3. **Open Project** (the first start takes a few minutes).
 
-## 3. Add SourceMovement, SourceTimer and SourceMaps
+## 3. Add the packages
 
 1. Unzip this repository.
-2. Copy the folders `Assets/SourceMovement`, `Assets/SourceTimer` and `Assets/SourceMaps` **and the `.meta`
-   files next to them** into your project's `Assets` folder (drag them into Unity's Project window, or copy them
-   in Explorer while Unity is closed).
-3. Wait for Unity to compile. If it shows UdonSharp errors, use **VRChat SDK > Udon Sharp > Compile All UdonSharp
-   Programs** once.
-4. **Window > TextMeshPro > Import TMP Essential Resources** (or click **Import TMP Essentials** when Unity asks).
-   Without it every text on the boards is invisible. The lobby tool also starts this import if it's missing.
+2. Copy `Assets/SourceMovement`, `Assets/SourceTimer` and `Assets/SourceMaps` **with the `.meta` files next to them**
+   into your project's `Assets` (drag them into Unity's Project window).
+3. Wait for the compile. On UdonSharp errors: **VRChat SDK > Udon Sharp > Compile All UdonSharp Programs**.
+4. **Window > TextMeshPro > Import TMP Essential Resources** (the lobby tool also does this if it's missing).
 
-The three parts are independent: SourceMaps works without the other two, but you want all three for a bhop world.
+> [!WARNING]
+> Without TMP Essential Resources every text on the boards and menus is invisible.
 
-## 4. Install uSource (the map converter)
+## 4. Install uSource
 
-uSource turns a map's geometry and textures into Unity meshes and materials. We compared it with Shane-SDK's
-USource; uSource works with VRChat's render pipeline and lines up with our collision (79% of test rays within
-5 cm; the rest are invisible clip brushes and props). Details in [MAPVOTE_PLAN.md](../Dev/docs/MAPVOTE_PLAN.md), step 2.
+uSource turns a map's geometry and textures into Unity meshes and materials. It was picked over Shane-SDK's USource:
+it works with VRChat's render pipeline and lines up with the collision
+([comparison](../Dev/docs/MAPVOTE_PLAN.md#step-2-converter-comparison)).
 
-1. Download uSource from GitHub (Code > Download ZIP) and unzip it into `Assets/uSource` in your project.
-2. In Unity, select `Assets/uSource/uSource.asmdef` and tick **Allow 'unsafe' Code**, then **Apply**
-   (its model reader needs it).
-3. uSource doesn't state a license: use it for your own world and don't redistribute it.
+1. Download it (**Code > Download ZIP**) and unzip it into `Assets/uSource`.
+2. Select `Assets/uSource/uSource.asmdef`, tick **Allow 'unsafe' Code**, **Apply**.
+
+> [!IMPORTANT]
+> uSource states no licence: use it for your own world and don't redistribute it.
 
 ## 5. Get the maps
 
-Download the maps from GameBanana and unzip them (7-Zip opens .zip, .rar and .7z); you need the `.bsp` files.
-Put them all in one folder.
+Download from GameBanana, unzip (7-Zip opens .zip, .rar and .7z) and put the `.bsp` files in one folder.
 
-| Map | Author | GameBanana |
+| # | Map | Author | GameBanana |
+|---|---|---|---|
+| 1 | bhop_japan | Tony Montana | [mods/125304](https://gamebanana.com/mods/125304) |
+| 2 | bhop_kitsune | Ghost1447951 | [mods/126424](https://gamebanana.com/mods/126424) |
+| 3 | bhop_eazy_v2 | 31K4L | [mods/124915](https://gamebanana.com/mods/124915) |
+| 4 | bhop_arcane_v1 | Panzerhandschuh | [mods/124461](https://gamebanana.com/mods/124461) |
+| 5 | bhop_badges | Badges & fission | [mods/124524](https://gamebanana.com/mods/124524) |
+| 6 | bhop_monster_jam | Aoki | [mods/125558](https://gamebanana.com/mods/125558) |
+
+> [!IMPORTANT]
+> The maps belong to their authors. For a **public** world, ask each author first and credit them (the vote menu
+> shows the author).
+
+---
+
+# B. Build the world
+
+## 6. Quick way: the sample world
+
+1. **Tools > Source Maps > Build Sample World...**
+2. Pick the folder with the `.bsp` files.
+3. Pick your **Counter-Strike Source** folder, the one with `cstrike` and `hl2` in it, e.g.
+   `C:\Program Files (x86)\Steam\steamapps\common\Counter-Strike Source` (asked once).
+4. Continue at [step 9](#9-movement-and-timer).
+
+It does steps 7 and 8 for every map: visuals, collision, markers, timer zones, a thumbnail from the spawn, the lobby
+with practice courses and a records wall, saved as `Assets/SourceMapsSample.unity`.
+
+![bhop_eazy_v2 in the sample world, from its spawn](images/sample_bhop_eazy_v2.png)
+
+## 7. Manual way: one map at a time
+
+| # | Do | Result |
 |---|---|---|
-| bhop_japan | Tony Montana | [mods/125304](https://gamebanana.com/mods/125304) |
-| bhop_kitsune | Ghost1447951 | [mods/126424](https://gamebanana.com/mods/126424) |
-| bhop_eazy_v2 | 31K4L | [mods/124915](https://gamebanana.com/mods/124915) |
-| bhop_arcane_v1 | Panzerhandschuh | [mods/124461](https://gamebanana.com/mods/124461) |
-| bhop_badges | Badges & fission | [mods/124524](https://gamebanana.com/mods/124524) |
+| 1 | **Tools > Source Maps > Import BSP...**, pick the `.bsp` | An object named after the map with collision, entity markers and working mechanics ([step 13](#13-what-the-import-gives-you)) |
+| 2 | Move the map's object to a free spot | Each map needs its own place (up to ~620 m across; the sample world uses 700 m apart along X). Do this before visuals and zones |
+| 3 | **Visuals**: easiest through the sample builder ([step 6](#6-quick-way-the-sample-world)). By hand: uSource's own window with **Unit scale 0.01905**, then drag its object under the map's | Builder: geometry, textures, lightmaps, water, sky, sounds. By hand: uSource's geometry and textures only |
+| 4 | Select the map, **Tools > Source Maps > Import Timer Zones (srcwr) For Selected Map** | Start, end, stages as checkpoints and bonus tracks from [zones-cstrike](https://github.com/srcwr/zones-cstrike) |
+| 5 | Select the map, **Tools > Source Maps > Add Selected Map To Rotation** | **Source Map Info** and a **Spawn** at the map's first player start |
+| 6 | On **Source Map Info**: fill in **Author**, drag a **Thumbnail**; check the **Spawn** child | The vote card's credit and picture; where players arrive |
 
-The maps belong to their authors. For a **public** world, ask each author for permission first and credit them
-(the vote screen shows the author's name).
+> [!TIP]
+> No zones on zones-cstrike for your map? Add a Box Collider (Is Trigger) + **Timer Zone**, type Start/End. Name the
+> start zone "Start &lt;map name&gt;" so it gets boards.
 
-### 5b. The quick way: build the sample world
-
-**Tools > Source Maps > Build Sample World...**, pick the folder with the `.bsp` files, then your
-**Counter-Strike Source** folder (e.g. `C:\Program Files (x86)\Steam\steamapps\common\Counter-Strike Source`,
-the one with `cstrike` and `hl2` in it; asked once). It does steps 6-8 for every map in the folder: visuals,
-collision, markers, timer zones, a thumbnail from the spawn, the lobby with practice courses and a records wall, and
-saves the scene as `Assets/SourceMapsSample.unity`. Then continue at step 10. Steps 6-8 are for adding maps one by one.
-
-![bhop_eazy_v2 in the sample world, from its spawn (its textures are packed in the map)](images/sample_bhop_eazy_v2.png)
-
-**Lighting:** nothing to bake. The importer uses each map's own Source lightmaps (the light the mapper compiled into
-the BSP): every map surface gets a material with the small `SourceMaps/Lightmapped` shader (texture x lightmap, like
-CS:S), and the lightmaps are saved as textures in `Assets/SourceMapsImported/<map>/Lightmaps`, so they are part of the
-uploaded world. Surfaces with a detail texture and see-through ones (decals, tree cards) get the lightmaps too.
-Glowing surfaces keep uSource's materials. Like CS:S, the map has no real-time shadows: its renderers don't cast or
-get Unity's (the shadows are the ones in the lightmaps). **Water** gets the small `SourceMaps/Water` shader: the water's
-own colour (`$fogcolor`) with the sky reflected at low angles. The map's **sky faces** (the `toolsskybox` walls round
-each stage) draw the sky and hide whatever is behind them, so other stages don't show through the sky, as in CS:S.
-Static props (trees, crates...) are lit like CS:S lights them: the map's ambient
-light at the prop plus the strongest lights that reach it (the sun only where the sky is visible), baked into the
-model's vertex colours (`SourceMaps/Prop` shader). You may see a faint line where two lit faces meet (edges of the lightmap
-atlas).
-
-![bhop_arcane_v1's start room in the sample world, lit by its own lightmaps (it was black before)](images/sample_bhop_arcane_v1_lit.png)
-
-![bhop_japan: left Unity's default light, right the map's own light on the world and on the props (tree, bushes)](images/props_bhop_japan.png)
-
-![bhop_eazy_v2: left Unity's default light (before), right the map's own lightmaps (white walls: stock CS:S texture missing on the build machine)](images/lightmaps_bhop_eazy_v2.png)
-
-## 6. Import a map (one by one)
-
-1. **Tools > Source Maps > Import BSP...** and pick the `.bsp`. You get an object named after the map with:
-   - **Collision**: every solid surface, including invisible walls (clip brushes), without the hidden faces where
-     two brushes touch (like Source; those would stop surfers).
-   - **Entities**: one marker per map entity (triggers, buttons, ...) keeping all its settings.
-   - Working **fall teleports**, **boosters/push triggers**, **water** and **ladders** (for SourceMovement).
-   - **Bhop blocks**, like on CS:S servers: stand on a block too long and you're sent back; a clean bhop is fine.
-     Both kinds are imported: blocks that rename you when touched plus a teleport that only takes that name
-     (bhop_japan, arcane, badges), and `func_door` blocks that sink when touched (bhop_eazy_v2). To make every block a
-     plain platform, select the map's **Bhop Blocks** object and untick **On**. Each player's blocks are their own
-     (someone else standing on a block doesn't move it for you), as on most bhop servers.
-   - **Breakable glass**: glass that one knife hit breaks in CS:S (upright `func_breakable` with 15 health or less,
-     like the glass doors in bhop_eazy_v2's red lanes 3 and 4 and its bonus, and `func_breakable_surf` windows)
-     breaks when you come within knife reach (48 units), also at speed, so you hop straight through. VRChat has no
-     knife, so coming close counts as the hit. It breaks only for you and stays broken until you leave the instance
-     (in CS:S it's gone for everyone until the next round). Breakables with more health, flat ones (you could stand
-     on them) and ones only an output breaks stay solid. The doors need the map in SourceMovement's **Hull Only**
-     (Create Lobby does that): VRChat's own capsule is too tall to fit through them.
-2. Move the map's object to a free spot: every map needs its own place in the world (maps are up to ~620 m across;
-   the sample world puts them 700 m apart along X). Do this before adding visuals and zones.
-3. **Visuals**: with uSource installed, the sample world builder imports them automatically
-   (`SourceMapVisuals.Import`, using your CS:S folder): it removes the tool surfaces Source never draws, gives solid
-   props collision and saves the meshes. It also brings the map's **sounds and music** and its **sky**:
-   - Every `ambient_generic` becomes an **Audio Source** on its marker, heard within the radius the mapper gave it, so
-     areas have their own music (bhop_monster_jam has a song per area). As in CS:S: a sound loops if its file has a
-     loop point, "Start Silent" ones wait for a trigger (walking into a `trigger_multiple` that plays them, for you
-     only), "Play everywhere" ones are heard everywhere. The files come from the map itself or your CS:S folder
-     (`Assets/SourceMapsImported/<map>/Sounds`).
-   - The map's **sky** (its `skyname`) is saved as `<map>_sky.mat` and set on **Source Map Info > Skybox**: you see it
-     while you're in that map, and the world's own sky in the lobby. Skies from Half-Life 2 (e.g. `sky_day01_01`)
-     come from the `hl2` folder next to `cstrike`, so pick the folder that has both. Doing it by hand: uSource's window with **Unit scale 0.01905**, then drag
-   its map object under the map's object.
-
-![bhop_japan converted with uSource (white: stock textures missing on the build machine, which has no CS:S)](images/usource_bhop_japan.png)
-
-4. **Timer zones**: select the map object, **Tools > Source Maps > Import Timer Zones (srcwr) For Selected Map**.
-   It downloads the zones CS:S bhop servers use for that map ([zones-cstrike](https://github.com/srcwr/zones-cstrike)):
-   start, end, stages as checkpoints, and bonus tracks as separate courses. For a map without zones there, add
-   TimerZone boxes by hand (a Box Collider set to Is Trigger + Timer Zone, type Start/End; name the start zone
-   "Start <map name>" so it gets boards).
-
-## 7. Add the map to the rotation
-
-1. Select the map object, **Tools > Source Maps > Add Selected Map To Rotation**. This adds **Source Map Info**
-   and a **Spawn** at the map's first player start.
-2. On **Source Map Info**, fill in **Author** and drag a **Thumbnail** image (the sample world builder renders one
-   from the spawn; drag your own over it to replace it). **Time Limit Minutes** overrides the lobby's setting for this map (0 = use the lobby's).
-3. Check the **Spawn** child: it's where players arrive. Move/rotate it if needed.
+![bhop_japan converted with uSource (white: stock textures were missing on the build machine)](images/usource_bhop_japan.png)
 
 ## 8. Create the lobby
 
-**Tools > Source Maps > Create Lobby** builds the lobby at the scene origin: a floor, the spawn, the vote board,
-owner controls, a small panel next to each map's spawn, and two **practice courses** beside the lobby (a short
-bhop lane on one side, a small surf ramp on the other, each with its own legit and auto-bhop boards). It uses every
-map added in step 7 and moves the VRC World spawn into the lobby. Run it again whenever you add a map (it replaces
-the old lobby). Add the SourceMovement prefab before you run it, so the practice boards split auto and legit bhop.
+**Tools > Source Maps > Create Lobby** builds it at the scene origin, using every map from step 7. Run it again
+whenever you add a map (it replaces the old lobby).
 
-The vote board and the map panels are UI menus: point at them and click (VRChat's laser in VR, the mouse on
-desktop). The board shows a card per map (thumbnail, name, author, votes; your vote has a blue bar), the owner
-controls in amber at the bottom and **Rejoin map**. A world built before this has cube buttons: run Create Lobby
-again to get the menus.
+| Part | What it is |
+|---|---|
+| Vote menu | One card per map (thumbnail, name, author, votes; your vote has a blue bar), owner controls in amber, **Rejoin map** |
+| Map panels | A small menu next to each map's spawn: time left, **Rock the vote**, **Back to lobby**, owner controls |
+| Practice courses | A short bhop lane and a small surf ramp, each with legit and auto-bhop boards |
+| Records wall | A legit and an auto-bhop board for every course with a "Start &lt;course&gt;" zone |
+| World spawn | Moved into the lobby; the respawn height is lowered below the deepest map |
 
-![The vote board during a vote (test maps with plain colour thumbnails)](images/lobby_vote.png)
+The menus are UI: point and click (VRChat's laser in VR, the mouse on desktop). Only one map is active at a time:
+everyone plays the winner, **Back to lobby** leaves it, **Rejoin map** goes back in.
 
-![The panel next to a map's spawn](images/map_panel.png)
+> [!NOTE]
+> Worlds built before 2026-10-11 have cube buttons: run **Create Lobby** again to get the menus.
 
-Only one map is ever active: everyone plays the map that won the vote. The lobby is always open (**Back to lobby**),
-and **Rejoin map** takes you back in.
+![The vote menu during a vote (test maps with plain colour thumbnails)](images/lobby_vote.png)
 
-Settings on **SourceMapManager** (under "SourceMaps Lobby"):
+![The menu next to a map's spawn](images/map_panel.png)
+
+**SourceMapManager** settings (under "SourceMaps Lobby"):
 
 | Setting | Default | What it does |
 |---|---|---|
-| Choices | 5 | Maps offered per vote (2-6), picked at random from all maps; the map just played isn't offered |
-| Vote Seconds | 60 | Timer from the first vote to the result |
-| Rtv Ratio | 0.6 | Share of players needed to "rock the vote" (start a new vote) |
-| Time Limit Minutes | 30 | Then a new vote starts, with "extend" offered. **0 = rock the vote only** |
+| Choices | 5 | Maps offered per vote (2-6), random, never the map just played |
+| Vote Seconds | 60 | From the first vote to the result |
+| Rtv Ratio | 0.6 | Share of players needed to rock the vote |
+| Time Limit Minutes | 30 | Then a new vote with "extend" offered. **0 = rock the vote only** |
 | Extend Minutes | 15 | Added when "extend" wins or the owner presses "+ time" |
 
 ## 9. Movement and timer
 
-1. Drag `Assets/SourceMovement/SourceMovement.prefab` into the scene (Source movement, auto bhop button).
-2. The run timer (`SourceTimer.prefab`) is added by the lobby tool if it isn't in the scene yet.
-3. Records: Create Lobby puts a **records wall** behind the lobby spawn with a legit and an auto-bhop board for
-   every course (each map, each bonus track) that has a start zone named "Start <course>".
-4. **Hull Only** (on SourceMovement): Create Lobby fills it with every map in the rotation, so add the
-   SourceMovement prefab before you run Create Lobby (or run it again). VRChat's own player capsule is taller than
-   the CS:S hull (84 against 62 units, and it doesn't shrink when you duck), so without this it gets stuck under low
-   ceilings, in vents and in duck tunnels. While Source movement is on, those maps' colliders move to VRChat's
-   Walkthrough layer and only the Source hull collides with them. Other objects you add to the list by hand stay.
+| # | Do | Why |
+|---|---|---|
+| 1 | Drag `Assets/SourceMovement/SourceMovement.prefab` into the scene **before** Create Lobby (or run it again after) | Practice boards split auto and legit bhop, and **Hull Only** gets every map |
+| 2 | Nothing: Create Lobby adds `SourceTimer.prefab` if missing | The run timer |
+| 3 | Check **Hull Only** on SourceMovement lists your maps | VRChat's capsule (84 units, doesn't shrink when ducking) would snag under low ceilings and in vents; with this only the CS:S hull collides there |
 
-**Saved records.** Boards with a **Save Key** (the practice boards have one) keep each player's best with VRChat
-Persistence. VRChat saves data per player, not per world, so a board shows the bests of everyone who has been in
-the current instance, including their saved bests from earlier sessions. There is no world-wide all-time board.
+> [!NOTE]
+> **Saved records** (boards with a **Save Key**) use VRChat Persistence, which is per player: a board shows the bests
+> of everyone who has been in this instance, including their bests from earlier visits. There is no world-wide
+> all-time board.
+
+---
+
+# C. Test and upload
 
 ## 10. Test in Unity
 
-Press **Play**. ClientSim (VRChat's simulator) starts you in the lobby. Click a map's card to vote
-(point at it with the mouse and left-click; the timer starts with the first vote). In Play mode you are the instance
-owner, so you also see the owner buttons.
+1. Press **Play**: ClientSim starts you in the lobby, as instance owner (you see the owner controls).
+2. Point at a map card with the mouse and left-click to vote; the timer starts with the first vote.
 
 ## 11. Upload
 
 1. **VRChat SDK > Show Control Panel**, sign in, **Builder** tab.
 2. Platform: **Windows** only (the maps are too big for Quest/Android).
-3. **Build and Upload**. Big maps make big worlds: check the size it reports.
+3. **Build and Upload**, and check the world size it reports.
 
-## 12. Playing it in VRChat
+---
 
-- **Ducking**: hold **Left Ctrl**, or use VRChat's own crouch (**C** on desktop, or crouch in real life in VR).
-  As in CS:S, a crouch jump reaches ledges up to about 65 units, and ducked you fit through 46+ unit gaps.
-- **Practice courses** next to the lobby: walk onto the green start pad, run to the red end pad. Falling off sends
-  you back to the start; **G** (desktop) restarts. Times go on the boards beside the course.
-- **Lobby board**: click a map's card to vote (click another to change your vote). The vote ends 60 s after the first
-  vote; ties are broken at random. Everyone is teleported to the winner.
-- **In a map**: the panel next to the spawn shows the time left and the rock-the-vote count. **Rock the vote**
-  (press again to take it back): at 60% of players a new vote starts in the lobby. **Back to lobby** takes only
-  you back; **Rejoin map** on the lobby board takes you back in.
-- **Glass doors** (bhop_eazy_v2's red lanes): hop at the glass and it breaks as you get close, as if you'd knifed
-  it. Only for you; it stays broken until you leave the instance.
-- **Time limit**: when it runs out everyone goes to the lobby for a vote that also offers "Extend".
-- **Instance owner** (the master in public/group instances, which have no owner) sees amber buttons: **Lock / unlock
-  vote** (stops the timer; only Start ends it), **Start now**, **Force a map** (then press a map), **Everyone to
-  lobby**, and **+ time** in maps.
+# D. Reference
 
-## Settings reference
+## 12. Playing it
 
-Every setting you can change (movement cvars, layers, timer, boards, map rotation), with defaults and presets,
-is in **[SETTINGS.md](SETTINGS.md)**.
-
-## Troubleshooting
-
-| Problem | Fix |
+| Thing | How |
 |---|---|
-| Players fall through a map | Was **Import BSP** run (step 6b)? The visuals from uSource have no collision |
-| Map looks white/pink | Set the CS:S folder (the one with `cstrike` and `hl2`; HL2 textures, skies and sounds are in `hl2`), then import the map again: materials saved without their texture are rebuilt. Pink = shader problem, re-import |
-| No music / sounds in a map | The map's `ambient_generic` sounds become Audio Sources under its entities; files the map doesn't pack come from your CS:S folder. You hear an area's sound only within its radius, like in CS:S |
-| Black walls/floors or black water in a map | Imported before 2026-10-11: import the map again (detail-textured surfaces and water weren't lit) |
-| Another stage shows through the sky | Import the map again: the sky faces now hide what's behind them |
-| Sky is the world's default | The map's sky textures weren't found (an HL2 sky needs the CS:S folder's `hl2`); import again after setting the folder |
-| Two maps overlap | Move the map objects apart (step 6b.4) |
-| Can't click the menus | They need VRChat's pointer (laser in VR, mouse on desktop). In your own test project make sure the scripting defines include `UDON` (the VRChat SDK adds it when Unity opens): without it the buttons' events are removed |
-| Owner buttons don't show | Only the instance owner sees them; in public/group instances, the master |
+| Vote | Click a map card; click another to change. Ends 60 s after the first vote, ties at random, everyone goes to the winner |
+| Rock the vote | On the map's menu; click again to take it back. At 60% of players a new vote starts in the lobby |
+| Lobby / rejoin | **Back to lobby** takes only you; **Rejoin map** on the vote menu takes you back in |
+| Time limit | When it runs out everyone returns for a vote that also offers "Extend" |
+| Ducking | Hold **Left Ctrl** or VRChat's crouch (**C**, or crouch in VR). Crouch jumps reach 65-unit ledges; ducked you fit 46+ unit gaps |
+| Practice courses | Green start pad to red end pad; falling sends you back, **G** restarts |
+| Glass doors | bhop_eazy_v2's red lanes: the glass breaks as you get close (as if knifed), for you only, until you leave |
+| Owner controls | Instance owner (else the master): **Lock / unlock vote** (only Start ends it), **Start now**, **Force a map** (then click a map), **Everyone to lobby**, **+ time** in maps |
+
+## 13. What the import gives you
+
+**Gameplay** (Import BSP):
+
+| Feature | Like CS:S because |
+|---|---|
+| Collision | Every solid surface incl. invisible clip brushes; faces where two brushes touch are dropped (they'd stop surfers) |
+| Entity markers | One per map entity with all its settings |
+| Fall teleports, pushes, boosters, water, ladders | Working, for SourceMovement |
+| Bhop blocks | Stand on one too long and you're sent back. Name-filtered teleports (japan, arcane, badges) and sinking `func_door` blocks (eazy_v2, monster_jam). Per player. Untick **On** on the map's **Bhop Blocks** for plain platforms |
+| Breakable glass | Upright `func_breakable` (≤ 15 health) and `func_breakable_surf` break within knife reach (48 units), for you only, until you leave. Needs **Hull Only** |
+| Trigger reach | Triggers are widened so VRChat's thinner capsule touches them where CS:S's 32-unit box would |
+
+**Visuals** (uSource + `SourceMapVisuals`):
+
+| Feature | How |
+|---|---|
+| Lightmaps | The map's own Source lightmaps on `SourceMaps/Lightmapped` (texture × lightmap), saved in `Assets/SourceMapsImported/<map>/Lightmaps`. Nothing to bake |
+| Detail and see-through surfaces | Detail textures, decals and tree cards use the lightmaps too |
+| Shadows | Only the lightmaps' own: the map neither casts nor gets Unity's real-time shadows |
+| Props | Lit like CS:S lights models: ambient light at the prop plus the strongest lights reaching it (`SourceMaps/Prop`) |
+| Water | `SourceMaps/Water`: the water's own colour (`$fogcolor`) with the sky reflected at low angles |
+| Sky | The map's `skyname` as `<map>_sky.mat`, shown while you're in that map; the lobby keeps the world's sky |
+| Sky faces | The `toolsskybox` walls draw the sky and hide what's behind them, so other stages don't show through |
+| Sounds and music | Each `ambient_generic` is an Audio Source heard within its radius (areas have their own music); loops, start-silent and play-everywhere as in CS:S; triggers that play them work |
+
+![bhop_monster_jam at each stage start: lightmaps, sky faces, water](images/lighting_bhop_monster_jam.jpg)
+
+![bhop_japan: left Unity's default light, right the map's own light on the world and props](images/props_bhop_japan.png)
+
+## 14. Troubleshooting
+
+| # | Problem | Fix |
+|---|---|---|
+| 1 | Players fall through a map | Run **Import BSP** ([step 7.1](#7-manual-way-one-map-at-a-time)): uSource's visuals have no collision |
+| 2 | Map looks white | Set the CS:S folder (with `cstrike` and `hl2`) and import again: materials saved without textures are rebuilt |
+| 3 | Map looks pink | Shader problem: import the map again |
+| 4 | Black walls, floors or water | Imported before 2026-10-11: import the map again |
+| 5 | Another stage shows through the sky | Imported before 2026-10-11: import the map again |
+| 6 | Sky is the world's default | The sky's textures weren't found (HL2 skies need the `hl2` folder): import again |
+| 7 | No music or sounds | Sounds come from the map or your CS:S folder; you hear an area's sound only within its radius |
+| 8 | Two maps overlap | Move the map objects apart ([step 7.2](#7-manual-way-one-map-at-a-time)) |
+| 9 | Can't click the menus | Use VRChat's pointer (laser in VR, mouse on desktop). In your own test project the scripting defines must include `UDON` (the SDK adds it when Unity opens) |
+| 10 | Owner controls don't show | Only the instance owner sees them; in public/group instances, the master |
