@@ -96,7 +96,7 @@ public class MapPlayTestRunner : MonoBehaviour
         // teleports: reset at the first point, then drop into each working teleport's trigger from above and expect to
         // reach its destination.
         int arrived = 0, total = 0;
-        SourceMapTeleport probe = null; // the first one that worked, and where from (for the keep speed check below)
+        SourceMapTeleport probe = null; // the widest one that worked, and where from (for the keep speed check below)
         Vector3 probeSpot = Vector3.zero;
         var missed = new List<string>();
         var unreachable = new List<string>();
@@ -135,7 +135,11 @@ public class MapPlayTestRunner : MonoBehaviour
                 }
                 if (reached) break;
             }
-            if (reached) { arrived++; if (probe == null && t.landmark == null) { probe = t; probeSpot = start; } }
+            if (reached)
+            {
+                arrived++;
+                if (t.landmark == null && (probe == null || Footprint(col) > Footprint(probe.GetComponent<Collider>()))) { probe = t; probeSpot = start; }
+            }
             else
             {
                 string overlap = "";
@@ -149,7 +153,8 @@ public class MapPlayTestRunner : MonoBehaviour
         Check(total > 0 && arrived == total, $"teleports: {arrived}/{total} working trigger_teleports send the player to their destination");
 
         // SourceMovement's Teleports Keep Speed: off, a teleport stops the player; on, they keep their speed (CS:S).
-        // On the first teleport the test above reached, from the spot that worked, falling in moving sideways.
+        // On the widest teleport the test above reached, from the spot that worked, falling in moving sideways towards
+        // its middle.
         if (probe != null)
         {
             var speeds = new float[2];
@@ -160,7 +165,10 @@ public class MapPlayTestRunner : MonoBehaviour
                 yield return Teleport(points[0].transform.position, Quaternion.identity);
                 yield return Frames(0.3f);
                 yield return Teleport(probeSpot, Quaternion.identity);
-                movement.SetProgramVariable("velocity", new Vector3(150f, -300f, 0f));
+                Vector3 across = probe.GetComponent<Collider>().bounds.center - probeSpot;
+                across.y = 0f;
+                across = across.sqrMagnitude > 1e-4f ? across.normalized : Vector3.right;
+                movement.SetProgramVariable("velocity", across * 150f + Vector3.down * 300f);
                 speeds[keep] = -1f;
                 for (int i = 0; i < frameRate && speeds[keep] < 0f; i++)
                 {
@@ -223,7 +231,6 @@ public class MapPlayTestRunner : MonoBehaviour
         var layers = HullOnly(root, null);
         float[] speeds = { 400f, 1500f };
         int[] broke = new int[speeds.Length], early = new int[speeds.Length], through = new int[speeds.Length];
-        movement.SetProgramVariable("gravityScale", 0f);
         foreach (var g in glass)
         {
             var udon = UdonOf(g);
@@ -242,6 +249,7 @@ public class MapPlayTestRunner : MonoBehaviour
                 }
                 bool whole = g.solid.enabled && !(bool)udon.GetProgramVariable("broken");
                 yield return Teleport(start, Quaternion.LookRotation(n));
+                movement.SetProgramVariable("gravityScale", 0f); // after the teleport (it resets the map's gravity)
                 yield return Frames(0.2f);
                 movement.SetProgramVariable("velocity", n * speeds[k]);
                 float gapAtBreak = float.NaN, minSpeed = float.MaxValue, past = 0f;
@@ -620,7 +628,6 @@ public class MapPlayTestRunner : MonoBehaviour
         }
     }
 
-    /// <summary>What the hull would hit within 64 u (distance, normal, collider), for the stall log.</summary>
     /// <summary>
     /// FindObjectsOfType in a fixed order (by position, then name): the tests pick the first few of many, and Unity's
     /// order changes between runs, so a failure would not come back on the next run.
@@ -642,13 +649,23 @@ public class MapPlayTestRunner : MonoBehaviour
     Vector3 HullHalf() { return new Vector3(15.5f, (bool)movement.GetProgramVariable("ducked") ? 21f : 29.5f, 15.5f) * U; }
     Vector3 ProbeCentre(Vector3 feet) { return feet + Vector3.up * (HullHalf().y + 3f * U); }
 
+    /// <summary>What the hull would hit within 64 u (distance, normal, collider), for the stall log: the probe, then
+    /// the exact 32 x 72 hull from the simulation's feet (no lift), which also sees the floor.</summary>
     string Ahead(Vector3 feet, Vector3 dir)
     {
         var sb = new StringBuilder();
         Vector3 half = HullHalf();
         foreach (var hit in Physics.BoxCastAll(ProbeCentre(feet), half, dir, Quaternion.identity, 64f * U, Solid, QueryTriggerInteraction.Ignore))
             sb.Append($" {hit.distance / U:F1} u normal {hit.normal:F2} point {hit.point / U:F0} {hit.collider.name};");
-        return sb.Length == 0 ? " nothing" : sb.ToString();
+        if (sb.Length == 0) sb.Append(" nothing");
+        sb.Append($" (exact hull from {feet / U:F1}:");
+        Vector3 exact = new Vector3(16f, 36f, 16f) * U;
+        foreach (var hit in Physics.BoxCastAll(feet + Vector3.up * exact.y, exact, dir, Quaternion.identity, 64f * U, Solid, QueryTriggerInteraction.Ignore))
+            sb.Append($" {hit.distance / U:F2} u normal {hit.normal:F2} point {hit.point / U:F1};");
+        sb.Append("; touching, triggers too:");
+        foreach (var c in Physics.OverlapBox(feet + Vector3.up * exact.y, exact + Vector3.one * U, Quaternion.identity, ~0, QueryTriggerInteraction.Collide))
+            sb.Append($" {c.name}{(c.isTrigger ? " (trigger)" : "")};");
+        return sb.Append(")").ToString();
     }
 
     /// <summary>A surface facing against the motion within two frames of travel (+ 16 u) in front of the 32 x 72 hull.</summary>
@@ -817,6 +834,8 @@ public class MapPlayTestRunner : MonoBehaviour
         Physics.queriesHitBackfaces = before;
         return any && (!front || first.distance < outside.distance - 0.001f);
     }
+
+    static float Footprint(Collider c) => Mathf.Min(c.bounds.size.x, c.bounds.size.z);
 
     IEnumerator Teleport(Vector3 position, Quaternion rotation)
     {
