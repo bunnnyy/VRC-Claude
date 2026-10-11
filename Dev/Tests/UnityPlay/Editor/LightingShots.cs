@@ -8,6 +8,7 @@ using UnityEngine;
 /// Lighting comparison (step 5): imports one map with visuals, with or without its Source lightmaps, and renders the
 /// spawn and a few teleport destinations into Assets/SourcePlayTests/.cache/shots/light_{on|off}_{map}_{n}.png.
 ///   Unity -batchmode -projectPath P -executeMethod LightingShots.Run -bsp map.bsp -smLightmaps on|off -quit
+/// Env SM_SHOT_DESTS=c1,r1,e1 picks the teleport destinations instead (after the spawn), at CS:S eye height.
 /// </summary>
 public static class LightingShots
 {
@@ -35,6 +36,13 @@ public static class LightingShots
             .Where(e => e.className == "info_player_counterterrorist" || e.className == "info_teleport_destination").ToList();
         var picks = new[] { points.FirstOrDefault(e => e.className == "info_player_counterterrorist") ?? points.First() }.Concat(points.Where(e => e.className == "info_teleport_destination")
             .OrderBy(e => e.targetName).Where((e, i) => i % 9 == 0).Take(3)).ToList();
+        string dests = System.Environment.GetEnvironmentVariable("SM_SHOT_DESTS");
+        float eye = 1.4f;
+        if (!string.IsNullOrEmpty(dests))
+        {
+            picks = picks.Take(1).Concat(dests.Split(',').Select(n => points.FirstOrDefault(e => e.targetName == n)).Where(e => e != null)).ToList();
+            eye = 64f * 0.01905f;
+        }
         // Plus two props with a model (lit from the ambient cube and lights), seen from 3 m away at eye height.
         var props = visuals != null ? visuals.transform.Find("[StaticProps]") : null;
         var propShots = new System.Collections.Generic.List<Transform>();
@@ -43,7 +51,7 @@ public static class LightingShots
                 if (t.GetComponentInChildren<Renderer>() != null && propShots.Count < 2 && (propShots.Count == 0 || (propShots[0].position - t.position).magnitude > 20f))
                     propShots.Add(t);
         var cam = new GameObject("ShotCamera").AddComponent<Camera>();
-        cam.fieldOfView = 80; cam.nearClipPlane = 0.05f; cam.farClipPlane = 2000;
+        cam.fieldOfView = 74; cam.nearClipPlane = 0.05f; cam.farClipPlane = 2000; // CS:S's 106 degrees across at 16:9
         var rt = new RenderTexture(960, 540, 24);
         cam.targetTexture = rt;
         string dir = Path.GetFullPath("Assets/SourcePlayTests/.cache/shots");
@@ -51,7 +59,7 @@ public static class LightingShots
         for (int n = 0; n < picks.Count; n++)
         {
             var p = picks[n].transform;
-            cam.transform.SetPositionAndRotation(p.position + Vector3.up * 1.4f, Quaternion.Euler(8, p.eulerAngles.y, 0));
+            cam.transform.SetPositionAndRotation(p.position + Vector3.up * eye, Quaternion.Euler(8, p.eulerAngles.y, 0));
             cam.Render();
             RenderTexture.active = rt;
             var tex = new Texture2D(960, 540, TextureFormat.RGB24, false);
@@ -59,6 +67,9 @@ public static class LightingShots
             float sum = tex.GetPixels32().Average(c => (c.r + c.g + c.b) / 3f);
             File.WriteAllBytes($"{dir}/light_{mode}_{map}_{n}.png", tex.EncodeToPNG());
             Debug.Log($"[SMTEST] light {mode} {map} {n} ({picks[n].targetName}): mean brightness {sum:F0}/255");
+            if (visuals != null && System.Environment.GetEnvironmentVariable("SM_SHOT_MATERIALS") == picks[n].targetName) // what's drawn round a view
+                foreach (var r in visuals.GetComponentsInChildren<Renderer>().Where(r => r.enabled && r.bounds.SqrDistance(p.position) < 400f))
+                    Debug.Log($"[SMTEST]   near {picks[n].targetName}: {r.name} {string.Join(", ", r.sharedMaterials.Select(m => m == null ? "-" : m.name + " (" + m.shader.name + ")"))} bounds {r.bounds.min:F0}..{r.bounds.max:F0}");
         }
         for (int n = 0; n < propShots.Count; n++)
         {

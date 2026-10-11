@@ -37,7 +37,7 @@ Shader "SourceMaps/Lightmapped"
             sampler2D _MainTex, _SecondTex, _LightMap, _Detail;
             float4 _MainTex_ST, _SecondTex_ST, _Detail_ST;
             fixed4 _Color;
-            float _Blend, _Cutoff, _DetailFactor;
+            float _Blend, _Cutoff, _DetailFactor, _SrcBlend;
 
             v2f vert (appdata v)
             {

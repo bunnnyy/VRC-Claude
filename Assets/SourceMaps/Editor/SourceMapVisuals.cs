@@ -38,10 +38,10 @@ public static class SourceMapVisuals
 
     public static bool USourceInstalled { get { return FindType("uSource.uLoader") != null; } }
 
-    // Tool textures that Source never renders (toolsblack and toolsskybox are drawn, so they stay).
+    // Tool textures that Source never renders (toolsblack and the sky ones are drawn, so they stay: see ShowSkyFaces).
     static readonly string[] Hidden = { "toolsnodraw", "toolstrigger", "toolsclip", "toolsplayerclip", "toolsnpcclip",
         "toolsskip", "toolshint", "toolsinvisible", "toolsareaportal", "toolsoccluder", "toolsfog", "toolsorigin",
-        "toolsblocklight", "toolsblockbullets", "toolsblock_los", "toolsskybox2d", "toolsdotted" };
+        "toolsblocklight", "toolsblockbullets", "toolsblock_los", "toolsdotted" };
 
     /// <summary>
     /// Imports the visuals of `bspPath` under `parent` (normally the map root made by SourceMapImporter).
@@ -76,6 +76,7 @@ public static class SourceMapVisuals
         Set(loader, "ParseLightmaps", UseLightmaps);
         Set(loader, "UseLightmapsAsTextureShader", false); // that mode puts one lightmap on a shared material
         Set(loader, "UseGammaLighting", true);
+        Set(loader, "Use3DSkybox", false); // it adds a fly camera (and a camera on sky_camera) to the scene
         Set(loader, "DebugTime", new System.Diagnostics.Stopwatch());
         Set(loader, "DebugTimeOutput", new System.Text.StringBuilder());
         loader.GetMethod("Clear").Invoke(null, null);
@@ -118,7 +119,7 @@ public static class SourceMapVisuals
         // Sounds and the sky: uSource drops its file providers after loading a map, so open them again (the CS:S
         // folder with its VPKs, and the map's pakfile first) while they're read.
         var missing = new List<string>();
-        int sounds, water;
+        int sounds, water, skyFaces;
         string skyName = bsp.Entities.Count > 0 ? bsp.Entities[0].Get("skyname") : "";
         Material sky;
         byte[] file = File.ReadAllBytes(bspPath);
@@ -133,6 +134,7 @@ public static class SourceMapVisuals
                 path => ReadGameFile(resources, path), missing);
             sky = SaveSky(resources, skyName, "Assets/SourceMapsImported/" + mapName, mapName);
             water = ApplyWater(visuals, resources, "Assets/SourceMapsImported/" + mapName + "/Water", sky);
+            skyFaces = ShowSkyFaces(visuals, sky, "Assets/SourceMapsImported/" + mapName, mapName);
         }
         finally
         {
@@ -140,8 +142,16 @@ public static class SourceMapVisuals
             resources.GetMethod("RemoveResourceProviders").Invoke(null, null);
         }
         RenderSettings.skybox = sky != null ? sky : worldSky;
+        // CS:S's world has no real-time shadows (they're in its lightmaps): the map neither casts nor gets Unity's.
+        int unshadowed = 0;
+        foreach (var r in visuals.GetComponentsInChildren<Renderer>(true))
+        {
+            r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            r.receiveShadows = false;
+            unshadowed++;
+        }
         Debug.Log($"[Source Maps] {mapName} visuals: {visuals.GetComponentsInChildren<MeshRenderer>(true).Length} renderers, " +
-                  $"{removed} tool surfaces removed, {strayColliders} uSource colliders removed, {lit} surfaces with Source lightmaps, {water} water surfaces, {propsLit} props lit, {doors} door blocks linked, {glass} breakable glass linked, {propColliders} solid props given colliders, {meshes} meshes saved, {textures} textures kept that only uSource's memory had, " +
+                  $"{removed} tool surfaces removed, {strayColliders} uSource colliders removed, {lit} surfaces with Source lightmaps, {water} water surfaces, {skyFaces} sky faces, {unshadowed} renderers without Unity shadows, {propsLit} props lit, {doors} door blocks linked, {glass} breakable glass linked, {propColliders} solid props given colliders, {meshes} meshes saved, {textures} textures kept that only uSource's memory had, " +
                   $"{sounds} sounds" + (missing.Count > 0 ? $" ({missing.Count} sound files missing: {string.Join(", ", missing)})" : "") +
                   $", sky {skyName}" + (sky == null ? " missing (HL2 skies need the CS:S folder's hl2)" : "") +
                   (css == "" ? " (no CS:S folder set: stock textures missing)" : ""));
@@ -563,7 +573,8 @@ public static class SourceMapVisuals
     /// </summary>
     /// <summary>
     /// Water: Source draws it with its own Water shader (what's below, the sky reflected, its $fogcolor), which uSource
-    /// leaves white and unlit (black here). Every surface whose material uses it gets a SourceMaps/Water material with
+    /// leaves white and unlit (black here); its fallbacks (%compilewater) have no lightmap (black too). Every surface
+    /// whose material is water gets a SourceMaps/Water material with
     /// that fog colour and the sky's colour at the horizon. Returns the surfaces done.
     /// </summary>
     static int ApplyWater(GameObject visuals, System.Type resources, string folder, Material sky)
@@ -584,11 +595,12 @@ public static class SourceMapVisuals
                 byte[] vmt = ReadGameFile(resources, "materials/" + name + ".vmt");
                 string text = vmt != null ? System.Text.Encoding.UTF8.GetString(vmt).TrimStart('\uFEFF', ' ', '\t', '\r', '\n', '"') : "";
                 mat = null;
-                if (text.StartsWith("water", System.StringComparison.OrdinalIgnoreCase))
+                // The Water shader, or its cheap fallback (LightmappedGeneric with %compilewater, no lightmap of its own).
+                if (text.StartsWith("water", System.StringComparison.OrdinalIgnoreCase) || text.IndexOf("%compilewater", System.StringComparison.OrdinalIgnoreCase) >= 0)
                 {
                     Directory.CreateDirectory(folder);
                     mat = new Material(shader) { name = name };
-                    mat.SetColor("_FogColor", VmtColor(text, "$fogcolor", new Color(0.07f, 0.14f, 0.12f)));
+                    mat.SetColor("_FogColor", VmtColor(text, "$fogcolor", VmtColor(text, "$reflecttint", new Color(0.07f, 0.14f, 0.12f))));
                     mat.SetColor("_SkyColor", skyColor);
                     AssetDatabase.CreateAsset(mat, $"{folder}/{made.Count}_{Path.GetFileName(name)}.mat");
                 }
@@ -603,14 +615,51 @@ public static class SourceMapVisuals
         return done;
     }
 
+    /// <summary>
+    /// The sky brush faces (tools/toolsskybox, toolsskybox2d), which uSource keeps hidden: drawn like CS:S does, as
+    /// windows onto the sky that hide whatever is behind them (other stages, the outside of the map). The map's sky is
+    /// rendered into a cubemap for them. Returns the faces' renderers shown.
+    /// </summary>
+    static int ShowSkyFaces(GameObject visuals, Material sky, string folder, string mapName)
+    {
+        var shader = Shader.Find("SourceMaps/Sky");
+        if (shader == null || sky == null) return 0;
+        var faces = visuals.GetComponentsInChildren<MeshRenderer>(true)
+            .Where(r => { string n = r.gameObject.name.ToUpperInvariant(); return n.EndsWith("TOOLS/TOOLSSKYBOX") || n.EndsWith("TOOLS/TOOLSSKYBOX2D"); }).ToList();
+        if (faces.Count == 0) return 0;
+        var cube = new Cubemap(512, TextureFormat.RGB24, false) { name = mapName + "_sky_cube" };
+        var cam = new GameObject("SkyCubeCamera").AddComponent<Camera>();
+        cam.cullingMask = 0;
+        cam.clearFlags = CameraClearFlags.Skybox;
+        cam.gameObject.AddComponent<Skybox>().material = sky;
+        cam.RenderToCubemap(cube);
+        Object.DestroyImmediate(cam.gameObject);
+        string cubePath = folder + "/" + mapName + "_sky_cube.cubemap", matPath = folder + "/" + mapName + "_sky_faces.mat";
+        AssetDatabase.DeleteAsset(cubePath);
+        AssetDatabase.DeleteAsset(matPath);
+        AssetDatabase.CreateAsset(cube, cubePath);
+        var mat = new Material(shader) { name = mapName + "_sky_faces" };
+        mat.SetTexture("_Sky", cube);
+        AssetDatabase.CreateAsset(mat, matPath);
+        foreach (var r in faces)
+        {
+            r.enabled = true;
+            var mats = r.sharedMaterials;
+            for (int i = 0; i < mats.Length; i++) mats[i] = mat;
+            r.sharedMaterials = mats;
+        }
+        return faces.Count;
+    }
+
     /// <summary>A VMT colour: "[0.07 0.14 0.12]" (0..1) or "{18 36 31}" (0..255).</summary>
     static Color VmtColor(string vmt, string key, Color fallback)
     {
         var m = System.Text.RegularExpressions.Regex.Match(vmt, "\"?" + System.Text.RegularExpressions.Regex.Escape(key) +
             "\"?\\s+\"?([\\[{])\\s*([0-9.]+)\\s+([0-9.]+)\\s+([0-9.]+)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
         if (!m.Success) return fallback;
-        float k = m.Groups[1].Value == "{" ? 1f / 255f : 1f;
-        return new Color(Parse(m.Groups[2].Value) * k, Parse(m.Groups[3].Value) * k, Parse(m.Groups[4].Value) * k);
+        float r = Parse(m.Groups[2].Value), g = Parse(m.Groups[3].Value), b = Parse(m.Groups[4].Value);
+        float k = m.Groups[1].Value == "{" && Mathf.Max(r, Mathf.Max(g, b)) > 1f ? 1f / 255f : 1f; // some write {.07 .14 .12}
+        return new Color(r * k, g * k, b * k);
     }
 
     static float Parse(string s) { return float.Parse(s, System.Globalization.CultureInfo.InvariantCulture); }

@@ -31,7 +31,7 @@ Shader "SourceMaps/Prop"
             sampler2D _MainTex;
             float4 _MainTex_ST;
             fixed4 _Color;
-            float _Cutoff;
+            float _Cutoff, _SrcBlend;
 
             v2f vert (appdata v)
             {

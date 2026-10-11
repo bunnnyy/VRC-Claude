@@ -40,8 +40,8 @@ Shader "SourceMaps/Water"
             fixed4 frag (v2f i) : SV_Target
             {
                 float facing = abs(dot(normalize(i.normal), normalize(i.toEye)));
-                float fresnel = 0.1 + 0.9 * pow(1 - facing, 4);
-                fixed4 c = fixed4(_FogColor.rgb + _SkyColor.rgb * _Reflect * fresnel, 1);
+                float fresnel = 0.02 + 0.98 * pow(1 - facing, 5); // Schlick: water reflects little looking down
+                fixed4 c = fixed4(_FogColor.rgb * 1.25 + _SkyColor.rgb * _Reflect * fresnel, 1); // (CS:S's looks a little brighter than its fog)
                 UNITY_APPLY_FOG(i.fogCoord, c);
                 return c;
             }
