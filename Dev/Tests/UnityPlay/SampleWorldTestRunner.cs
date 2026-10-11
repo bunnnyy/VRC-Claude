@@ -91,7 +91,7 @@ public class SampleWorldTestRunner : MonoBehaviour
             var props = visuals.Find("[StaticProps]");
             if (props != null)
             {
-                propColliders = props.GetComponentsInChildren<MeshCollider>(true).Length;
+                propColliders = props.GetComponentsInChildren<Collider>(true).Length;
                 // Only props with a model count: stock HL2/CS:S models are missing without a CS:S folder.
                 foreach (Transform p in props) if (p.GetComponentInChildren<Renderer>(true) != null) staticProps++;
             }

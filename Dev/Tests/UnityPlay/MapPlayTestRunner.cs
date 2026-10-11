@@ -1,5 +1,6 @@
 using System.Collections;
 using System.Collections.Generic;
+using System.Linq;
 using System.Text;
 using UnityEngine;
 using UnityEngine.InputSystem;
@@ -55,10 +56,10 @@ public class MapPlayTestRunner : MonoBehaviour
             if (menu.gameObject.scene.IsValid()) { menu.WarningAccepted(); menu.CloseMenu(); }
         for (int i = 0; i < 10; i++) yield return null;
 
-        var markers = FindObjectsOfType<SourceEntity>();
+        var markers = Sorted<SourceEntity>();
         var floorY = float.MaxValue;
-        foreach (var c in FindObjectsOfType<MeshCollider>()) if (!c.isTrigger) floorY = Mathf.Min(floorY, c.bounds.min.y);
-        Log($"{markers.Length} entity markers, {FindObjectsOfType<SourceMapTeleport>().Length} working teleports, world bottom y {floorY:F1} m");
+        foreach (var c in Sorted<MeshCollider>()) if (!c.isTrigger) floorY = Mathf.Min(floorY, c.bounds.min.y);
+        Log($"{markers.Length} entity markers, {Sorted<SourceMapTeleport>().Length} working teleports, world bottom y {floorY:F1} m");
 
         // stand: teleport to each destination (and the first 3 spawns), wait, expect grounded above the world bottom.
         var points = new List<SourceEntity>();
@@ -97,7 +98,7 @@ public class MapPlayTestRunner : MonoBehaviour
         int arrived = 0, total = 0;
         var missed = new List<string>();
         var unreachable = new List<string>();
-        foreach (var t in FindObjectsOfType<SourceMapTeleport>())
+        foreach (var t in Sorted<SourceMapTeleport>())
         {
             var col = t.GetComponent<Collider>();
             if (col == null || !col.enabled) continue;
@@ -148,7 +149,7 @@ public class MapPlayTestRunner : MonoBehaviour
         // SourceMovement's Teleports Keep Speed: off, a teleport stops the player; on, they keep their speed (CS:S).
         SourceMapTeleport probe = null;
         List<Vector3> probeDrops = null;
-        foreach (var t in FindObjectsOfType<SourceMapTeleport>())
+        foreach (var t in Sorted<SourceMapTeleport>())
         {
             if (t.filterName != "" || t.landmark != null) continue;
             probeDrops = DropPoints(t, 1);
@@ -194,9 +195,9 @@ public class MapPlayTestRunner : MonoBehaviour
     /// </summary>
     IEnumerator BreakableGlass()
     {
-        var glass = FindObjectsOfType<SourceMapBreakable>();
+        var glass = Sorted<SourceMapBreakable>();
         int others = 0, othersSolid = 0, expected = 0;
-        foreach (var m in FindObjectsOfType<SourceEntity>())
+        foreach (var m in Sorted<SourceEntity>())
         {
             if (!m.className.StartsWith("func_breakable")) continue;
             // CS:S: one knife hit breaks it (the importer's rule, written again here so the test checks it)
@@ -327,14 +328,14 @@ public class MapPlayTestRunner : MonoBehaviour
         var blocksObj = GameObject.Find("Bhop Blocks");
         if (blocksObj == null) { Log("   no bhop blocks in this map"); yield break; }
         var blocks = UdonOf(blocksObj.GetComponent<SourceMapBlocks>());
-        var teleports = FindObjectsOfType<SourceMapTeleport>();
+        var teleports = Sorted<SourceMapTeleport>();
         // Spots on top of blocks: a name trigger over a filtered teleport (the name it sets is the filter), or a door.
         var spots = new List<KeyValuePair<Vector3, Vector3>>(); // stand point, where the player should end up
         var spotParts = new List<string>();
         var spotTops = new List<float>();
         var doorSpots = new List<KeyValuePair<Vector3, SourceMapDoor>>();
         var doorDest = new List<Vector3>(); // per door spot: its pit teleport's destination
-        foreach (var nt in FindObjectsOfType<SourceMapNameTrigger>())
+        foreach (var nt in Sorted<SourceMapNameTrigger>())
         {
             if (spots.Count >= 6) break;
             var c = nt.GetComponent<Collider>();
@@ -368,7 +369,7 @@ public class MapPlayTestRunner : MonoBehaviour
             }
         }
         string onlyDoors = System.Environment.GetEnvironmentVariable("SM_DOOR"); // e.g. "*264,*449": just these doors' models
-        foreach (var d in FindObjectsOfType<SourceMapDoor>())
+        foreach (var d in Sorted<SourceMapDoor>())
         {
             if (doorSpots.Count >= 6) break;
             if (!d.dropThrough) continue;
@@ -600,6 +601,7 @@ public class MapPlayTestRunner : MonoBehaviour
     {
         Vector3 prevVel = (Vector3)movement.GetProgramVariable("velocity");
         Vector3 prevPos = player.GetPosition();
+        Vector3 prevSim = SimFeet(); // the walls are probed from the simulation: VRChat's capsule trails it a physics step
         for (int i = 0; i < frameRate * 8; i++)
         {
             yield return null;
@@ -609,24 +611,42 @@ public class MapPlayTestRunner : MonoBehaviour
             lastPos = player.GetPosition();
             float before = Flat(prevVel).magnitude, now = Flat(vel).magnitude;
             if (before - now > 100f && InMechanics(prevPos)) { } // pushes and boosters change speed on purpose
-            else if (before - now > 100f && WallAhead(prevPos, Flat(prevVel).normalized, before)) wallHits++;
+            else if (before - now > 100f && WallAhead(prevSim, Flat(prevVel).normalized, before)) wallHits++;
             else if (before - now > 100f)
             {
                 stalls++;
                 if (stallLog.Count < 10)
-                    stallLog.Add($"{what}: at {player.GetPosition() / U:F0} speed {before:F0} -> {now:F0}, velocity {prevVel:F0} -> {vel:F0}, grounded {OnGround()}, ahead:{Ahead(prevPos, Flat(prevVel).normalized)}");
+                    stallLog.Add($"{what}: at {player.GetPosition() / U:F0} speed {before:F0} -> {now:F0}, velocity {prevVel:F0} -> {vel:F0}, grounded {OnGround()}, ahead:{Ahead(prevSim, Flat(prevVel).normalized)}");
             }
             prevVel = vel;
             prevPos = player.GetPosition();
+            prevSim = SimFeet();
             if (!go) yield break;
         }
     }
 
     /// <summary>What the hull would hit within 64 u (distance, normal, collider), for the stall log.</summary>
+    /// <summary>
+    /// FindObjectsOfType in a fixed order (by position, then name): the tests pick the first few of many, and Unity's
+    /// order changes between runs, so a failure would not come back on the next run.
+    /// </summary>
+    static T[] Sorted<T>() where T : Component
+    {
+        return FindObjectsOfType<T>().OrderBy(c => c.transform.position.x).ThenBy(c => c.transform.position.y)
+            .ThenBy(c => c.transform.position.z).ThenBy(c => c.name).ToArray();
+    }
+
+    /// <summary>The simulation's feet (Source movement's origin) in metres.</summary>
+    Vector3 SimFeet() { return (Vector3)movement.GetProgramVariable("origin") * U; }
+
+    /// <summary>The CS:S hull (32 x 62, ducked 45) standing at `feet`: centre and half size in metres.</summary>
+    Vector3 HullHalf() { return new Vector3(16f, (bool)movement.GetProgramVariable("ducked") ? 22.5f : 31f, 16f) * U; }
+
     string Ahead(Vector3 feet, Vector3 dir)
     {
         var sb = new StringBuilder();
-        foreach (var hit in Physics.BoxCastAll(feet + Vector3.up * 37f * U, new Vector3(15f, 34f, 15f) * U, dir, Quaternion.identity, 64f * U, Solid, QueryTriggerInteraction.Ignore))
+        Vector3 half = HullHalf();
+        foreach (var hit in Physics.BoxCastAll(feet + Vector3.up * half.y, half, dir, Quaternion.identity, 64f * U, Solid, QueryTriggerInteraction.Ignore))
             sb.Append($" {hit.distance / U:F1} u normal {hit.normal:F2} point {hit.point / U:F0} {hit.collider.name};");
         return sb.Length == 0 ? " nothing" : sb.ToString();
     }
@@ -635,8 +655,9 @@ public class MapPlayTestRunner : MonoBehaviour
     bool WallAhead(Vector3 feet, Vector3 dir, float speed)
     {
         if (dir == Vector3.zero) return true;
-        float reach = (speed * Time.deltaTime * 2f + 16f) * U;
-        foreach (var hit in Physics.BoxCastAll(feet + Vector3.up * 37f * U, new Vector3(15f, 34f, 15f) * U, dir, Quaternion.identity, reach, Solid, QueryTriggerInteraction.Ignore))
+        float reach = (speed * Time.deltaTime * 2f + 2f) * U; // two frames of travel, plus the hull's skin
+        Vector3 half = HullHalf();
+        foreach (var hit in Physics.BoxCastAll(feet + Vector3.up * half.y, half, dir, Quaternion.identity, reach, Solid, QueryTriggerInteraction.Ignore))
             if (Vector3.Dot(hit.normal, dir) < -0.2f) return true; // a wall or slope facing against the motion
         return false;
     }
@@ -669,7 +690,7 @@ public class MapPlayTestRunner : MonoBehaviour
     static List<Ramp> Ramps(int count)
     {
         var all = new List<Ramp>();
-        foreach (var mc in FindObjectsOfType<MeshCollider>())
+        foreach (var mc in Sorted<MeshCollider>())
         {
             if (mc.isTrigger || mc.sharedMesh == null || (mc.gameObject.layer != 0 && mc.gameObject.layer != 17)) continue;
             var v = mc.sharedMesh.vertices;
@@ -743,7 +764,7 @@ public class MapPlayTestRunner : MonoBehaviour
     /// </summary>
     static Vector3 Relayed(SourceMapTeleport t)
     {
-        var all = FindObjectsOfType<SourceMapTeleport>();
+        var all = Sorted<SourceMapTeleport>();
         Vector3 dest = t.destination.position;
         for (int hop = 0; hop < 3; hop++)
         {
@@ -761,7 +782,7 @@ public class MapPlayTestRunner : MonoBehaviour
     /// <summary>Inside a push or booster trigger (trigger_push, basevelocity / gravity boosters), at body height.</summary>
     static bool InMechanics(Vector3 feet)
     {
-        foreach (var e in FindObjectsOfType<SourceEntity>())
+        foreach (var e in Sorted<SourceEntity>())
         {
             if (e.className != "trigger_push" && e.GetComponent("SourceBoostTrigger") == null) continue;
             foreach (var c in e.GetComponents<Collider>())
@@ -774,7 +795,7 @@ public class MapPlayTestRunner : MonoBehaviour
     /// <summary>Inside a trigger_push volume: the push (e.g. an updraft) decides where the player goes, not the fall.</summary>
     static bool InPush(Vector3 p)
     {
-        foreach (var e in FindObjectsOfType<SourceEntity>())
+        foreach (var e in Sorted<SourceEntity>())
             if (e.className == "trigger_push")
                 foreach (var c in e.GetComponents<Collider>())
                     if (c.enabled && (c.ClosestPoint(p) - p).sqrMagnitude < 1e-6f) return true;

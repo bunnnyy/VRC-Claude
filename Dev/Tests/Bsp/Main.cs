@@ -122,10 +122,7 @@ static class Program
         return total > 0f && sum.Length() <= total * 2e-3f; // float noise stays under 0.12% on the test maps; a lost face is 1% or more
     }
 
-    /// <summary>
-    /// A vertex more than `slack` units outside one of the brush's real planes. (Bevels aren't counted: the collision
-    /// mesh ignores them, see BspGeometry.BrushFaces, so a few sliver corners poke a few units past one.)
-    /// </summary>
+    /// <summary>A vertex more than `slack` units outside one of the brush's planes, bevels included (Source's shape).</summary>
     static bool Spiked(BspFile bsp, int brushIndex, List<Vector3[]> polys, float slack)
     {
         var brush = bsp.Brushes[brushIndex];
@@ -133,9 +130,7 @@ static class Program
             foreach (var v in p)
                 for (int s = 0; s < brush.NumSides; s++)
                 {
-                    var side = bsp.BrushSides[brush.FirstSide + s];
-                    if (side.Bevel) continue;
-                    var plane = bsp.Planes[side.Plane];
+                    var plane = bsp.Planes[bsp.BrushSides[brush.FirstSide + s].Plane];
                     if (Vector3.Dot(plane.Normal, v) - plane.Dist > slack) return true;
                 }
         return false;
@@ -188,7 +183,7 @@ static class Program
             var polys = BspGeometry.BrushPolygons(bsp, i);
             if (polys.Count < 4) badBrushes++;
             if (!Closed(polys)) openBrushes++;
-            if (Spiked(bsp, i, polys, 0.1f)) spikedBrushes++;
+            if (Spiked(bsp, i, polys, 0.15f)) spikedBrushes++; // (a bevel cutting less than BevelCut, 0.1, is ignored)
             BspGeometry.AddBrush(whole, bsp, i, BspGeometry.DefaultScale);
         }
         // Triggers as the importer builds them (top raised 8 units, sides grown 5.5): no vertex far outside the brush.
@@ -267,6 +262,27 @@ static class Program
         var filteredTp = bsp.Entities.Where(e => e.ClassName == "trigger_teleport" && e.Get("filtername") != "").ToList();
         int resolved = filteredTp.Count(e => BspMechanics.FilterName(bsp, e, out _) != "?");
         var doors = bsp.Entities.Where(BspMechanics.IsTouchDoor).ToList();
+        // Raised triggers stay under the touch doors lying on them (standing on a closed door doesn't touch them).
+        int poking = 0, lowered = 0;
+        foreach (var t in bsp.Entities.Where(x => x.ClassName.StartsWith("trigger_") && x.BrushModel > 0))
+            foreach (int b in bsp.ModelBrushes(t.BrushModel))
+            {
+                float raise = BspMechanics.TriggerRaise(bsp, t, b, 8f);
+                if (raise < 8f) lowered++;
+                Vector3 at = t.GetVector("origin");
+                var under = BspGeometry.BrushPolygons(bsp, b).SelectMany(p => p).Select(v => v + at).ToList();
+                if (under.Count == 0) continue;
+                float top = BspGeometry.BrushPolygons(bsp, b, raise).SelectMany(p => p).Max(v => v.Z) + at.Z;
+                foreach (var d in doors.Where(d => d.BrushModel > 0))
+                {
+                    var m = bsp.Models[d.BrushModel];
+                    Vector3 o = d.GetVector("origin"), lo = m.Mins + o, hi = m.Maxs + o;
+                    float tTop = under.Max(v => v.Z);
+                    bool over = lo.X < under.Max(v => v.X) && hi.X > under.Min(v => v.X) && lo.Y < under.Max(v => v.Y) && hi.Y > under.Min(v => v.Y);
+                    if (over && hi.Z > tTop && lo.Z <= tTop + 8f && top > hi.Z - 1f + 0.01f) poking++;
+                }
+            }
+        Check(poking == 0, $"raised triggers stay 1 unit under the touch doors lying on them ({lowered} trigger brushes lowered, {poking} poking through)");
         Console.WriteLine($"  bhop blocks: {nameTrig} name triggers, {resolved}/{filteredTp.Count} filtered teleports resolved, {doors.Count} touch doors");
         Check(resolved == filteredTp.Count, $"every filtered teleport's filter is a filter_activator_name or missing ({resolved}/{filteredTp.Count})");
         if (name == "bhop_eazy_v2")
@@ -280,6 +296,34 @@ static class Program
         var glass = bsp.Entities.Where(BspMechanics.BreaksOnApproach).Select(e => e.Get("hammerid")).OrderBy(h => h).ToList();
         int breakables = bsp.Entities.Count(e => e.ClassName.StartsWith("func_breakable"));
         Console.WriteLine($"  breakables: {glass.Count} of {breakables} break within knife reach");
+
+        // Prop collision models (.phy) packed into the map: a static prop's (one solid) hulls lie in its model's box.
+        var raw = File.ReadAllBytes(path);
+        int pakOffset = BitConverter.ToInt32(raw, 8 + 16 * 40), pakLength = BitConverter.ToInt32(raw, 8 + 16 * 40 + 4);
+        int phys = 0, phyOk = 0;
+        using (var zip = new System.IO.Compression.ZipArchive(new MemoryStream(raw, pakOffset, pakLength)))
+        {
+            byte[] Read(string name)
+            {
+                var entry = zip.Entries.FirstOrDefault(x => x.FullName.Equals(name, StringComparison.OrdinalIgnoreCase));
+                if (entry == null) return null;
+                using var ms = new MemoryStream();
+                using (var st = entry.Open()) st.CopyTo(ms);
+                return ms.ToArray();
+            }
+            foreach (var entry in zip.Entries.Where(x => x.FullName.EndsWith(".phy", StringComparison.OrdinalIgnoreCase)).ToList())
+            {
+                var hulls = BspPhy.Hulls(Read(entry.FullName), out int solids);
+                if (solids != 1 || !BspPhy.ModelHull(Read(entry.FullName[..^4] + ".mdl"), out var mn, out var mx)) continue;
+                phys++;
+                byte[] mdl = Read(entry.FullName[..^4] + ".mdl");
+                Vector3 vmin = new Vector3(BitConverter.ToSingle(mdl, 128), BitConverter.ToSingle(mdl, 132), BitConverter.ToSingle(mdl, 136));
+                Vector3 vmax = new Vector3(BitConverter.ToSingle(mdl, 140), BitConverter.ToSingle(mdl, 144), BitConverter.ToSingle(mdl, 148));
+                Vector3 lo = Vector3.Min(mn, vmin) - Vector3.One, hi = Vector3.Max(mx, vmax) + Vector3.One;
+                if (hulls.Count > 0 && hulls.SelectMany(h => h).All(v => v.X >= lo.X && v.Y >= lo.Y && v.Z >= lo.Z && v.X <= hi.X && v.Y <= hi.Y && v.Z <= hi.Z)) phyOk++;
+            }
+        }
+        if (phys > 0) Check(phyOk == phys, $"packed prop collision models (.phy): {phyOk}/{phys} read, their hulls inside the model's box");
         if (name == "bhop_eazy_v2")
             Check(string.Join(",", glass) == "20789,21469,21523,30925" && breakables == 6,
                 $"4 of 6 breakables break (red lanes 3 and 4, bonus); glass_to_m249 and the spawn plate stay ({string.Join(",", glass)})");

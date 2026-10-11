@@ -55,22 +55,45 @@ namespace SourceMaps.Bsp
         public static List<KeyValuePair<Vector3[], BspFile.Plane>> BrushFaces(BspFile bsp, int brushIndex, float raiseTop = 0f, float grow = 0f)
         {
             var brush = bsp.Brushes[brushIndex];
-            var result = new List<KeyValuePair<Vector3[], BspFile.Plane>>();
+            // Which sides bound the brush. VBSP adds bevel sides for box sweeps: most only touch the brush, and some lie
+            // a hair off a real face (they'd clip it away, leaving a hole), but at sharp sliver corners Source's
+            // collision is cut off by them. So a bevel counts where it cuts the shape of the real sides by more than
+            // BevelCut, and gets a face there. Grown triggers keep every bevel as a clipper (they cut the corners of the
+            // bigger box like Source's expanded hull) and need no bevel faces (their collider is the convex hull).
+            bool exact = raiseTop == 0f && grow == 0f;
+            var sides = new List<int>();
+            for (int s = 0; s < brush.NumSides; s++)
+                if (!exact || !bsp.BrushSides[brush.FirstSide + s].Bevel) sides.Add(s);
+            var faces = Faces(bsp, brush, sides, exact, raiseTop, grow);
+            if (!exact) return faces;
+            int real = sides.Count;
             for (int s = 0; s < brush.NumSides; s++)
             {
+                if (!bsp.BrushSides[brush.FirstSide + s].Bevel) continue;
+                var plane = bsp.Planes[bsp.BrushSides[brush.FirstSide + s].Plane];
+                if (faces.Any(f => f.Key.Any(v => Vector3.Dot(plane.Normal, v) - plane.Dist > BevelCut))) sides.Add(s);
+            }
+            return sides.Count == real ? faces : Faces(bsp, brush, sides, exact, raiseTop, grow);
+        }
+
+        const float BevelCut = 0.1f; // units a bevel has to cut off the brush to count (float noise is ~0.02)
+
+        /// <summary>The faces of the brush bounded by `sides` (indices into its sides), each clipped by all the others.</summary>
+        static List<KeyValuePair<Vector3[], BspFile.Plane>> Faces(BspFile bsp, BspFile.Brush brush, List<int> sides, bool bevelFaces, float raiseTop, float grow)
+        {
+            var result = new List<KeyValuePair<Vector3[], BspFile.Plane>>();
+            foreach (int s in sides)
+            {
                 var side = bsp.BrushSides[brush.FirstSide + s];
-                if (side.Bevel) continue;
+                if (side.Bevel && !bevelFaces) continue;
                 var plane = bsp.Planes[side.Plane];
                 var poly = BasePolygon(plane.Normal, Dist(plane, raiseTop, grow));
-                for (int o = 0; o < brush.NumSides && poly.Count >= 3; o++)
+                foreach (int o in sides)
                 {
+                    if (poly.Count < 3) break;
                     if (o == s) continue;
                     var otherSide = bsp.BrushSides[brush.FirstSide + o];
                     if (otherSide.Plane == side.Plane) continue;
-                    // Bevels only touch the brush (VBSP adds them for box sweeps), but some lie a hair off a real
-                    // face and would clip it away, leaving a hole. Grown triggers keep them: there they cut the
-                    // corners of the bigger box like Source's expanded hull.
-                    if (otherSide.Bevel && raiseTop == 0f && grow == 0f) continue;
                     var other = bsp.Planes[otherSide.Plane];
                     poly = Clip(poly, other.Normal, Dist(other, raiseTop, grow));
                 }

@@ -99,6 +99,32 @@ namespace SourceMaps.Bsp
             return !e.ClassName.StartsWith("trigger_") || (e.GetInt("spawnflags") & (1 | 64)) != 0;
         }
 
+        /// <summary>
+        /// How far to raise a trigger brush's top (the importer does, as VRChat's capsule floats above floors), at most
+        /// `raise`: no higher than 1 unit under the top of a touch door (bhop block) lying on it, so standing on the
+        /// closed door doesn't touch the trigger, as in Source (bhop_monster_jam's 8 unit door plates on teleports).
+        /// </summary>
+        public static float TriggerRaise(BspFile bsp, Entity trigger, int brush, float raise)
+        {
+            var polys = BspGeometry.BrushPolygons(bsp, brush);
+            if (polys.Count == 0) return raise;
+            Vector3 lo = new Vector3(float.MaxValue), hi = new Vector3(float.MinValue);
+            foreach (var p in polys) foreach (var v in p) { lo = Vector3.Min(lo, v); hi = Vector3.Max(hi, v); }
+            Vector3 at = trigger.GetVector("origin"); // an entity's brushes are stored around its origin
+            lo += at;
+            hi += at;
+            foreach (var e in bsp.Entities)
+            {
+                if (e.BrushModel <= 0 || !IsTouchDoor(e)) continue;
+                var m = bsp.Models[e.BrushModel];
+                Vector3 o = e.GetVector("origin"), dlo = m.Mins + o, dhi = m.Maxs + o;
+                if (dlo.X >= hi.X || dhi.X <= lo.X || dlo.Y >= hi.Y || dhi.Y <= lo.Y) continue; // not over it
+                if (dhi.Z <= hi.Z || dlo.Z > hi.Z + raise) continue; // not lying on its top
+                raise = Math.Min(raise, Math.Max(0f, dhi.Z - 1f - hi.Z));
+            }
+            return raise;
+        }
+
         /// <summary>A func_door that opens when touched (spawnflag 1024): the bhop block kind.</summary>
         public static bool IsTouchDoor(Entity e)
         {

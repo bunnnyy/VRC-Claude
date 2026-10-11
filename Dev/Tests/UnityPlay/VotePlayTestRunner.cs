@@ -41,6 +41,11 @@ public class VotePlayTestRunner : MonoBehaviour
         Check(cands.Length == 5, $"lobby: 5 of 6 maps offered (got {cands.Length}: {string.Join(",", cands)})");
         Check(State() == 0 && Near(lobby.position), "lobby: player starts in the lobby, state lobby");
         Check(ActiveMaps() == 0, "lobby: no map switched on while in the lobby");
+        bool defaultsOff = true; // every course has its own boards: the timer's own two aren't left at the spawn
+        foreach (var t in FindObjectsOfType<RunTimer>(true))
+            foreach (var b in new[] { t.leaderboard, t.autoLeaderboard })
+                if (b != null && b.gameObject.activeInHierarchy) defaultsOff = false;
+        Check(defaultsOff, "lobby: the timer's unused default boards are switched off");
         Check(Status().Contains("Vote for the next map"), "lobby: board says 'Vote for the next map'");
         yield return Shot("lobby_board", GameObject.Find("VoteBoard").transform, new Vector3(0, 1.9f, -5.2f), 50);
 

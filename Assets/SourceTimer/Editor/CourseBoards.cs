@@ -24,7 +24,7 @@ public static class CourseBoards
         var all = Object.FindObjectsOfType<TimerZone>(true);
         var starts = all.Where(z => z.zoneType == TimerZoneType.Start && z.leaderboard == null && z.name.StartsWith("Start "))
             .OrderBy(z => z.name).ToList();
-        if (starts.Count == 0) return null;
+        if (starts.Count == 0) { HideUnusedTimerBoards(all); return null; }
         var wall = new GameObject("CourseBoards");
         wall.transform.SetParent(parent, false);
         wall.transform.localPosition = position;
@@ -45,7 +45,21 @@ public static class CourseBoards
                 UdonSharpEditorUtility.CopyProxyToUdon(end);
             }
         }
+        HideUnusedTimerBoards(all);
         return wall;
+    }
+
+    /// <summary>
+    /// When every start zone has its own boards, the RunTimer's own two (in SourceTimer.prefab, which stands at the
+    /// scene origin, often the spawn) are never used: switch them off instead of leaving them on the floor.
+    /// </summary>
+    static void HideUnusedTimerBoards(TimerZone[] zones)
+    {
+        if (zones.Any(z => z.zoneType == TimerZoneType.Start && (z.leaderboard == null || z.autoLeaderboard == null))) return;
+        foreach (var timer in Object.FindObjectsOfType<RunTimer>(true))
+            foreach (var board in new[] { timer.leaderboard, timer.autoLeaderboard })
+                if (board != null && board.gameObject.activeSelf && !zones.Any(z => z.leaderboard == board || z.autoLeaderboard == board))
+                    board.gameObject.SetActive(false);
     }
 
     static Leaderboard Board(Transform wall, string title, string key, Vector3 at)

@@ -137,7 +137,7 @@ public static class SourceMapVisuals
         int lit = !UseLightmaps ? 0 : ApplyLightmaps(visuals, "Assets/SourceMapsImported/" + mapName + "/Lightmaps");
         int black = ShowBlackFaces(visuals, "Assets/SourceMapsImported/" + mapName, mapName);
         var bsp = BspFile.Load(bspPath);
-        int propColliders = AddPropColliders(visuals, bsp, scale);
+        int propColliders = AddPropColliders(visuals, bsp, scale, resources, out int propShapes);
         int propsLit = !UseLightmaps ? 0 : LightProps(visuals, bsp, scale, "Assets/SourceMapsImported/" + mapName + "/Props");
         int textures = PersistMaterials(visuals, "Assets/SourceMapsImported/" + mapName);
         int meshes = SaveMeshes(visuals, "Assets/SourceMapsImported/" + mapName + "/" + mapName + "_visuals.asset");
@@ -176,7 +176,7 @@ public static class SourceMapVisuals
             unshadowed++;
         }
         Debug.Log($"[Source Maps] {mapName} visuals: {visuals.GetComponentsInChildren<MeshRenderer>(true).Length} renderers, " +
-                  $"{removed} tool surfaces removed, {strayColliders} uSource colliders removed, {lit} surfaces with Source lightmaps, {black} toolsblack faces, {water} water surfaces, {skyFaces} sky faces, {unshadowed} renderers without Unity shadows, {propsLit} props lit, {doors} door blocks linked, {glass} breakable glass linked, {propColliders} solid props given colliders, {meshes} meshes saved, {textures} textures kept that only uSource's memory had, " +
+                  $"{removed} tool surfaces removed, {strayColliders} uSource colliders removed, {lit} surfaces with Source lightmaps, {black} toolsblack faces, {water} water surfaces, {skyFaces} sky faces, {unshadowed} renderers without Unity shadows, {propsLit} props lit, {doors} door blocks linked, {glass} breakable glass linked, {propColliders} solid props given colliders ({propShapes} from their model's collision shape), {meshes} meshes saved, {textures} textures kept that only uSource's memory had, " +
                   $"{sounds} sounds" + (missing.Count > 0 ? $" ({missing.Count} sound files missing: {string.Join(", ", missing)})" : "") +
                   $", sky {skyName}" + (sky == null ? " missing (HL2 skies need the CS:S folder's hl2)" : "") +
                   (css == "" ? " (no CS:S folder set: stock textures missing)" : ""));
@@ -468,23 +468,71 @@ public static class SourceMapVisuals
     static Vector3 ToUnity(Num.Vector3 s) { return new Vector3(-s.Y, s.Z, s.X); }
 
     /// <summary>
-    /// MeshColliders on static props the map marks solid (2 = bounding box, 6 = vphysics; both use the render mesh
-    /// here, without its alpha-tested or translucent parts: leaf cards, canopies). uSource puts each prop directly under
-    /// its "[StaticProps]" group, at the position SourceMaps would use, so props are matched by position.
+    /// Colliders on the static props the map marks solid, as CS:S collides with them: "vphysics" props (solid 6) with
+    /// the convex hulls of the model's .phy (a tree with its trunk, a fence with one box), "bounding box" props (solid 2)
+    /// with the model's hull box. Without the model's files (no CS:S folder for stock models) or for models with bones,
+    /// the render mesh without its alpha-tested or translucent parts (leaf cards, canopies). uSource puts each prop
+    /// directly under its "[StaticProps]" group, at the position SourceMaps would use, so props are matched by position.
     /// </summary>
-    static int AddPropColliders(GameObject root, BspFile bsp, float scale)
+    static int AddPropColliders(GameObject root, BspFile bsp, float scale, System.Type resources, out int fromModel)
     {
-        var solid = new List<Vector3>();
-        foreach (var p in bsp.StaticProps)
-            if (p.Solid != 0) { var v = BspGeometry.ToUnity(p.Origin, scale); solid.Add(new Vector3(v.X, v.Y, v.Z)); }
+        fromModel = 0;
         int added = 0;
         var group = root.transform.Find("[StaticProps]");
         if (group == null) return 0;
+        var shapes = new Dictionary<string, List<Num.Vector3[]>>(); // per model: its .phy hulls (null: none)
         foreach (Transform t in group)
         {
             Vector3 at = root.transform.InverseTransformPoint(t.position);
-            if (!solid.Any(s => (s - at).sqrMagnitude < 0.0025f)) continue; // within 5 cm
-            foreach (var mf in t.GetComponentsInChildren<MeshFilter>(true))
+            int match = bsp.StaticProps.FindIndex(p =>
+            {
+                var v = BspGeometry.ToUnity(p.Origin, scale);
+                return p.Solid != 0 && (new Vector3(v.X, v.Y, v.Z) - at).sqrMagnitude < 0.0025f; // within 5 cm
+            });
+            if (match < 0) continue;
+            var prop = bsp.StaticProps[match];
+            // The model's own collision, in its model space: on the object whose mesh is in that space too (uSource
+            // puts a model's vertices at (x, z, y) * scale).
+            var filters = t.GetComponentsInChildren<MeshFilter>(true);
+            var skinned = t.GetComponentsInChildren<SkinnedMeshRenderer>(true);
+            var host = filters.Length > 0 ? filters[0].gameObject : skinned.Length > 0 ? skinned[0].gameObject : null;
+            if (host != null && prop.Model.EndsWith(".mdl", System.StringComparison.OrdinalIgnoreCase))
+            {
+                string model = prop.Model.Replace('\\', '/');
+                if (prop.Solid == 6)
+                {
+                    if (!shapes.TryGetValue(model, out var hulls))
+                    {
+                        hulls = BspPhy.Hulls(ReadGameFile(resources, model.Substring(0, model.Length - 4) + ".phy"), out int solids);
+                        shapes[model] = hulls = solids == 1 && hulls.Count > 0 ? hulls : null;
+                    }
+                    if (hulls != null)
+                    {
+                        foreach (var hull in hulls)
+                        {
+                            var mesh = new Mesh { name = Path.GetFileNameWithoutExtension(model) + " collision" };
+                            mesh.vertices = hull.Select(v => new Vector3(v.X, v.Z, v.Y) * scale).ToArray();
+                            mesh.triangles = Enumerable.Range(0, hull.Length).ToArray();
+                            var col = host.AddComponent<MeshCollider>();
+                            col.sharedMesh = mesh;
+                            col.convex = true;
+                        }
+                        fromModel++;
+                        added++;
+                        continue;
+                    }
+                }
+                else if (prop.Solid == 2 && BspPhy.ModelHull(ReadGameFile(resources, model), out var min, out var max))
+                {
+                    var box = host.AddComponent<BoxCollider>();
+                    box.center = new Vector3(min.X + max.X, min.Z + max.Z, min.Y + max.Y) * (0.5f * scale);
+                    box.size = new Vector3(max.X - min.X, max.Z - min.Z, max.Y - min.Y) * scale;
+                    fromModel++;
+                    added++;
+                    continue;
+                }
+            }
+            foreach (var mf in filters)
             {
                 if (mf.sharedMesh == null || mf.GetComponent<Collider>() != null) continue;
                 var r = mf.GetComponent<Renderer>();
@@ -492,7 +540,7 @@ public static class SourceMapVisuals
                 if (mesh != null) mf.gameObject.AddComponent<MeshCollider>().sharedMesh = mesh;
             }
             // Models with bones come as SkinnedMeshRenderers: collide with the mesh in its current (static) pose.
-            foreach (var smr in t.GetComponentsInChildren<SkinnedMeshRenderer>(true))
+            foreach (var smr in skinned)
             {
                 if (smr.sharedMesh == null || smr.GetComponent<Collider>() != null) continue;
                 var baked = new Mesh { name = smr.sharedMesh.name + " collision" };
@@ -501,7 +549,7 @@ public static class SourceMapVisuals
                 if (mesh != baked) Object.DestroyImmediate(baked);
                 if (mesh != null) smr.gameObject.AddComponent<MeshCollider>().sharedMesh = mesh;
             }
-            if (t.GetComponentInChildren<MeshCollider>(true) != null) added++;
+            if (t.GetComponentInChildren<Collider>(true) != null) added++;
         }
         return added;
     }

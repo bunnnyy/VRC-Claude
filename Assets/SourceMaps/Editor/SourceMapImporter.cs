@@ -345,7 +345,7 @@ public static class SourceMapImporter
         foreach (int brush in bsp.ModelBrushes(e.BrushModel))
         {
             var mesh = new MeshData();
-            BspGeometry.AddBrush(mesh, bsp, brush, scale, TriggerRaiseTop, TriggerGrow(scale));
+            BspGeometry.AddBrush(mesh, bsp, brush, scale, BspMechanics.TriggerRaise(bsp, e, brush, TriggerRaiseTop), TriggerGrow(scale));
             if (mesh.Triangles.Count == 0) continue;
             var col = go.AddComponent<MeshCollider>();
             col.sharedMesh = ToMesh(mesh, go.name + " brush " + brush, meshes);
