@@ -75,13 +75,19 @@ On the `SourceMovement` UdonBehaviour:
 | Call | Does |
 |---|---|
 | `TeleportPlayer(position, rotation, keepVelocity)` | Teleport and choose whether speed is kept |
-| `SetMovementActive(bool)` | Turn Source movement on or off |
-| `SetPush(v)`, `AddVelocity(v)`, `SetGravityScale(s)` | What the booster scripts use |
+| `SetMovementActive(bool)` | Turn Source movement on or off (`_ZoneEnter` / `_ZoneExit` count zone colliders) |
+| `AddPush(v)`, `RemovePush(v)` | Entering / leaving a `trigger_push` (overlapping pushes add up, like Source) |
+| `AddVelocity(v)`, `SetGravityScale(s)` | Boosters (basevelocity) and player gravity (1 normal, 0 also normal) |
+| `ResetVelocity()`, `ResetMapState()` | Stop; a new map (no speed, pushes or gravity left over) |
 | `GetSpeed()`, `GetSourceVelocity()`, `IsOnGround()` | Read the state |
 
+Scripts without a `SourceMovement` reference (found by name) can teleport through it: set `teleportPosition`,
+`teleportRotation` and `teleportKeepVelocity` with `SetProgramVariable`, then `SendCustomEvent("_Teleport")`.
+
 > [!TIP]
-> Plain `VRCPlayerApi.TeleportTo` works too: a jump over 64 units resets velocity. VRChat keeps the old
-> velocity briefly after `TeleportTo`, so call `SetVelocity(Vector3.zero)` right after it.
+> Plain `VRCPlayerApi.TeleportTo` works too: a jump over 64 units (plus a physics step's travel) resets velocity,
+> a shorter one keeps it (call `ResetVelocity` to stop) and is followed only as far as the hull fits. VRChat keeps
+> the old velocity briefly after `TeleportTo`, so call `SetVelocity(Vector3.zero)` right after it.
 
 ## 6. How the movement works
 

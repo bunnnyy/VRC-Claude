@@ -133,7 +133,7 @@ A trigger Box Collider plus this.
 | Setting | Default | What it does |
 |---|---|---|
 | Zone Type | Start | **Start**: the timer starts when you leave it · **End**: finishes the run · **Checkpoint**: where Reset sends you · **Reset**: back to the last checkpoint (kill floors) · **Restart**: back to the start |
-| Timer | the RunTimer | Which timer it drives |
+| Timer | empty (the tools fill it) | Which RunTimer it drives (a zone without one does nothing) |
 | Respawn Point | empty | Checkpoint: where Reset sends you (empty: this object). Start: where Restart sends you (empty: the RunTimer's Start Point, else this object) |
 | Leaderboard / Auto Leaderboard | empty | Start zones: this course's own boards (empty = the RunTimer's). End zones: the course's legit board, so only that course's runs end there (empty = any run) |
 

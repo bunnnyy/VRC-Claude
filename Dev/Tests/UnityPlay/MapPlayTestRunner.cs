@@ -333,10 +333,13 @@ public class MapPlayTestRunner : MonoBehaviour
                 break;
             }
         }
+        string onlyDoors = System.Environment.GetEnvironmentVariable("SM_DOOR"); // e.g. "*264,*449": just these doors' models
         foreach (var d in FindObjectsOfType<SourceMapDoor>())
         {
             if (doorSpots.Count >= 6) break;
             if (!d.dropThrough) continue;
+            var dm = d.GetComponentInParent<SourceEntity>();
+            if (!string.IsNullOrEmpty(onlyDoors) && (dm == null || System.Array.IndexOf(onlyDoors.Split(','), dm.GetValue("model")) < 0)) continue;
             var b = d.solid.bounds;
             if (Physics.Raycast(new Vector3(b.center.x, b.max.y + 0.5f, b.center.z), Vector3.down, out var hit, 1f, Solid, QueryTriggerInteraction.Ignore))
                 doorSpots.Add(new KeyValuePair<Vector3, SourceMapDoor>(hit.point, d));
@@ -372,7 +375,7 @@ public class MapPlayTestRunner : MonoBehaviour
             var ccc = FindObjectOfType<CharacterController>();
             var box = spot.Value.GetComponent<BoxCollider>();
             bool overlaps = Physics.ComputePenetration(ccc, ccc.transform.position, ccc.transform.rotation, box, box.transform.position, box.transform.rotation, out _, out _);
-            if (gone) sent++; else notes.Add($"stayed on door at {spot.Key / U:F0}: overlaps touch box {overlaps}, blocks set {du.GetProgramVariable("blocks") != null}, box trigger {box.isTrigger} layer {box.gameObject.layer}, state {du.GetProgramVariable("state")}, t {du.GetProgramVariable("t")}, door at {spot.Value.transform.position / U:F0}, " +
+            if (gone) sent++; else notes.Add($"stayed on door {spot.Value.GetComponentInParent<SourceEntity>()?.GetValue("model")} at {spot.Key / U:F0}: player {player.GetPosition() / U:F1}, simulation {(Vector3)movement.GetProgramVariable("origin")}, ground {movement.GetProgramVariable("onGround")}, overlaps touch box {overlaps}, blocks set {du.GetProgramVariable("blocks") != null}, box trigger {box.isTrigger} layer {box.gameObject.layer}, state {du.GetProgramVariable("state")}, t {du.GetProgramVariable("t")}, door at {spot.Value.transform.position / U:F0}, " +
                 $"touch box {spot.Value.GetComponent<BoxCollider>().bounds.min / U:F0}..{spot.Value.GetComponent<BoxCollider>().bounds.max / U:F0}, cc bottom {FindObjectOfType<CharacterController>().bounds.min.y / U:F1}");
         }
         Check(total > 0 && sent == total, $"bhop blocks: standing 1 s on a block sends the player back ({sent}/{total})");
@@ -438,8 +441,11 @@ public class MapPlayTestRunner : MonoBehaviour
         stalls = wallHits = 0;
         stallLog.Clear();
         int step = Mathf.Max(1, points.Count / 12);
+        string only = System.Environment.GetEnvironmentVariable("SM_POINT"); // e.g. tele_dest_32: just the run from there
+        if (!string.IsNullOrEmpty(only)) step = 1;
         for (int k = 0; k < points.Count && runs < 12; k += step)
         {
+            if (!string.IsNullOrEmpty(only) && points[k].name != only && !points[k].name.EndsWith(" " + only)) continue;
             Vector3 at = points[k].transform.position;
             yield return Teleport(at, Quaternion.identity);
             yield return Frames(1f);
