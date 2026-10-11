@@ -213,6 +213,7 @@ everyone plays the winner, **Back to lobby** leaves it, **Rejoin map** goes back
 | Bhop blocks | Stand on one too long and you're sent back. Name-filtered teleports (japan, arcane, badges) and sinking `func_door` blocks (eazy_v2, monster_jam). Per player. Untick **On** on the map's **Bhop Blocks** for plain platforms |
 | Breakable glass | Upright `func_breakable` (≤ 15 health) and `func_breakable_surf` break within knife reach (48 units), for you only, until you leave. Needs **Hull Only** |
 | Trigger reach | Triggers are widened so VRChat's thinner capsule touches them where CS:S's 32-unit box would |
+| Solid props | Collide with the model's own collision shape (its `.phy`, or its bounding box), like CS:S, not the drawn mesh: a tree with its trunk, not its leaves |
 
 **Visuals** (uSource + `SourceMapVisuals`):
 

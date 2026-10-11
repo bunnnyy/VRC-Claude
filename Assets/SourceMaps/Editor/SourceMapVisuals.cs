@@ -137,14 +137,10 @@ public static class SourceMapVisuals
         int lit = !UseLightmaps ? 0 : ApplyLightmaps(visuals, "Assets/SourceMapsImported/" + mapName + "/Lightmaps");
         int black = ShowBlackFaces(visuals, "Assets/SourceMapsImported/" + mapName, mapName);
         var bsp = BspFile.Load(bspPath);
-        int propColliders = AddPropColliders(visuals, bsp, scale, resources, out int propShapes);
-        int propsLit = !UseLightmaps ? 0 : LightProps(visuals, bsp, scale, "Assets/SourceMapsImported/" + mapName + "/Props");
-        int textures = PersistMaterials(visuals, "Assets/SourceMapsImported/" + mapName);
-        int meshes = SaveMeshes(visuals, "Assets/SourceMapsImported/" + mapName + "/" + mapName + "_visuals.asset");
-        // Sounds and the sky: uSource drops its file providers after loading a map, so open them again (the CS:S
-        // folder with its VPKs, and the map's pakfile first) while they're read.
+        // Prop collision shapes, sounds and the sky: uSource drops its file providers after loading a map, so open them
+        // again (the CS:S folder with its VPKs, and the map's pakfile first) while they're read.
         var missing = new List<string>();
-        int sounds, water, skyFaces;
+        int propColliders, propShapes, propsLit, textures, meshes, sounds, water, skyFaces;
         string skyName = bsp.Entities.Count > 0 ? bsp.Entities[0].Get("skyname") : "";
         Material sky;
         byte[] file = File.ReadAllBytes(bspPath);
@@ -155,6 +151,10 @@ public static class SourceMapVisuals
             init.Invoke(null, new object[] { 0, null });
             if (pakLength > 0)
                 init.Invoke(null, new[] { 0, System.Activator.CreateInstance(FindType("uSource.PAKProvider"), new MemoryStream(file, pakOffset, pakLength)) });
+            propColliders = AddPropColliders(visuals, bsp, scale, resources, out propShapes);
+            propsLit = !UseLightmaps ? 0 : LightProps(visuals, bsp, scale, "Assets/SourceMapsImported/" + mapName + "/Props");
+            textures = PersistMaterials(visuals, "Assets/SourceMapsImported/" + mapName);
+            meshes = SaveMeshes(visuals, "Assets/SourceMapsImported/" + mapName + "/" + mapName + "_visuals.asset");
             sounds = SourceMapSounds.Add(parent.gameObject, "Assets/SourceMapsImported/" + mapName + "/Sounds", scale,
                 path => ReadGameFile(resources, path), missing);
             sky = SaveSky(resources, skyName, "Assets/SourceMapsImported/" + mapName, mapName);

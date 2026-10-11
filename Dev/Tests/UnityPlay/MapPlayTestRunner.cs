@@ -96,6 +96,8 @@ public class MapPlayTestRunner : MonoBehaviour
         // teleports: reset at the first point, then drop into each working teleport's trigger from above and expect to
         // reach its destination.
         int arrived = 0, total = 0;
+        SourceMapTeleport probe = null; // the first one that worked, and where from (for the keep speed check below)
+        Vector3 probeSpot = Vector3.zero;
         var missed = new List<string>();
         var unreachable = new List<string>();
         foreach (var t in Sorted<SourceMapTeleport>())
@@ -133,7 +135,7 @@ public class MapPlayTestRunner : MonoBehaviour
                 }
                 if (reached) break;
             }
-            if (reached) arrived++;
+            if (reached) { arrived++; if (probe == null && t.landmark == null) { probe = t; probeSpot = start; } }
             else
             {
                 string overlap = "";
@@ -147,14 +149,7 @@ public class MapPlayTestRunner : MonoBehaviour
         Check(total > 0 && arrived == total, $"teleports: {arrived}/{total} working trigger_teleports send the player to their destination");
 
         // SourceMovement's Teleports Keep Speed: off, a teleport stops the player; on, they keep their speed (CS:S).
-        SourceMapTeleport probe = null;
-        List<Vector3> probeDrops = null;
-        foreach (var t in Sorted<SourceMapTeleport>())
-        {
-            if (t.filterName != "" || t.landmark != null) continue;
-            probeDrops = DropPoints(t, 1);
-            if (probeDrops.Count > 0) { probe = t; break; }
-        }
+        // On the first teleport the test above reached, from the spot that worked, falling in moving sideways.
         if (probe != null)
         {
             var speeds = new float[2];
@@ -164,8 +159,8 @@ public class MapPlayTestRunner : MonoBehaviour
                 Vector3 dest = Relayed(probe);
                 yield return Teleport(points[0].transform.position, Quaternion.identity);
                 yield return Frames(0.3f);
-                yield return Teleport(probeDrops[0] - Vector3.up * 0.4f, Quaternion.identity); // just inside the trigger
-                movement.SetProgramVariable("velocity", new Vector3(150f, -100f, 0f));
+                yield return Teleport(probeSpot, Quaternion.identity);
+                movement.SetProgramVariable("velocity", new Vector3(150f, -300f, 0f));
                 speeds[keep] = -1f;
                 for (int i = 0; i < frameRate && speeds[keep] < 0f; i++)
                 {
@@ -639,14 +634,19 @@ public class MapPlayTestRunner : MonoBehaviour
     /// <summary>The simulation's feet (Source movement's origin) in metres.</summary>
     Vector3 SimFeet() { return (Vector3)movement.GetProgramVariable("origin") * U; }
 
-    /// <summary>The CS:S hull (32 x 62, ducked 45) standing at `feet`: centre and half size in metres.</summary>
-    Vector3 HullHalf() { return new Vector3(16f, (bool)movement.GetProgramVariable("ducked") ? 22.5f : 31f, 16f) * U; }
+    /// <summary>
+    /// Half size (metres) of the box that probes for walls: the CS:S hull (32 x 62, ducked 45) a hair narrower, its
+    /// bottom 3 u up (see ProbeCentre). The map's collision is one mesh collider, and a cast reports one hit per
+    /// collider: touching the floor or ramp under the feet would hide a wall ahead.
+    /// </summary>
+    Vector3 HullHalf() { return new Vector3(15.5f, (bool)movement.GetProgramVariable("ducked") ? 21f : 29.5f, 15.5f) * U; }
+    Vector3 ProbeCentre(Vector3 feet) { return feet + Vector3.up * (HullHalf().y + 3f * U); }
 
     string Ahead(Vector3 feet, Vector3 dir)
     {
         var sb = new StringBuilder();
         Vector3 half = HullHalf();
-        foreach (var hit in Physics.BoxCastAll(feet + Vector3.up * half.y, half, dir, Quaternion.identity, 64f * U, Solid, QueryTriggerInteraction.Ignore))
+        foreach (var hit in Physics.BoxCastAll(ProbeCentre(feet), half, dir, Quaternion.identity, 64f * U, Solid, QueryTriggerInteraction.Ignore))
             sb.Append($" {hit.distance / U:F1} u normal {hit.normal:F2} point {hit.point / U:F0} {hit.collider.name};");
         return sb.Length == 0 ? " nothing" : sb.ToString();
     }
@@ -657,7 +657,7 @@ public class MapPlayTestRunner : MonoBehaviour
         if (dir == Vector3.zero) return true;
         float reach = (speed * Time.deltaTime * 2f + 2f) * U; // two frames of travel, plus the hull's skin
         Vector3 half = HullHalf();
-        foreach (var hit in Physics.BoxCastAll(feet + Vector3.up * half.y, half, dir, Quaternion.identity, reach, Solid, QueryTriggerInteraction.Ignore))
+        foreach (var hit in Physics.BoxCastAll(ProbeCentre(feet), half, dir, Quaternion.identity, reach, Solid, QueryTriggerInteraction.Ignore))
             if (Vector3.Dot(hit.normal, dir) < -0.2f) return true; // a wall or slope facing against the motion
         return false;
     }
@@ -820,6 +820,7 @@ public class MapPlayTestRunner : MonoBehaviour
 
     IEnumerator Teleport(Vector3 position, Quaternion rotation)
     {
+        movement.SendCustomEvent("ResetMapState"); // each check starts fresh: no low gravity or push left from the last
         movement.SetProgramVariable("__0_position__param", position);
         movement.SetProgramVariable("__0_rotation__param", rotation);
         movement.SetProgramVariable("__0_keepVelocity__param", false);
