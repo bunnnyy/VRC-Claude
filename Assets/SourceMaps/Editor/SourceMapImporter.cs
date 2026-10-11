@@ -15,8 +15,9 @@ using Num = System.Numerics;
 ///   Collision  - one MeshCollider from every player-solid world brush (incl. invisible clip brushes) and
 ///                displacement, plus colliders on solid brush entities (func_wall, func_door, ...).
 ///   Entities   - one marker (SourceEntity) per BSP entity with all its keyvalues and outputs.
-///   Teleports  - trigger_teleports become working SourceMapTeleports (on their marker), except filtered ones
-///                (bhop block teleports): they need the movement script and stay markers for now.
+///   Teleports  - trigger_teleports become working SourceMapTeleports (on their marker); filtered ones (bhop blocks,
+///                filter_activator_name / _class) check the player's name through SourceMapBlocks, other filters stay
+///                markers. Landmarks keep the player's offset, view and speed; triggers that ignore players are skipped.
 /// Uses the same axes and scale as uSource (Source x, y, z -> Unity -y, z, x; 1 unit = 0.01905 m by default).
 /// Meshes are saved to Assets/SourceMapsImported/&lt;map&gt;/.
 /// </summary>
@@ -27,14 +28,14 @@ public static class SourceMapImporter
     /// Triggers get this much taller (units), so a player standing on a thin trigger touches it: VRChat's capsule floats
     /// about 6 units over the floor (2 hover + its skin), so this is about where Source's box would touch.
     /// </summary>
-    const float TriggerRaiseTop = 8f;
+    internal const float TriggerRaiseTop = 8f;
 
     /// <summary>
     /// And this much wider each way (units at this scale): Source touches a trigger with its 32 unit wide box, VRChat
     /// with a capsule 0.2 m in radius, so a thin trigger behind a sign or in a doorway (bhop_monster_jam's Egypt exit)
     /// would be out of reach without it.
     /// </summary>
-    static float TriggerGrow(float scale) { return Mathf.Max(0f, 16f - 0.2f / scale); }
+    internal static float TriggerGrow(float scale) { return Mathf.Max(0f, 16f - 0.2f / scale); }
 
     // Brush entities that don't block players (everything else named func_* does).
     static readonly HashSet<string> NonSolid = new HashSet<string>
@@ -313,8 +314,8 @@ public static class SourceMapImporter
         }
 
         // Water and ladder volumes as trigger boxes (SourceMovement's water layer 4 and ladder layer 22).
-        int water = AddVolumes(root.transform, "Water", bsp, BspFile.ContentsWater, 4, scale);
-        int ladders = AddVolumes(root.transform, "Ladders", bsp, BspFile.ContentsLadder, 22, scale);
+        int water = AddVolumes(root.transform, "Water", bsp, BspFile.ContentsWater, 4, scale, meshes);
+        int ladders = AddVolumes(root.transform, "Ladders", bsp, BspFile.ContentsLadder, 22, scale, meshes);
 
         // Save all meshes in one asset file.
         AssetDatabase.CreateAsset(meshes[0], meshAssetPath);
@@ -355,30 +356,29 @@ public static class SourceMapImporter
     }
 
     /// <summary>A trigger box (on `layer`) per world brush with these contents, under a new child object.</summary>
-    static int AddVolumes(Transform root, string name, BspFile bsp, int contents, int layer, float scale)
+    /// <summary>A trigger per brush with these contents, its exact (convex) shape: sloped and diagonal ladders too.</summary>
+    static int AddVolumes(Transform root, string name, BspFile bsp, int contents, int layer, float scale, List<Mesh> meshes)
     {
         GameObject parent = null;
         int n = 0;
         foreach (int brush in bsp.ModelBrushes(0))
         {
             if ((bsp.Brushes[brush].Contents & contents) == 0) continue;
-            var polys = BspGeometry.BrushPolygons(bsp, brush);
-            if (polys.Count == 0) continue;
-            var bounds = new Bounds(ToUnity(BspGeometry.ToUnity(polys[0][0], scale)), Vector3.zero);
-            foreach (var poly in polys)
-                foreach (var v in poly) bounds.Encapsulate(ToUnity(BspGeometry.ToUnity(v, scale)));
+            var data = new MeshData();
+            BspGeometry.AddBrush(data, bsp, brush, scale);
+            if (data.Triangles.Count == 0) continue;
             if (parent == null)
             {
                 parent = new GameObject(name);
                 parent.transform.SetParent(root, false);
             }
-            var box = new GameObject(name + " " + brush);
-            box.transform.SetParent(parent.transform, false);
-            box.layer = layer;
-            var col = box.AddComponent<BoxCollider>();
+            var volume = new GameObject(name + " " + brush);
+            volume.transform.SetParent(parent.transform, false);
+            volume.layer = layer;
+            var col = volume.AddComponent<MeshCollider>();
+            col.sharedMesh = ToMesh(data, name + " " + brush, meshes);
+            col.convex = true;
             col.isTrigger = true;
-            col.center = bounds.center;
-            col.size = bounds.size;
             n++;
         }
         return n;
@@ -398,6 +398,13 @@ public static class SourceMapImporter
     {
         if (NonSolid.Contains(e.ClassName)) return false;
         if (e.ClassName == "func_brush" && e.Get("Solidity") == "1") return false; // 1 = never solid
+        // Spawnflags that make it passable in Source: func_rotating "Not Solid" (64), func_door / _rotating /
+        // func_movelinear "Passable" (8), func_wall_toggle "Starts Invisible" (1), a func_brush that starts disabled.
+        int sf = e.GetInt("spawnflags");
+        if (e.ClassName == "func_rotating" && (sf & 64) != 0) return false;
+        if ((e.ClassName == "func_door" || e.ClassName == "func_door_rotating" || e.ClassName == "func_movelinear") && (sf & 8) != 0) return false;
+        if (e.ClassName == "func_wall_toggle" && (sf & 1) != 0) return false;
+        if (e.ClassName == "func_brush" && e.Get("StartDisabled") == "1" && e.Get("Solidity") != "2") return false;
         return true;
     }
 

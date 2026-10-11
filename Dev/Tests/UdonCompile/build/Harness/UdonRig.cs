@@ -262,11 +262,11 @@ public class Rig
                     Vector3 center = heap.GetHeapVariable<Vector3>(a[0]);
                     Vector3 dir = heap.GetHeapVariable<Vector3>(a[2]);
                     bool hit = CollisionWorld.BoxCast(center, heap.GetHeapVariable<Vector3>(a[1]), dir,
-                        heap.GetHeapVariable<float>(a[5]), out float distance, out Vector3 normal, heap.GetHeapVariable<int>(a[6]));
+                        heap.GetHeapVariable<float>(a[5]), out float distance, out Vector3 normal, out Vector3 point, heap.GetHeapVariable<int>(a[6]));
                     object boxed = new RaycastHit();
                     if (hit)
                     {
-                        hitPoint.SetValue(boxed, center + dir * distance);
+                        hitPoint.SetValue(boxed, point);
                         hitNormal.SetValue(boxed, normal);
                         hitDistance.SetValue(boxed, distance);
                     }

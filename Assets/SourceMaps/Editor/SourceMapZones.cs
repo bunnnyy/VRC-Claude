@@ -80,12 +80,15 @@ public static class SourceMapZones
 
             Vector3 a = ToUnity(BspGeometry.ToUnity(new Num.Vector3(z.point_a[0], z.point_a[1], z.point_a[2]), scale));
             Vector3 b = ToUnity(BspGeometry.ToUnity(new Num.Vector3(z.point_b[0], z.point_b[1], z.point_b[2]), scale));
+            // Widened and raised like the importer's triggers (Source's hull touches a zone 16 units out; VRChat's
+            // capsule is thinner and floats): a zone hooked to a teleport covers its trigger, so it fires first.
+            float grow = SourceMapImporter.TriggerGrow(scale) * scale, raise = SourceMapImporter.TriggerRaiseTop * scale;
             var go = new GameObject(name);
             go.transform.SetParent(parent, false);
-            go.transform.localPosition = (a + b) * 0.5f;
+            go.transform.localPosition = (a + b) * 0.5f + new Vector3(0, raise * 0.5f, 0);
             var box = go.AddComponent<BoxCollider>();
             box.isTrigger = true;
-            box.size = new Vector3(Mathf.Abs(a.x - b.x), Mathf.Abs(a.y - b.y), Mathf.Abs(a.z - b.z));
+            box.size = new Vector3(Mathf.Abs(a.x - b.x) + 2 * grow, Mathf.Abs(a.y - b.y) + raise, Mathf.Abs(a.z - b.z) + 2 * grow);
 
             var zone = (UdonSharpBehaviour)go.AddUdonSharpComponent(zoneType);
             var typeField = zoneType.GetField("zoneType");

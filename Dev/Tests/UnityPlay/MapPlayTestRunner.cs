@@ -300,6 +300,7 @@ public class MapPlayTestRunner : MonoBehaviour
         var spotParts = new List<string>();
         var spotTops = new List<float>();
         var doorSpots = new List<KeyValuePair<Vector3, SourceMapDoor>>();
+        var doorDest = new List<Vector3>(); // per door spot: its pit teleport's destination
         foreach (var nt in FindObjectsOfType<SourceMapNameTrigger>())
         {
             if (spots.Count >= 6) break;
@@ -341,8 +342,18 @@ public class MapPlayTestRunner : MonoBehaviour
             var dm = d.GetComponentInParent<SourceEntity>();
             if (!string.IsNullOrEmpty(onlyDoors) && (dm == null || System.Array.IndexOf(onlyDoors.Split(','), dm.GetValue("model")) < 0)) continue;
             var b = d.solid.bounds;
+            // The teleport it sinks into (below it, or around it): where standing on it must send the player.
+            var open = b;
+            open.Encapsulate(b.min - Vector3.up * 32f * U);
+            SourceMapTeleport pit = null;
+            foreach (var t in teleports)
+                if (t.filterName == "" && t.landmark == null && t.GetComponent<Collider>() != null && t.GetComponent<Collider>().bounds.Intersects(open)) { pit = t; break; }
+            if (pit == null) continue;
             if (Physics.Raycast(new Vector3(b.center.x, b.max.y + 0.5f, b.center.z), Vector3.down, out var hit, 1f, Solid, QueryTriggerInteraction.Ignore))
+            {
                 doorSpots.Add(new KeyValuePair<Vector3, SourceMapDoor>(hit.point, d));
+                doorDest.Add(Relayed(pit));
+            }
         }
         Log($"   bhop blocks: testing {spots.Count} name-trigger blocks, {doorSpots.Count} door blocks");
 
@@ -368,9 +379,15 @@ public class MapPlayTestRunner : MonoBehaviour
         {
             total++;
             yield return Teleport(spot.Key + Vector3.up * 0.05f, Quaternion.identity);
-            Vector3 start = player.GetPosition();
-            yield return Frames(1.5f);
-            bool gone = (player.GetPosition() - start).magnitude > 1f; // sank, fell into the teleport and went to its destination
+            Vector3 dest = doorDest[doorSpots.IndexOf(spot)];
+            bool gone = false;
+            for (int i = 0; i < frameRate * 2.5f && !gone; i++) // sinks, falls into the teleport, arrives at its destination
+            {
+                yield return null;
+                Vector3 dd = player.GetPosition() - dest;
+                gone = new Vector2(dd.x, dd.z).magnitude < 0.5f && Mathf.Abs(dd.y) < 1.5f;
+            }
+            gone |= (player.GetPosition() - spot.Key).magnitude > 10f; // or another teleport over the pit took them far
             var du = UdonOf(spot.Value);
             var ccc = FindObjectOfType<CharacterController>();
             var box = spot.Value.GetComponent<BoxCollider>();

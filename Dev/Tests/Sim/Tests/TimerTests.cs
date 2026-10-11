@@ -202,9 +202,10 @@ public static class TimerTests
         Check(legit.GetCount() == 1 && auto.GetCount() == 0 && !timer.LastRunWasAuto(), "legit run went to the wrong board");
         Race(true, true, true);
         Check(auto.GetCount() == 1 && timer.LastRunWasAuto(), "auto run went to the wrong board");
+        player.displayName = "Mid"; // a new player, so the board it lands on gains an entry
         Race(false, true, false); // switched on mid-run, then back off: still an auto run
         Check(timer.LastRunWasAuto(), "turning auto bhop on mid-run kept it legit");
-        Check(legit.GetCount() == 1, "mid-run switch landed on the legit board");
+        Check(legit.GetCount() == 1 && auto.GetCount() == 2, "mid-run switch landed on the legit board");
     }
 
     static void Courses()

@@ -45,7 +45,8 @@ between imported CS:S bhop maps. Every setting is in the [settings reference](SE
 1. Unzip this repository.
 2. Copy `Assets/SourceMovement`, `Assets/SourceTimer` and `Assets/SourceMaps` **with the `.meta` files next to them**
    into your project's `Assets` (drag them into Unity's Project window).
-3. Wait for the compile. On UdonSharp errors: **VRChat SDK > Udon Sharp > Compile All UdonSharp Programs**.
+3. Wait for the compile. On UdonSharp errors: select any program `.asset` in `Assets/SourceMovement/Scripts`
+   (e.g. `AutoBhopButton.asset`) and press **Compile All UdonSharp Programs** in the Inspector.
 4. **Window > TextMeshPro > Import TMP Essential Resources** (the lobby tool also does this if it's missing).
 
 > [!WARNING]
@@ -195,7 +196,7 @@ everyone plays the winner, **Back to lobby** leaves it, **Rejoin map** goes back
 | Rock the vote | On the map's menu; click again to take it back. At 60% of players a new vote starts in the lobby |
 | Lobby / rejoin | **Back to lobby** takes only you; **Rejoin map** on the vote menu takes you back in |
 | Time limit | When it runs out everyone returns for a vote that also offers "Extend" |
-| Ducking | Hold **Left Ctrl** or VRChat's crouch (**C**, or crouch in VR). Crouch jumps reach 65-unit ledges; ducked you fit 46+ unit gaps |
+| Ducking | Hold **Left Ctrl** or VRChat's crouch (**C**, or crouch in VR). Crouch jumps reach 65-unit ledges (duck held as you jump; about 64 if you duck after take-off); ducked you fit 46+ unit gaps |
 | Practice courses | Green start pad to red end pad; falling sends you back, **G** restarts |
 | Glass doors | bhop_eazy_v2's red lanes: the glass breaks as you get close (as if knifed), for you only, until you leave |
 | Owner controls | Instance owner (else the master): **Lock / unlock vote** (only Start ends it), **Start now**, **Force a map** (then click a map), **Everyone to lobby**, **+ time** in maps |

@@ -59,12 +59,18 @@ public static class CollisionWorld
         return new Vector3((float)((pitch + 360) % 360), (float)((yaw + 360) % 360), 0);
     }
 
+    /// <summary>
+    /// Physics.BoxCast. `point` is a contact point on the hit box like PhysX gives (the point of the box nearest the
+    /// moving box's centre at impact: on the face it hit, or on the edge or corner), not the moving box's centre.
+    /// </summary>
     public static bool BoxCast(Vector3 center, Vector3 half, Vector3 dir, float maxDistance, out float distance, out Vector3 normal,
-        int layerMask = ~0)
+        out Vector3 point, int layerMask = ~0)
     {
         castCount++;
         distance = float.MaxValue;
         normal = Vector3.zero;
+        point = Vector3.zero;
+        Box hitBox = null;
         foreach (Box box in boxes)
         {
             if ((layerMask & (1 << box.layer)) == 0) continue;
@@ -72,9 +78,16 @@ public static class CollisionWorld
             {
                 distance = t;
                 normal = n;
+                hitBox = box;
             }
         }
-        return distance != float.MaxValue;
+        if (hitBox == null) return false;
+        Quaternion inverse = new Quaternion(-hitBox.rotation.x, -hitBox.rotation.y, -hitBox.rotation.z, hitBox.rotation.w);
+        Vector3 local = Rotate(inverse, center + dir * distance - hitBox.center);
+        local = new Vector3(Math.Clamp(local.x, -hitBox.half.x, hitBox.half.x), Math.Clamp(local.y, -hitBox.half.y, hitBox.half.y),
+            Math.Clamp(local.z, -hitBox.half.z, hitBox.half.z));
+        point = hitBox.center + Rotate(hitBox.rotation, local);
+        return true;
     }
 
     /// <summary>Physics.Raycast against the boxes (slab test), giving the face normal.</summary>

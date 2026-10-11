@@ -10,7 +10,8 @@ using UnityEngine;
 /// SourceMapSoundTrigger. Sound files come from the map's pakfile or the CS:S folder (read by the caller) and are
 /// saved as assets.
 ///   - looping: as in Source, only wavs with a loop point (cue chunk) loop,
-///   - plays from the start unless "Start Silent" (spawnflag 16), or when a logic_auto plays it at map spawn,
+///   - plays from the start if it loops (no "Is NOT Looped", spawnflag 32) and isn't "Start Silent" (16), or when a
+///     logic_auto plays it at map spawn,
 ///   - "Play everywhere" (spawnflag 1): heard everywhere (2D), otherwise fades out linearly to its radius,
 ///   - volume = health / 10, pitch / 100.
 /// Soundscript names (no file extension, e.g. "explode_6") are skipped.
@@ -51,7 +52,7 @@ public static class SourceMapSounds
             var source = m.gameObject.AddComponent<AudioSource>();
             source.clip = clips[file];
             source.loop = loops[file];
-            source.playOnAwake = (flags & 16) == 0 || atSpawn.Contains(m.targetName);
+            source.playOnAwake = ((flags & 16) == 0 && (flags & 32) == 0) || atSpawn.Contains(m.targetName);
             source.volume = Mathf.Clamp01(Number(m.GetValue("health"), 10f) / 10f);
             source.pitch = Mathf.Clamp(Number(m.GetValue("pitch"), 100f), 1f, 255f) / 100f;
             source.spatialBlend = (flags & 1) != 0 ? 0f : 1f;

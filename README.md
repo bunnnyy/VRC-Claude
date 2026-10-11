@@ -58,7 +58,7 @@ Defaults are bhop-server settings: `sv_airaccelerate 1000`, `sv_accelerate 5`, f
 | Feature | How it works |
 |---|---|
 | **Auto bhop** | Hold jump to keep hopping; **B** toggles it, the scroll wheel always jumps. VR: the `AutoBhopButton` (Interact) |
-| **Ducking** | **Left Ctrl** or VRChat's crouch (**C**, or crouch in VR). Hull 62 → 45 units, 34% ground speed, crouch jump reaches 65-unit ledges |
+| **Ducking** | **Left Ctrl** or VRChat's crouch (**C**, or crouch in VR). Hull 62 → 45 units, 34% ground speed, crouch jump reaches 65-unit ledges (duck held as you jump) |
 | **Ladders** | Walk into one to grab it; W/S climb along your view, jump pushes off at 270 u/s, climb 200 u/s. A trigger on layer 22 |
 | **Water** | Waist deep: swim along your view at 200 u/s, jump swims up, water jump out at a ledge. A trigger on layer 4 |
 | **Boosters** | `SourcePushTrigger` (`trigger_push`) and `SourceBoostTrigger` (basevelocity, gravity) on trigger colliders |

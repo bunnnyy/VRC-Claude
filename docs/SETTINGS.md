@@ -34,7 +34,7 @@ Every changeable setting of SourceMovement, SourceTimer and SourceMaps. Building
 | Max Speed | 250 | | Running speed (CS:S knife/pistols 250, rifles ~215-230). Swimming is 80% of it |
 | Max Velocity | 3500 | `sv_maxvelocity` | Cap per axis (falling speed limit) |
 | Air Speed Cap | 30 | | Air wish speed cap; it's what makes air strafing gain speed. Leave at 30 |
-| Jump Impulse | 301.99 | | Jump height = Jump Impulse² / (2 × Gravity) = 57 units. **Change with Gravity** |
+| Jump Impulse | 301.99 | | Jump height about 55.5 units standing at 100 tick, 57 ducked or ducking (Jump Impulse² / (2 × Gravity) = 57; Source's half-gravity steps take 1.5 off a standing jump). **Change with Gravity** |
 | Step Size | 18 | `sv_stepsize` | Highest step walked up without jumping |
 | Tick Rate | 100 | `-tickrate` | Ticks per second (bhop servers 100, CS:S default 66) |
 
@@ -44,7 +44,7 @@ Every changeable setting of SourceMovement, SourceTimer and SourceMaps. Building
 |---|---|---|
 | Hull Width | 32 | Width and depth of the collision box |
 | Hull Height | 62 | Standing height (CS:S 62; HL2 and GMod 72) |
-| Duck Hull Height | 45 | Ducked height (CS:S 45; HL2 36). Ducked you fit 46+ unit gaps; crouch jumps reach 65-unit ledges |
+| Duck Hull Height | 45 | Ducked height (CS:S 45; HL2 36). Ducked you fit 46+ unit gaps; crouch jumps reach 65-unit ledges (duck held as you jump) |
 
 ### 1.3 World
 

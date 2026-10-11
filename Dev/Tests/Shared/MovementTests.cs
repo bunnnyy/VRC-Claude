@@ -46,6 +46,7 @@ public static class MovementTests
         Test("Ladder: climbing to the top gets you onto the ledge", LadderTop);
         Test("Ladder: S at the bottom walks off it", LadderWalkOff);
         Test("Ladder: one behind you is not grabbed", LadderBehind);
+        Test("Ladder: walking diagonally past one beside you doesn't grab it", LadderBeside);
         Test("Water: swims at 200 u/s (max speed * 0.8)", WaterSwim);
         Test("Water: no keys sinks at 48 u/s, no gravity", WaterSink);
         Test("Water: jump swims up", WaterSwimUp);
@@ -620,12 +621,28 @@ public static class MovementTests
     static void LadderBehind()
     {
         var r = LadderWall();
-        r.TeleportPlayer(new Vector3(0, 0, 4), 180, false); // ladder face 4 units behind the hull's back
+        r.TeleportPlayer(new Vector3(0, 0, 4), 180, false); // ladder face 20 units behind the hull's back
         r.Run(0.1f);
         r.Move(1, 0);
         r.Run(0.5f);
         Note($"walking away from it: z {r.Origin.z:F1}, on ladder {r.OnLadder}");
         Check(!r.OnLadder && r.Origin.z < -50, "grabbed a ladder behind");
+    }
+
+    /// <summary>
+    /// LadderMove sweeps from a hull width back along the move: walking diagonally, that sweep reaches a ladder beside
+    /// the player that the hull itself doesn't touch. It counts only if the hull touches it.
+    /// </summary>
+    static void LadderBeside()
+    {
+        var r = OnFloor();
+        Rig.Ladder(new Vector3(-18, 256, 26), new Vector3(44, 512, 8)); // x -40..4, z 22..30: off the hull's corner
+        r.TeleportPlayer(new Vector3(0, 0, 4), 180, false);
+        r.Run(0.1f);
+        r.Move(1, 1);
+        r.Run(0.3f);
+        Note($"walking diagonally away: at {r.Origin}, on ladder {r.OnLadder}");
+        Check(!r.OnLadder, "grabbed a ladder the hull doesn't touch");
     }
 
     static void WaterSwim()

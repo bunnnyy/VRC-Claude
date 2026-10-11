@@ -62,11 +62,14 @@ if [ "${1:-}" = "map" ]; then
   status=0
   for bsp in "$@"; do
     name=$(basename "$bsp" .bsp)
+    rm -f "$logs/import_$name.log" "$logs/map_$name.log" # a failed step must not show an earlier run's results
+    # (Unity exits 0 even when the import method throws: check it finished, else the last map's scene is tested.)
     if run "import_$name" -quit -executeMethod PlayTestBootstrap.ImportMap -bsp "$(realpath "$bsp")" &&
+       grep -q "\[SMTEST\] imported" "$logs/import_$name.log" &&
        run "map_$name" -executeMethod PlayTestBootstrap.RunMap -smFrameRate 90; then r="ALL PASSED"; else r="FAILED"; status=1; fi
     echo "== $name: $r"
-    grep -h "\[Source Maps\]" "$logs/import_$name.log" | head -1 | sed 's/^/  /'
-    grep -ho "\[SMTEST\] .*" "$logs/map_$name.log" 2>/dev/null | grep -vE "^\[SMTEST\] $|ALL PASSED|FAILED$" | sed 's/^\[SMTEST\] /  /' | sort -u
+    grep -h "\[Source Maps\]" "$logs/import_$name.log" 2>/dev/null | head -1 | sed 's/^/  /' || true
+    grep -ho "\[SMTEST\] .*" "$logs/map_$name.log" 2>/dev/null | grep -vE "^\[SMTEST\] $|ALL PASSED|FAILED$" | sed 's/^\[SMTEST\] /  /' | sort -u || true
   done
   exit $status
 fi
@@ -90,7 +93,7 @@ if [ "${1:-}" = "route" ]; then
   fi
   rm -rf "$proj/ClientSimStorage"
   status=0
-  rm -f "$proj/Assets/RouteTest.unity"
+  rm -f "$proj/Assets/RouteTest.unity" "$logs/build_route.log" "$logs/route.log"
   if run build_route -quit -executeMethod PlayTestBootstrap.BuildRoute -bsp "$bsp" -zones "$zones" &&
      grep -q "route scene built" "$logs/build_route.log" &&
      [ "$(grep -o "Tundra build [a-z]*" "$logs/build_route.log" | tail -1)" != "Tundra build failed" ] &&
@@ -134,7 +137,10 @@ if [ "${1:-}" = "sample" ]; then
   tmp_essentials
   rm -rf "$proj/ClientSimStorage"
   src=$repo/Dev/Tests/Converters/.cache/src/uSource
-  [ -d "$src" ] || { echo "Run Dev/Tests/Converters/compare.sh once (downloads uSource)"; exit 1; }
+  if [ ! -d "$src" ]; then
+    git clone -q https://github.com/DeadZoneLuna/uSource "$src"
+    git -C "$src" checkout -q 01ab6a2f080ce7341b87f2d867bfae079c0fa06e
+  fi
   if [ ! -d "$proj/Assets/uSource" ]; then
     cp -r "$src" "$proj/Assets/uSource"; rm -rf "$proj/Assets/uSource/.git"
     sed -i 's|"references": \[\],|"references": [], "allowUnsafeCode": true,|' "$proj/Assets/uSource/uSource.asmdef"
@@ -146,11 +152,12 @@ if [ "${1:-}" = "sample" ]; then
   done
   run program_assets -quit -executeMethod SourceMapImporter.EnsureProgramAssets
   status=0
+  rm -f "$logs/build_sample.log" "$logs/sample.log"
   if run build_sample -quit -executeMethod PlayTestBootstrap.BuildSample -bspDir "$(realpath "$repo/Dev/Tests/Bsp/.cache/maps")" -zonesDir "$zones" &&
      run sample -executeMethod PlayTestBootstrap.RunSample; then r="ALL PASSED"; else r="FAILED"; status=1; fi
   echo "== sample world: $r"
-  grep -h "\[Source Maps\]" "$logs/build_sample.log" | sed 's/^/  /'
-  grep -ho "\[SMTEST\] .*" "$logs/sample.log" 2>/dev/null | grep -vE "^\[SMTEST\] $|ALL PASSED|FAILED$" | sed 's/^\[SMTEST\] /  /' | awk '!seen[$0]++'
+  grep -h "\[Source Maps\]" "$logs/build_sample.log" 2>/dev/null | sed 's/^/  /' || true
+  grep -ho "\[SMTEST\] .*" "$logs/sample.log" 2>/dev/null | grep -vE "^\[SMTEST\] $|ALL PASSED|FAILED$" | sed 's/^\[SMTEST\] /  /' | awk '!seen[$0]++' || true
   exit $status
 fi
 
@@ -161,9 +168,10 @@ if [ "${1:-}" = "vote" ]; then
   rm -rf "$proj/ClientSimStorage" # ClientSim keeps PlayerData between runs: start without saved times
   run program_assets -quit -executeMethod SourceMapImporter.EnsureProgramAssets
   status=0
+  rm -f "$logs/build_vote.log" "$logs/vote.log"
   if run build_vote -quit -executeMethod SourceMapsTestScene.Build && run vote -executeMethod PlayTestBootstrap.RunVote; then r="ALL PASSED"; else r="FAILED"; status=1; fi
   echo "== map rotation: $r"
-  grep -ho "\[SMTEST\] [PF][AI][SL].*" "$logs/vote.log" 2>/dev/null | sed 's/^\[SMTEST\] /  /' | awk '!seen[$0]++'
+  grep -hoE "\[SMTEST\] (PASS|FAIL).*" "$logs/vote.log" 2>/dev/null | sed 's/^\[SMTEST\] /  /' | awk '!seen[$0]++' || true
   exit $status
 fi
 

@@ -48,7 +48,7 @@ apt-get install -y 7zip unar            # map archives (rar needs unar)
 # Unity 2022.3.22f1 into /opt/unity (URL in MAPVOTE_PLAN.md, Context), licence:
 /opt/unity/Editor/Data/Resources/Licensing/Client/Unity.Licensing.Client --activate-ulf --username "$UNITY_EMAIL" --password "$UNITY_PASSWORD"
 Dev/Tests/Bsp/get_maps.sh                   # the 6 maps from GameBanana
-Dev/Tests/Converters/compare.sh Dev/Tests/Bsp/.cache/maps/bhop_japan.bsp   # downloads uSource (run.sh sample needs it)
+# (run.sh sample and route download uSource themselves)
 # Optional: CS:S + HL2 stock content (~6 GB, git-ignored) as a "CS:S folder" for tests (env SM_CSS)
 c=Dev/Tests/UnityPlay/.cache; mkdir -p $c/css
 for r in css_content:cstrike hl2_ep2_content:hl2; do repo=${r%%:*}; dir=$c/${r##*:}_content

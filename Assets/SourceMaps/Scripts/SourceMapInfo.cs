@@ -2,7 +2,7 @@ using UdonSharp;
 using UnityEngine;
 
 /// <summary>
-/// One playable map for SourceMapManager: put it on the map's root object (Tools > Source Maps > Add Map does).
+/// One playable map for SourceMapManager: put it on the map's root object (Tools > Source Maps > Add Selected Map To Rotation does).
 /// The root (with everything under it) is switched off while nobody local is in this map.
 /// </summary>
 [UdonBehaviourSyncMode(BehaviourSyncMode.None)]

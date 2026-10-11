@@ -121,6 +121,7 @@ public class RouteRunner : MonoBehaviour
     bool finished;
 
     int section;
+    readonly List<float> plannedGravity = new List<float>(); // per section: the gravity its flights were planned with
     float progress;
     bool hopping, hasTarget, wasOnGround, wasLanded;
     Spot target;
@@ -173,6 +174,7 @@ public class RouteRunner : MonoBehaviour
                 list = list.FindAll(sp => System.Array.Exists(line, q => (Flat(sp.p) - q).magnitude <= 20f));
             Plan(list);
             spots.Add(list);
+            plannedGravity.Add(Gravity);
             total += list.Count;
             // Where the plan finds no way on (log): stretches of the section where none of the spots can go on.
             var dead = new List<string>();
@@ -293,6 +295,12 @@ public class RouteRunner : MonoBehaviour
     void Step(Vector3 pos)
     {
         if (!builtIn) Gravity = (float)movement.GetProgramVariable("gravity") * (float)movement.GetProgramVariable("gravityScale");
+        // A section planned before the player's gravity changed (trigger_gravity, e.g. a moon stage): plan it again.
+        if (!builtIn && section < plannedGravity.Count && Mathf.Abs(Gravity - plannedGravity[section]) > 1f)
+        {
+            Plan(spots[section]);
+            plannedGravity[section] = Gravity;
+        }
         Vector3 vel = (Vector3)movement.GetProgramVariable("velocity");
         bool onGround = (bool)movement.GetProgramVariable("onGround");
         recent[frame % recent.Length] = $"f{frame} pos {pos:F1} vel {vel:F1} ground {onGround} hop {hopping} keys {lastKeys} yaw {viewYaw:F0} target {(hasTarget ? target.p.ToString("F0") : "-")}";
@@ -760,8 +768,9 @@ public class RouteRunner : MonoBehaviour
                 float time = FlightTime(from.pos.y, from.vel.y, s.p.y, Mathf.Min(roof, s.ceil));
                 if (float.IsNaN(time) || time < 0.2f) continue;
                 float need = (new Vector2(s.p.x, s.p.z) - here).magnitude / time;
-                // Can't get there, or (first pass) would land too slow to go on from there.
-                if (need > Reach(speed, time) || (pass == 0 && need < s.need)) continue;
+                // Can't get there, or (first pass) would land too slow to go on from there; the second pass only
+                // flies the spots the first left out.
+                if (need > Reach(speed, time) || (pass == 0 && need < s.need) || (pass == 1 && need >= s.need)) continue;
                 // Furthest along, near the middle of the lane, well inside a surface, and without braking (speed lost
                 // braking has to be strafed back). Near the end of the section, the middle of the lane: lined up with
                 // the doorway to the next one.
@@ -1319,7 +1328,7 @@ public class RouteRunner : MonoBehaviour
     /// height) like Source: vertical speed cut to zero, then the fall from there. NaN if never.</summary>
     static float FlightTime(float y, float vy, float target, float ceil)
     {
-        if (vy <= 0f || y + vy * vy / (2f * Gravity) <= ceil) return FallTime(y - target, vy);
+        if (vy <= 0f || ceil <= y || y + vy * vy / (2f * Gravity) <= ceil) return FallTime(y - target, vy); // (a ceiling below the feet: none)
         float up = (vy - Mathf.Sqrt(Mathf.Max(0f, vy * vy - 2f * Gravity * (ceil - y)))) / Gravity;
         return ceil < target ? float.NaN : up + Mathf.Sqrt(2f * (ceil - target) / Gravity);
     }
@@ -1328,7 +1337,7 @@ public class RouteRunner : MonoBehaviour
     static float HeightAt(float y0, float vy, float t, float ceil)
     {
         float free = y0 + vy * t - 0.5f * Gravity * t * t;
-        if (vy <= 0f || y0 + vy * vy / (2f * Gravity) <= ceil) return free;
+        if (vy <= 0f || ceil <= y0 || y0 + vy * vy / (2f * Gravity) <= ceil) return free;
         float up = (vy - Mathf.Sqrt(Mathf.Max(0f, vy * vy - 2f * Gravity * (ceil - y0)))) / Gravity;
         return t <= up ? free : ceil - 0.5f * Gravity * (t - up) * (t - up);
     }

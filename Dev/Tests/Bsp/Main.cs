@@ -245,7 +245,7 @@ static class Program
             string label = $"{e.ClassName} {e.TargetName} at {feet}";
             if (hit == null) { noFloor++; problems.Add("no floor: " + label); }
             else if (hit.Value.Y <= 0) { floorFacesDown++; problems.Add("floor faces down: " + label); }
-            // The player hull (32 x 32 x 72 from the feet) must not start inside a solid brush.
+            // The player hull (CS:S: 32 x 32 x 62 from the feet) must not start inside a solid brush.
             int inside = solid.FirstOrDefault(i => HullInBrush(bsp, i, feet), -1);
             if (inside >= 0) { stuck++; problems.Add($"inside brush {inside}: " + label); }
         }
@@ -345,7 +345,7 @@ static class Program
     static bool HullInBrush(BspFile bsp, int brushIndex, Vector3 feet)
     {
         var brush = bsp.Brushes[brushIndex];
-        Vector3 mins = new Vector3(-16, -16, 0), maxs = new Vector3(16, 16, 72);
+        Vector3 mins = new Vector3(-16, -16, 0), maxs = new Vector3(16, 16, 62);
         for (int s = 0; s < brush.NumSides; s++)
         {
             var plane = bsp.Planes[bsp.BrushSides[brush.FirstSide + s].Plane];

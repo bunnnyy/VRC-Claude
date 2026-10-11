@@ -136,8 +136,10 @@ public class PlayTestRunner : MonoBehaviour
 
     IEnumerator Hud()
     {
-        // The walk left the start zone, so the run timer should be running and the speedometer showing.
-        yield return Frames(0.1f, null);
+        // Walk out of the start zone: the run timer should be running and the speedometer showing the speed.
+        yield return Spawn(new Vector3(0, 0, 100), 0f);
+        Keys(Key.W);
+        yield return Frames(1.5f, null);
         var texts = FindObjectsOfType<TextMeshProUGUI>();
         TextMeshProUGUI speedo = null, timer = null;
         foreach (var t in texts)
@@ -150,7 +152,7 @@ public class PlayTestRunner : MonoBehaviour
         if (speedo != null)
         {
             Log($"speedometer text '{speedo.text}', {Vector3.Distance(speedo.transform.position, head):F2} m from head, font size {speedo.fontSize}");
-            Check("hud", speedo.text == Mathf.RoundToInt(Speed()).ToString(), "speedometer shows the sim speed");
+            Check("hud", Speed() > 200f && speedo.text == Mathf.RoundToInt(Speed()).ToString(), "speedometer shows the sim speed while walking");
             Check("hud", Vector3.Distance(speedo.transform.position, head) < 1.5f, "speedometer floats in front of the view");
         }
         Check("hud", timer != null, "timer text exists");
@@ -159,6 +161,7 @@ public class PlayTestRunner : MonoBehaviour
             Log($"timer text '{timer.text}', {Vector3.Distance(timer.transform.position, head):F2} m from head");
             Check("hud", timer.text.StartsWith("[auto] ") || timer.text.StartsWith("[legit] "), "timer is running after leaving the start zone");
         }
+        Keys();
     }
 
     IEnumerator Bhop()
@@ -560,6 +563,11 @@ public class PlayTestRunner : MonoBehaviour
     {
         // A legit run (auto bhop is still off from the legit test) through the real trigger zones.
         UdonBehaviour timer = FindUdon("RunTimer");
+        if ((bool)movement.GetProgramVariable("autoBhop")) // run on its own (-smOnly timer): legit, as after the legit test
+        {
+            FindUdon("AutoBhopButton").SendCustomEvent("_interact");
+            yield return Frames(0.1f, null);
+        }
         yield return Spawn(new Vector3(0, 0, 100), 0f);
         Check("timer", !(bool)timer.GetProgramVariable("running"), "not running inside the start zone");
         Keys(Key.W);

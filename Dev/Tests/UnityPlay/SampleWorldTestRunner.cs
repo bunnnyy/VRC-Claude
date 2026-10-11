@@ -54,16 +54,23 @@ public class SampleWorldTestRunner : MonoBehaviour
         var root = info.gameObject;
 
         // Force this map (owner controls), like pressing "Force a map" and its slot on the board.
-        Press("forcelobby", -1);
-        yield return Seconds(0.3f);
-        int slot = System.Array.IndexOf((int[])manager.GetProgramVariable("candidates"), index);
+        // A vote offers 5 of the 6 maps at random: force the lobby again until this one is on the board.
+        int slot = -1;
+        for (int tries = 0; tries < 30 && slot < 0; tries++)
+        {
+            Press("forcelobby", -1);
+            yield return Seconds(0.3f);
+            slot = System.Array.IndexOf((int[])manager.GetProgramVariable("candidates"), index);
+        }
         Check(slot >= 0, $"{name}: offered on the vote board");
         if (slot < 0) yield break;
         Press("force", -1);
         Press("map", slot);
         yield return Seconds(2.5f);
         var spawn = (Transform)infoUdon.GetProgramVariable("spawn");
-        Check(root.activeSelf && (bool)movement.GetProgramVariable("onGround") && player.GetPosition().y > spawn.position.y - 10f,
+        var lobby = (Transform)manager.GetProgramVariable("lobbySpawn");
+        Check(root.activeSelf && (bool)movement.GetProgramVariable("onGround") && player.GetPosition().y > spawn.position.y - 10f &&
+              (lobby == null || Vector3.Distance(player.GetPosition(), lobby.position) > 20f), // out of the lobby
             $"{name}: forced, player arrives and stands near the spawn (at {player.GetPosition():F1}, spawn {spawn.position:F1})");
 
         // Visuals: something is drawn, no tool texture is drawn, solid props have colliders.
@@ -130,7 +137,7 @@ public class SampleWorldTestRunner : MonoBehaviour
             bool off = !root.activeSelf;
             Press("rejoin", -1);
             yield return Seconds(0.5f);
-            bool still = off && root.activeSelf && (bool)GlassUdon(pane).GetProgramVariable("broken") && !pane.solid.enabled && !pane.visuals.gameObject.activeSelf;
+            bool still = off && root.activeSelf && (bool)GlassUdon(pane).GetProgramVariable("broken") && !pane.solid.enabled && pane.visuals != null && !pane.visuals.gameObject.activeSelf;
             Check(glassLinked == glass.Length && broke && still,
                 $"{name}: {glassLinked}/{glass.Length} breakable glass linked to its model; beside one it breaks and its model goes ({broke}), still broken after the lobby and Rejoin map ({still})");
         }

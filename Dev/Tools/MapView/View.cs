@@ -41,16 +41,15 @@ static class View
             foreach (int b in bsp.ModelBrushes(model))
             {
                 if ((bsp.Brushes[b].Contents & BspFile.MaskPlayerSolid) == 0) continue;
-                foreach (var poly in BspGeometry.BrushPolygons(bsp, b))
+                foreach (var face in BspGeometry.BrushFaces(bsp, b))
                 {
-                    var n = Vector3.Normalize(Vector3.Cross(poly[1] - poly[0], poly[2] - poly[0]));
-                    if (n.Z < -0.7f) n = -n;
-                    if (n.Z <= 0.7f) continue;
+                    if (face.Value.Normal.Z <= 0.7f) continue; // the exact plane (clipped corners can repeat a vertex)
+                    var poly = face.Key.Select(p => p + off).ToArray(); // world space: entity models sit at their origin
                     var c = new Vector3(poly.Average(p => p.X), poly.Average(p => p.Y), poly.Max(p => p.Z) + 16);
                     int leaf = bsp.LeafAt(c);
                     if (leaf < 0 || (bsp.Leafs[leaf].Contents & BspFile.ContentsSolid) != 0) continue; // roof: void above
                     if (poly.Max(p => p.Z) < zlo || poly.Max(p => p.Z) > zhi) continue;
-                    floors.Add(poly.Select(p => p + off).ToArray());
+                    floors.Add(poly);
                 }
             }
         }
@@ -159,11 +158,10 @@ static class View
             foreach (int b in bsp.ModelBrushes(model))
             {
                 if ((bsp.Brushes[b].Contents & BspFile.MaskPlayerSolid) == 0) continue;
-                foreach (var poly in BspGeometry.BrushPolygons(bsp, b))
+                foreach (var face in BspGeometry.BrushFaces(bsp, b))
                 {
-                    var n = Vector3.Normalize(Vector3.Cross(poly[1] - poly[0], poly[2] - poly[0]));
-                    if (n.Z < -0.7f) n = -n;
-                    if (n.Z <= 0.7f) continue;
+                    if (face.Value.Normal.Z <= 0.7f) continue; // the exact plane, as in the view
+                    var poly = face.Key;
                     float z = poly.Max(p => p.Z) + o.Z;
                     if (z < zlo || z > zhi) continue;
                     var c = new Vector3(poly.Average(p => p.X) + o.X, poly.Average(p => p.Y) + o.Y, z + 16);
